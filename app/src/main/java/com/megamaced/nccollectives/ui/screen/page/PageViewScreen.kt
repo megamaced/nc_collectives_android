@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +56,7 @@ internal fun PageViewScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     val page by viewModel.page.collectAsState()
+    val isFavorite by viewModel.isFavorite.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
@@ -82,6 +85,12 @@ internal fun PageViewScreen(
                 },
                 actions = {
                     if (page != null) {
+                        IconButton(onClick = viewModel::toggleFavorite) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (isFavorite) "Unfavorite" else "Favorite",
+                            )
+                        }
                         IconButton(onClick = onEdit) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }

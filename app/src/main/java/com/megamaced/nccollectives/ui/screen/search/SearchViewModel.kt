@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
+import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
@@ -29,6 +31,8 @@ data class SearchUiState(
     val results: List<SearchHit> = emptyList(),
     val isSearching: Boolean = false,
     val errorMessage: String? = null,
+    /** Empty set means "all collectives". */
+    val selectedCollectiveIds: Set<Long> = emptySet(),
 )
 
 @OptIn(FlowPreview::class)
@@ -37,8 +41,12 @@ class SearchViewModel
     @Inject
     constructor(
         private val repository: SearchRepository,
+        private val collectiveRepository: CollectiveRepository,
         private val userPreferences: UserPreferences,
     ) : ViewModel() {
+        val collectives: StateFlow<List<Collective>> = collectiveRepository
+            .observeCollectives()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
         private val _uiState = MutableStateFlow(SearchUiState())
         val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
@@ -71,6 +79,14 @@ class SearchViewModel
 
         fun clearRecents() {
             viewModelScope.launch { userPreferences.clearRecentSearches() }
+        }
+
+        fun toggleCollectiveFilter(collectiveId: Long) {
+            _uiState.update {
+                val next = it.selectedCollectiveIds.toMutableSet()
+                if (!next.add(collectiveId)) next.remove(collectiveId)
+                it.copy(selectedCollectiveIds = next)
+            }
         }
 
         private suspend fun runSearch(term: String) {

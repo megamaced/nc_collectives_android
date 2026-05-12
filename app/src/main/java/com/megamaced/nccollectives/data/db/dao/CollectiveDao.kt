@@ -14,6 +14,12 @@ interface CollectiveDao {
     @Query("SELECT * FROM collectives WHERE id = :id")
     suspend fun getById(id: Long): CollectiveEntity?
 
+    @Query("UPDATE collectives SET userFavoritePagesCsv = :csv WHERE id = :id")
+    suspend fun updateFavoritePagesCsv(
+        id: Long,
+        csv: String,
+    )
+
     @Upsert
     suspend fun upsertAll(collectives: List<CollectiveEntity>)
 

@@ -10,4 +10,14 @@ interface CollectiveRepository {
 
     /** Force a network refresh; the resulting list lands in the Flow above. */
     suspend fun refresh(): ApiResult<Unit>
+
+    /**
+     * Add or remove [pageId] from the user's favorites for [collectiveId].
+     * Applies optimistically to Room first, rolls the cache back on failure.
+     */
+    suspend fun toggleFavorite(
+        collectiveId: Long,
+        pageId: Long,
+        favorite: Boolean,
+    ): ApiResult<Unit>
 }

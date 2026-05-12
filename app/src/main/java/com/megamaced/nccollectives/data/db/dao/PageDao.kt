@@ -23,6 +23,15 @@ interface PageDao {
     @Query("SELECT id FROM pages WHERE title = :title LIMIT 1")
     suspend fun findIdByTitle(title: String): Long?
 
+    @Query(
+        "SELECT * FROM pages WHERE trashTimestamp IS NULL " +
+            "ORDER BY serverTimestamp DESC LIMIT :limit",
+    )
+    fun observeRecent(limit: Int): Flow<List<PageEntity>>
+
+    @Query("SELECT * FROM pages WHERE id IN (:ids) AND trashTimestamp IS NULL")
+    fun observeByIds(ids: List<Long>): Flow<List<PageEntity>>
+
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 

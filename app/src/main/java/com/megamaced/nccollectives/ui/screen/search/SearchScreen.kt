@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -22,12 +23,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.ui.components.EmptyState
 
@@ -39,6 +42,15 @@ internal fun SearchScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     val recents by viewModel.recents.collectAsState()
+    val collectives by viewModel.collectives.collectAsState()
+
+    val filteredResults = remember(ui.results, ui.selectedCollectiveIds) {
+        if (ui.selectedCollectiveIds.isEmpty()) {
+            ui.results
+        } else {
+            ui.results.filter { hit -> hit.collectiveId in ui.selectedCollectiveIds }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -68,6 +80,14 @@ internal fun SearchScreen(
             )
         }
 
+        if (ui.query.isNotBlank() && collectives.size > 1) {
+            CollectiveFilterRow(
+                collectives = collectives,
+                selected = ui.selectedCollectiveIds,
+                onToggle = viewModel::toggleCollectiveFilter,
+            )
+        }
+
         when {
             ui.isSearching -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -86,11 +106,11 @@ internal fun SearchScreen(
                     modifier = Modifier.padding(24.dp),
                 )
             }
-            ui.results.isEmpty() && ui.query.isNotBlank() ->
+            filteredResults.isEmpty() && ui.query.isNotBlank() ->
                 EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
-            ui.results.isNotEmpty() ->
+            filteredResults.isNotEmpty() ->
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(ui.results, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
+                    items(filteredResults, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
                         SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
                         HorizontalDivider()
                     }
@@ -125,6 +145,29 @@ private fun RecentsSection(
                     label = { Text(term) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CollectiveFilterRow(
+    collectives: List<Collective>,
+    selected: Set<Long>,
+    onToggle: (Long) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        collectives.forEach { c ->
+            val isSelected = c.id in selected
+            FilterChip(
+                selected = isSelected,
+                onClick = { onToggle(c.id) },
+                label = { Text(c.name) },
+            )
         }
     }
 }

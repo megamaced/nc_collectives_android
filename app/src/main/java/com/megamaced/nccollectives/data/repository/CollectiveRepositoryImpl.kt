@@ -31,4 +31,36 @@ class CollectiveRepositoryImpl
                 dao.upsertAll(entities)
                 dao.deleteMissing(entities.map { it.id })
             }
+
+        override suspend fun toggleFavorite(
+            collectiveId: Long,
+            pageId: Long,
+            favorite: Boolean,
+        ): ApiResult<Unit> {
+            val current = dao.getById(collectiveId) ?: return ApiResult.Unexpected(
+                IllegalStateException("Collective $collectiveId not cached"),
+            )
+            val currentList = current.userFavoritePagesCsv.toLongList()
+            val nextList = if (favorite) {
+                if (pageId in currentList) currentList else currentList + pageId
+            } else {
+                currentList - pageId
+            }
+            if (nextList == currentList) return ApiResult.Success(Unit)
+
+            // Optimistic local update so the UI reflects the new state
+            // immediately. Roll back on failure.
+            dao.updateFavoritePagesCsv(collectiveId, nextList.joinToString(","))
+            val result = apiCall {
+                api.setFavoritePages(collectiveId, encodeFavorites(nextList))
+            }
+            if (result !is ApiResult.Success) {
+                dao.updateFavoritePagesCsv(collectiveId, current.userFavoritePagesCsv)
+            }
+            return result
+        }
+
+        private fun encodeFavorites(ids: List<Long>): String = ids.joinToString(prefix = "[", postfix = "]", separator = ",")
+
+        private fun String.toLongList(): List<Long> = if (isEmpty()) emptyList() else split(',').mapNotNull { it.trim().toLongOrNull() }
     }

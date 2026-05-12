@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -30,24 +32,34 @@ class PageViewModel
     @Inject
     constructor(
         savedStateHandle: SavedStateHandle,
-        private val repository: PageRepository,
+        private val pageRepository: PageRepository,
+        private val collectiveRepository: CollectiveRepository,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageView.ARG_PAGE_ID),
         )
 
-        val page: StateFlow<Page?> = repository.observePage(pageId).stateIn(
+        val page: StateFlow<Page?> = pageRepository.observePage(pageId).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = null,
         )
+
+        val isFavorite: StateFlow<Boolean> = combine(
+            page,
+            collectiveRepository.observeCollectives(),
+        ) { p, collectives ->
+            p?.let { current ->
+                collectives.firstOrNull { it.id == current.collectiveId }?.favoritePageIds?.contains(current.id) ?: false
+            } ?: false
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
 
         private val _uiState = MutableStateFlow(PageViewUiState())
         val uiState: StateFlow<PageViewUiState> = _uiState.asStateFlow()
 
         init {
             viewModelScope.launch {
-                val cached = repository.getPage(pageId)
+                val cached = pageRepository.getPage(pageId)
                 if (cached != null && cached.bodyMd == null) refreshBody()
             }
         }
@@ -56,7 +68,7 @@ class PageViewModel
             if (_uiState.value.isLoadingBody) return
             _uiState.update { it.copy(isLoadingBody = true, errorMessage = null) }
             viewModelScope.launch {
-                val result = repository.fetchBody(pageId)
+                val result = pageRepository.fetchBody(pageId)
                 _uiState.update { state ->
                     state.copy(
                         isLoadingBody = false,
@@ -66,10 +78,25 @@ class PageViewModel
             }
         }
 
+        fun toggleFavorite() {
+            val current = page.value ?: return
+            val want = !isFavorite.value
+            viewModelScope.launch {
+                val result = collectiveRepository.toggleFavorite(
+                    collectiveId = current.collectiveId,
+                    pageId = current.id,
+                    favorite = want,
+                )
+                if (result !is ApiResult.Success) {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
         fun replaceWithDraft() {
             val draft = page.value?.draftBodyMd ?: return
             viewModelScope.launch {
-                val outcome = repository.replaceWithDraft(pageId, draft)
+                val outcome = pageRepository.replaceWithDraft(pageId, draft)
                 _uiState.update {
                     it.copy(statusMessage = saveOutcomeMessage(outcome))
                 }
@@ -77,7 +104,7 @@ class PageViewModel
         }
 
         fun discardDraft() {
-            viewModelScope.launch { repository.discardDraft(pageId) }
+            viewModelScope.launch { pageRepository.discardDraft(pageId) }
         }
 
         fun dismissStatus() {

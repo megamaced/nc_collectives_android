@@ -25,7 +25,12 @@ internal fun NcCollectivesNavHost(
         navController = navController,
         startDestination = Destination.Home.route,
     ) {
-        composable(Destination.Home.route) { HomeScreen(innerPadding) }
+        composable(Destination.Home.route) {
+            HomeScreen(
+                innerPadding = innerPadding,
+                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+            )
+        }
         composable(Destination.Collectives.route) {
             CollectiveListScreen(
                 innerPadding = innerPadding,
