@@ -23,6 +23,13 @@ internal sealed class Destination(
 
     object Settings : Destination("settings", "Settings", Icons.Outlined.Settings)
 
+    /** Nested destination — not in the bottom bar. */
+    object PageTree : Destination("pageTree/{collectiveId}", "Pages", Icons.Outlined.MenuBook) {
+        const val ARG_COLLECTIVE_ID = "collectiveId"
+
+        fun route(collectiveId: Long) = "pageTree/$collectiveId"
+    }
+
     companion object {
         val bottomBar: List<Destination> = listOf(Home, Collectives, Search, Favorites, Settings)
     }

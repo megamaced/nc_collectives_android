@@ -3,9 +3,12 @@ package com.megamaced.nccollectives.ui.navigation
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
+import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
 import com.megamaced.nccollectives.ui.screen.home.HomeScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
@@ -21,9 +24,25 @@ internal fun NcCollectivesNavHost(
         startDestination = Destination.Home.route,
     ) {
         composable(Destination.Home.route) { HomeScreen(innerPadding) }
-        composable(Destination.Collectives.route) { CollectiveListScreen(innerPadding) }
+        composable(Destination.Collectives.route) {
+            CollectiveListScreen(
+                innerPadding = innerPadding,
+                onCollectiveClick = { id -> navController.navigate(Destination.PageTree.route(id)) },
+            )
+        }
         composable(Destination.Search.route) { SearchScreen(innerPadding) }
         composable(Destination.Favorites.route) { FavoritesScreen(innerPadding) }
         composable(Destination.Settings.route) { SettingsScreen(innerPadding) }
+        composable(
+            route = Destination.PageTree.route,
+            arguments = listOf(
+                navArgument(Destination.PageTree.ARG_COLLECTIVE_ID) { type = NavType.LongType },
+            ),
+        ) {
+            PageTreeScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+            )
+        }
     }
 }
