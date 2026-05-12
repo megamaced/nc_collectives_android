@@ -40,5 +40,12 @@ data class PageEntity(
      * since the body was loaded. Null until first fetched.
      */
     val bodyEtag: String?,
+    /**
+     * The user's pending markdown body that lost an `If-Match` race against
+     * the server. Set when a save returns 412 (and the server version wins);
+     * surfaced via `ConflictBanner` on the next page open so the user can
+     * choose to replace / discard / copy it.
+     */
+    val draftBodyMd: String?,
     val lastSyncedAt: Long,
 )

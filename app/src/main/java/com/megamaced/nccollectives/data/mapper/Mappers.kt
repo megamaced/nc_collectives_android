@@ -39,6 +39,7 @@ internal fun PageDto.toEntity(
     now: Long,
     existingBody: String?,
     existingEtag: String?,
+    existingDraft: String?,
 ): PageEntity =
     PageEntity(
         id = id,
@@ -59,6 +60,7 @@ internal fun PageDto.toEntity(
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = existingBody,
         bodyEtag = existingEtag,
+        draftBodyMd = existingDraft,
         lastSyncedAt = now,
     )
 
@@ -81,6 +83,7 @@ internal fun PageEntity.toDomain(): Page =
         linkedPageIds = linkedPageIdsCsv.toLongCsvList(),
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = bodyMd,
+        draftBodyMd = draftBodyMd,
     )
 
 // Tag values may contain commas, so we use the Unit Separator control

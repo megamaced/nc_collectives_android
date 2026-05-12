@@ -17,6 +17,9 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id = :id")
     suspend fun getById(id: Long): PageEntity?
 
+    @Query("SELECT * FROM pages WHERE id = :id")
+    fun observeById(id: Long): Flow<PageEntity?>
+
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 
@@ -26,6 +29,12 @@ interface PageDao {
         body: String,
         etag: String?,
         syncedAt: Long,
+    )
+
+    @Query("UPDATE pages SET draftBodyMd = :draft WHERE id = :id")
+    suspend fun updateDraft(
+        id: Long,
+        draft: String?,
     )
 
     @Query("DELETE FROM pages WHERE collectiveId = :collectiveId AND id NOT IN (:keepIds)")

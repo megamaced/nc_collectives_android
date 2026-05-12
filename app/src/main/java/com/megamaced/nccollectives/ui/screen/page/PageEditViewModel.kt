@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,13 +66,20 @@ class PageEditViewModel
             if (_uiState.value.isSaving) return
             _uiState.update { it.copy(isSaving = true, saveError = null) }
             viewModelScope.launch {
-                val result = repository.saveBody(pageId, body)
+                val outcome = repository.saveBody(pageId, body)
                 _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        saveSucceeded = result is ApiResult.Success,
-                        saveError = if (result is ApiResult.Success) null else result.userMessage(),
-                    )
+                    when (outcome) {
+                        SaveOutcome.Saved, SaveOutcome.Queued ->
+                            it.copy(isSaving = false, saveSucceeded = true)
+                        SaveOutcome.Conflict ->
+                            it.copy(
+                                isSaving = false,
+                                saveError = "Page changed on the server. Your edits were saved as a draft you can resolve on the page.",
+                                saveSucceeded = true,
+                            )
+                        is SaveOutcome.Error ->
+                            it.copy(isSaving = false, saveError = outcome.message)
+                    }
                 }
             }
         }

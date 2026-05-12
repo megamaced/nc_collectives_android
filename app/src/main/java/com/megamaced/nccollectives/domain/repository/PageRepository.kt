@@ -2,28 +2,39 @@ package com.megamaced.nccollectives.domain.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.SaveOutcome
 import kotlinx.coroutines.flow.Flow
 
 interface PageRepository {
     fun observePages(collectiveId: Long): Flow<List<Page>>
 
+    fun observePage(pageId: Long): Flow<Page?>
+
     suspend fun refresh(collectiveId: Long): ApiResult<Unit>
 
-    /** Returns the page (cache hit when available, else fetches metadata). */
     suspend fun getPage(pageId: Long): Page?
 
-    /** Fetches the markdown body over WebDAV and persists it to the page row. */
     suspend fun fetchBody(pageId: Long): ApiResult<String>
 
     /**
-     * Writes [newBody] back over WebDAV, sending the cached etag as
-     * `If-Match`. On success, persists the new body + etag locally and
-     * returns the result; on [ApiResult.Conflict] the local row is left
-     * untouched (the caller surfaces the mismatch — Batch 8 wires a draft
-     * + queue for conflict resolution).
+     * Tries to save [newBody] to the server now. On network failure the edit
+     * is enqueued for `EditFlushWorker` to retry; on 412 the user's body is
+     * stored as a draft on the page row and `Conflict` is returned.
      */
     suspend fun saveBody(
         pageId: Long,
         newBody: String,
-    ): ApiResult<Unit>
+    ): SaveOutcome
+
+    /**
+     * Force-saves [newBody], bypassing the cached etag — used by the
+     * "Replace page with my draft" action on the conflict banner.
+     */
+    suspend fun replaceWithDraft(
+        pageId: Long,
+        newBody: String,
+    ): SaveOutcome
+
+    /** Clears a page's local draft without changing the server. */
+    suspend fun discardDraft(pageId: Long)
 }

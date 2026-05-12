@@ -6,21 +6,23 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class PageViewUiState(
-    val page: Page? = null,
-    val body: String? = null,
     val isLoadingBody: Boolean = false,
     val errorMessage: String? = null,
+    val statusMessage: String? = null,
 )
 
 @HiltViewModel
@@ -34,14 +36,19 @@ class PageViewModel
             savedStateHandle.get<Long>(Destination.PageView.ARG_PAGE_ID),
         )
 
+        val page: StateFlow<Page?> = repository.observePage(pageId).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = null,
+        )
+
         private val _uiState = MutableStateFlow(PageViewUiState())
         val uiState: StateFlow<PageViewUiState> = _uiState.asStateFlow()
 
         init {
             viewModelScope.launch {
-                val page = repository.getPage(pageId)
-                _uiState.update { it.copy(page = page, body = page?.bodyMd) }
-                if (page != null && page.bodyMd == null) refreshBody()
+                val cached = repository.getPage(pageId)
+                if (cached != null && cached.bodyMd == null) refreshBody()
             }
         }
 
@@ -53,14 +60,39 @@ class PageViewModel
                 _uiState.update { state ->
                     state.copy(
                         isLoadingBody = false,
-                        body = if (result is ApiResult.Success) result.data else state.body,
                         errorMessage = if (result is ApiResult.Success) null else result.userMessage(),
                     )
                 }
             }
         }
 
-        fun dismissError() {
-            _uiState.update { it.copy(errorMessage = null) }
+        fun replaceWithDraft() {
+            val draft = page.value?.draftBodyMd ?: return
+            viewModelScope.launch {
+                val outcome = repository.replaceWithDraft(pageId, draft)
+                _uiState.update {
+                    it.copy(statusMessage = saveOutcomeMessage(outcome))
+                }
+            }
+        }
+
+        fun discardDraft() {
+            viewModelScope.launch { repository.discardDraft(pageId) }
+        }
+
+        fun dismissStatus() {
+            _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+        }
+
+        private fun saveOutcomeMessage(outcome: SaveOutcome): String? =
+            when (outcome) {
+                SaveOutcome.Saved -> "Page replaced"
+                SaveOutcome.Queued -> "Saved offline — will sync when online"
+                SaveOutcome.Conflict -> "Still conflicting — try again later"
+                is SaveOutcome.Error -> outcome.message
+            }
+
+        private companion object {
+            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

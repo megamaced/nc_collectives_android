@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
+import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import dagger.Module
 import dagger.Provides
@@ -28,4 +29,6 @@ object DatabaseModule {
     @Provides fun provideCollectiveDao(db: NcCollectivesDatabase): CollectiveDao = db.collectiveDao()
 
     @Provides fun providePageDao(db: NcCollectivesDatabase): PageDao = db.pageDao()
+
+    @Provides fun provideEditQueueDao(db: NcCollectivesDatabase): EditQueueDao = db.editQueueDao()
 }

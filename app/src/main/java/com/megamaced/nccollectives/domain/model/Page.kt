@@ -22,4 +22,6 @@ data class Page(
     val lastUserDisplayName: String,
     /** Cached markdown body once first fetched. Null until viewed. */
     val bodyMd: String?,
+    /** Local draft that lost an etag race; null when no draft exists. */
+    val draftBodyMd: String?,
 )
