@@ -8,7 +8,11 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Status
 
-Pre-alpha. Active scaffolding — no usable builds yet. See the design notes in this repository's commit history for the roadmap.
+**v0.1.0** — first tagged debug build. Browse collectives, view markdown pages, edit and save (with offline queueing and conflict handling), search across pages, and favourite the ones you come back to. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+
+Releases are currently **debug builds only**: in-place upgrades aren't supported, so each new version needs an uninstall first. Signed release builds land in a later milestone.
+
+Tested only by the human reviewer against a personal Nextcloud instance. Expect rough edges; please file issues for anything that breaks.
 
 ## Goals
 
