@@ -4,6 +4,7 @@ import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.api.AuthInterceptor
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.HostInterceptor
+import com.megamaced.nccollectives.data.api.SearchApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -73,4 +74,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideCollectivesApi(retrofit: Retrofit): CollectivesApiService = retrofit.create(CollectivesApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSearchApi(retrofit: Retrofit): SearchApiService = retrofit.create(SearchApiService::class.java)
 }

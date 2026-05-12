@@ -20,6 +20,9 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observeById(id: Long): Flow<PageEntity?>
 
+    @Query("SELECT id FROM pages WHERE title = :title LIMIT 1")
+    suspend fun findIdByTitle(title: String): Long?
+
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 

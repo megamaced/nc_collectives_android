@@ -32,7 +32,12 @@ internal fun NcCollectivesNavHost(
                 onCollectiveClick = { id -> navController.navigate(Destination.PageTree.route(id)) },
             )
         }
-        composable(Destination.Search.route) { SearchScreen(innerPadding) }
+        composable(Destination.Search.route) {
+            SearchScreen(
+                innerPadding = innerPadding,
+                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+            )
+        }
         composable(Destination.Favorites.route) { FavoritesScreen(innerPadding) }
         composable(Destination.Settings.route) { SettingsScreen(innerPadding) }
         composable(
