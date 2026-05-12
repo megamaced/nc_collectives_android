@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+# Composable functions legitimately use PascalCase, which ktlint's
+# default function-naming rule flags as a violation.
+ktlint_standard_function-naming = disabled
+# The experimental multi-line wrapping rule fights with Compose
+# DSL formatting and offers no real readability win for us.
+ktlint_standard_multiline-expression-wrapping = disabled
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
