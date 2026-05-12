@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
 import com.megamaced.nccollectives.ui.screen.home.HomeScreen
+import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
 import com.megamaced.nccollectives.ui.screen.settings.SettingsScreen
 
@@ -40,6 +41,18 @@ internal fun NcCollectivesNavHost(
             ),
         ) {
             PageTreeScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+                onPageClick = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+            )
+        }
+        composable(
+            route = Destination.PageView.route,
+            arguments = listOf(
+                navArgument(Destination.PageView.ARG_PAGE_ID) { type = NavType.LongType },
+            ),
+        ) {
+            PageViewScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
             )

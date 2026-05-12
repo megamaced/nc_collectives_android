@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
+import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.mapper.toDomain
@@ -18,6 +19,7 @@ class PageRepositoryImpl
     @Inject
     constructor(
         private val api: CollectivesApiService,
+        private val bodyService: PageBodyService,
         private val dao: PageDao,
     ) : PageRepository {
         override fun observePages(collectiveId: Long): Flow<List<Page>> =
@@ -34,4 +36,20 @@ class PageRepositoryImpl
                 dao.upsertAll(entities)
                 dao.deleteMissingForCollective(collectiveId, entities.map { it.id })
             }
+
+        override suspend fun getPage(pageId: Long): Page? = dao.getById(pageId)?.toDomain()
+
+        override suspend fun fetchBody(pageId: Long): ApiResult<String> {
+            val entity = dao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val result = bodyService.fetchBody(
+                collectivePath = entity.collectivePath,
+                filePath = entity.filePath,
+                fileName = entity.fileName,
+            )
+            if (result is ApiResult.Success) {
+                dao.updateBody(pageId, result.data, System.currentTimeMillis())
+            }
+            return result
+        }
     }

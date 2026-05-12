@@ -23,6 +23,9 @@ kotlinxSerialization = "1.11.0"
 # Image loading
 coil = "3.4.0"
 
+# Markdown rendering
+composeMarkdown = "0.5.7"
+
 # DI
 # Pinned below 2.59 — Hilt 2.59 requires AGP 9. Bump together with AGP 9.
 hilt = "2.58"
@@ -80,6 +83,9 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 # Coil (uses the authenticated OkHttp client)
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+
+# Markdown rendering (Markwon-backed, exposed as a Composable)
+compose-markdown = { group = "com.github.jeziellago", name = "compose-markdown", version.ref = "composeMarkdown" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

@@ -44,6 +44,7 @@ import com.megamaced.nccollectives.ui.components.LoadingState
 internal fun PageTreeScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
+    onPageClick: (Long) -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
@@ -83,6 +84,7 @@ internal fun PageTreeScreen(
                     nodes = nodes,
                     expanded = ui.expanded,
                     onToggle = viewModel::toggleExpanded,
+                    onPageClick = onPageClick,
                 )
             }
         }
@@ -94,6 +96,7 @@ private fun PageTreeList(
     nodes: List<PageNode>,
     expanded: Set<Long>,
     onToggle: (Long) -> Unit,
+    onPageClick: (Long) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(nodes, key = { it.page.id }) { node ->
@@ -101,6 +104,7 @@ private fun PageTreeList(
                 node = node,
                 isExpanded = node.page.id in expanded,
                 onToggle = { onToggle(node.page.id) },
+                onOpen = { onPageClick(node.page.id) },
             )
             HorizontalDivider()
         }
@@ -112,21 +116,22 @@ private fun PageTreeItem(
     node: PageNode,
     isExpanded: Boolean,
     onToggle: () -> Unit,
+    onOpen: () -> Unit,
 ) {
-    val rowModifier =
-        if (node.hasChildren) {
-            Modifier.fillMaxWidth().clickable(onClick = onToggle)
-        } else {
-            Modifier.fillMaxWidth()
-        }
+    // Whole row opens the page. Folder pages get a chevron on the left that
+    // toggles their children without opening — the chevron has its own
+    // click target so the parent row's click still falls through to onOpen.
     Row(
-        modifier = rowModifier.padding(vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Spacer(modifier = Modifier.width((16 + node.depth * 16).dp))
-        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-            if (node.hasChildren) {
+        if (node.hasChildren) {
+            IconButton(onClick = onToggle, modifier = Modifier.size(32.dp)) {
                 Icon(
                     imageVector = if (isExpanded) {
                         Icons.Filled.KeyboardArrowDown
@@ -137,6 +142,8 @@ private fun PageTreeItem(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        } else {
+            Spacer(modifier = Modifier.size(32.dp))
         }
         Text(
             text = node.page.emoji?.takeIf { it.isNotBlank() } ?: "📄",

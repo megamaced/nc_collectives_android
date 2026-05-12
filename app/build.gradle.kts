@@ -111,6 +111,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 
+    // Markdown rendering
+    implementation(libs.compose.markdown)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
