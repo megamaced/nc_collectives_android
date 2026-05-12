@@ -62,6 +62,10 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // Core / Lifecycle / Activity
     implementation(libs.androidx.core.ktx)
@@ -88,10 +92,24 @@ dependencies {
     // Secure storage (Tink-backed)
     implementation(libs.androidx.security.crypto)
 
+    // DataStore
+    implementation(libs.androidx.datastore.preferences)
+
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
     // Networking
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
+
+    // Image loading (reuses the authenticated OkHttp client)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Hilt
     implementation(libs.hilt.android)
