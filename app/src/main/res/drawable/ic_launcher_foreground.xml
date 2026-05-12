@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylized open notebook: two facing pages with a spine and a few lines. -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M30,38 L52,42 L52,76 L30,72 Z" />
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M56,42 L78,38 L78,72 L56,76 Z" />
+    <path
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="1.6"
+        android:pathData="M34,50 L48,52 M34,56 L48,58 M34,62 L48,64
+                          M60,52 L74,50 M60,58 L74,56 M60,64 L74,62" />
+</vector>
