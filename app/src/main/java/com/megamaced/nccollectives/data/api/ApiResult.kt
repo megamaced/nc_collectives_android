@@ -19,6 +19,9 @@ sealed interface ApiResult<out T> {
 
     data object Unauthorised : ApiResult<Nothing>
 
+    /** Server rejected an `If-Match`/`If-None-Match` precondition (412). */
+    data object Conflict : ApiResult<Nothing>
+
     data class Unexpected(
         val cause: Throwable,
     ) : ApiResult<Nothing>
@@ -28,7 +31,11 @@ internal inline fun <T> apiCall(block: () -> T): ApiResult<T> =
     try {
         ApiResult.Success(block())
     } catch (e: HttpException) {
-        if (e.code() == 401) ApiResult.Unauthorised else ApiResult.HttpError(e.code(), e.message())
+        when (e.code()) {
+            401 -> ApiResult.Unauthorised
+            412 -> ApiResult.Conflict
+            else -> ApiResult.HttpError(e.code(), e.message())
+        }
     } catch (e: IOException) {
         ApiResult.NetworkError(e)
     } catch (e: Exception) {

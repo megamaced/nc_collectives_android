@@ -14,4 +14,16 @@ interface PageRepository {
 
     /** Fetches the markdown body over WebDAV and persists it to the page row. */
     suspend fun fetchBody(pageId: Long): ApiResult<String>
+
+    /**
+     * Writes [newBody] back over WebDAV, sending the cached etag as
+     * `If-Match`. On success, persists the new body + etag locally and
+     * returns the result; on [ApiResult.Conflict] the local row is left
+     * untouched (the caller surfaces the mismatch — Batch 8 wires a draft
+     * + queue for conflict resolution).
+     */
+    suspend fun saveBody(
+        pageId: Long,
+        newBody: String,
+    ): ApiResult<Unit>
 }

@@ -34,5 +34,11 @@ data class PageEntity(
      * Edit-queue drafts are stored alongside in a future column (Batch 8).
      */
     val bodyMd: String?,
+    /**
+     * WebDAV ETag captured the last time the body was fetched. Used as the
+     * `If-Match` precondition on save so we can detect server-side changes
+     * since the body was loaded. Null until first fetched.
+     */
+    val bodyEtag: String?,
     val lastSyncedAt: Long,
 )

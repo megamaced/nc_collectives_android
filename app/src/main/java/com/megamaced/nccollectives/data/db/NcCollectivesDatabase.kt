@@ -12,7 +12,7 @@ import com.megamaced.nccollectives.data.db.entity.PageEntity
         CollectiveEntity::class,
         PageEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class NcCollectivesDatabase : RoomDatabase() {

@@ -20,10 +20,11 @@ interface PageDao {
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 
-    @Query("UPDATE pages SET bodyMd = :body, lastSyncedAt = :syncedAt WHERE id = :id")
+    @Query("UPDATE pages SET bodyMd = :body, bodyEtag = :etag, lastSyncedAt = :syncedAt WHERE id = :id")
     suspend fun updateBody(
         id: Long,
         body: String,
+        etag: String?,
         syncedAt: Long,
     )
 

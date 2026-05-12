@@ -30,8 +30,13 @@ class PageRepositoryImpl
                 val now = System.currentTimeMillis()
                 val response = api.listPages(collectiveId)
                 val entities = response.ocs.data.pages.map { dto ->
-                    val existingBody = dao.getById(dto.id)?.bodyMd
-                    dto.toEntity(collectiveId, now, existingBody)
+                    val existing = dao.getById(dto.id)
+                    dto.toEntity(
+                        collectiveId = collectiveId,
+                        now = now,
+                        existingBody = existing?.bodyMd,
+                        existingEtag = existing?.bodyEtag,
+                    )
                 }
                 dao.upsertAll(entities)
                 dao.deleteMissingForCollective(collectiveId, entities.map { it.id })
@@ -47,9 +52,42 @@ class PageRepositoryImpl
                 filePath = entity.filePath,
                 fileName = entity.fileName,
             )
-            if (result is ApiResult.Success) {
-                dao.updateBody(pageId, result.data, System.currentTimeMillis())
+            return when (result) {
+                is ApiResult.Success -> {
+                    dao.updateBody(pageId, result.data.markdown, result.data.etag, System.currentTimeMillis())
+                    ApiResult.Success(result.data.markdown)
+                }
+                is ApiResult.NetworkError -> result
+                is ApiResult.HttpError -> result
+                ApiResult.Unauthorised -> ApiResult.Unauthorised
+                ApiResult.Conflict -> ApiResult.Conflict
+                is ApiResult.Unexpected -> result
             }
-            return result
+        }
+
+        override suspend fun saveBody(
+            pageId: Long,
+            newBody: String,
+        ): ApiResult<Unit> {
+            val entity = dao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val result = bodyService.saveBody(
+                collectivePath = entity.collectivePath,
+                filePath = entity.filePath,
+                fileName = entity.fileName,
+                body = newBody,
+                baseEtag = entity.bodyEtag,
+            )
+            return when (result) {
+                is ApiResult.Success -> {
+                    dao.updateBody(pageId, newBody, result.data, System.currentTimeMillis())
+                    ApiResult.Success(Unit)
+                }
+                is ApiResult.NetworkError -> result
+                is ApiResult.HttpError -> result
+                ApiResult.Unauthorised -> ApiResult.Unauthorised
+                ApiResult.Conflict -> ApiResult.Conflict
+                is ApiResult.Unexpected -> result
+            }
         }
     }

@@ -1,0 +1,225 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "92d19b3cda1c0c8cc6460cc83c723cff",
+    "entities": [
+      {
+        "tableName": "collectives",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `slug` TEXT, `emoji` TEXT, `canEdit` INTEGER NOT NULL, `canShare` INTEGER NOT NULL, `isPageShare` INTEGER NOT NULL, `trashTimestamp` INTEGER, `userFavoritePagesCsv` TEXT NOT NULL, `lastSyncedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "slug",
+            "columnName": "slug",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "emoji",
+            "columnName": "emoji",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "canEdit",
+            "columnName": "canEdit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canShare",
+            "columnName": "canShare",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isPageShare",
+            "columnName": "isPageShare",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trashTimestamp",
+            "columnName": "trashTimestamp",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "userFavoritePagesCsv",
+            "columnName": "userFavoritePagesCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncedAt",
+            "columnName": "lastSyncedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "pages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `collectiveId` INTEGER NOT NULL, `parentId` INTEGER NOT NULL, `title` TEXT NOT NULL, `emoji` TEXT, `tagsCsv` TEXT NOT NULL, `subpageOrderCsv` TEXT NOT NULL, `isFullWidth` INTEGER NOT NULL, `trashTimestamp` INTEGER, `serverTimestamp` INTEGER NOT NULL, `size` INTEGER NOT NULL, `fileName` TEXT NOT NULL, `filePath` TEXT NOT NULL, `collectivePath` TEXT NOT NULL, `linkedPageIdsCsv` TEXT NOT NULL, `lastUserDisplayName` TEXT NOT NULL, `bodyMd` TEXT, `bodyEtag` TEXT, `lastSyncedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectiveId",
+            "columnName": "collectiveId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parentId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "emoji",
+            "columnName": "emoji",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tagsCsv",
+            "columnName": "tagsCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subpageOrderCsv",
+            "columnName": "subpageOrderCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFullWidth",
+            "columnName": "isFullWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trashTimestamp",
+            "columnName": "trashTimestamp",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "serverTimestamp",
+            "columnName": "serverTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filePath",
+            "columnName": "filePath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectivePath",
+            "columnName": "collectivePath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "linkedPageIdsCsv",
+            "columnName": "linkedPageIdsCsv",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUserDisplayName",
+            "columnName": "lastUserDisplayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyMd",
+            "columnName": "bodyMd",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bodyEtag",
+            "columnName": "bodyEtag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSyncedAt",
+            "columnName": "lastSyncedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pages_collectiveId",
+            "unique": false,
+            "columnNames": [
+              "collectiveId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pages_collectiveId` ON `${TABLE_NAME}` (`collectiveId`)"
+          },
+          {
+            "name": "index_pages_collectiveId_parentId",
+            "unique": false,
+            "columnNames": [
+              "collectiveId",
+              "parentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pages_collectiveId_parentId` ON `${TABLE_NAME}` (`collectiveId`, `parentId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '92d19b3cda1c0c8cc6460cc83c723cff')"
+    ]
+  }
+}

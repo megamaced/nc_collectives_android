@@ -37,6 +37,13 @@ internal sealed class Destination(
         fun route(pageId: Long) = "page/$pageId"
     }
 
+    /** Nested destination — not in the bottom bar. */
+    object PageEdit : Destination("page/{pageId}/edit", "Edit", Icons.Outlined.MenuBook) {
+        const val ARG_PAGE_ID = "pageId"
+
+        fun route(pageId: Long) = "page/$pageId/edit"
+    }
+
     companion object {
         val bottomBar: List<Destination> = listOf(Home, Collectives, Search, Favorites, Settings)
     }

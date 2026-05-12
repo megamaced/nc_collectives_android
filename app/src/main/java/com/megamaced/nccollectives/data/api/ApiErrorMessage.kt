@@ -10,5 +10,6 @@ fun ApiResult<*>.userMessage(): String? =
         is ApiResult.NetworkError -> "Couldn't reach the server. Check your connection."
         is ApiResult.HttpError -> "Server returned $code"
         is ApiResult.Unauthorised -> "Session expired — please log in again."
+        is ApiResult.Conflict -> "Page changed on the server while you were editing."
         is ApiResult.Unexpected -> cause.message ?: "Unexpected error"
     }

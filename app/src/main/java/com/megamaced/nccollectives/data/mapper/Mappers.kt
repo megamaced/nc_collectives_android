@@ -38,6 +38,7 @@ internal fun PageDto.toEntity(
     collectiveId: Long,
     now: Long,
     existingBody: String?,
+    existingEtag: String?,
 ): PageEntity =
     PageEntity(
         id = id,
@@ -57,6 +58,7 @@ internal fun PageDto.toEntity(
         linkedPageIdsCsv = linkedPageIds.joinToString(","),
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = existingBody,
+        bodyEtag = existingEtag,
         lastSyncedAt = now,
     )
 
