@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -46,6 +47,7 @@ internal fun PageTreeScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onPageClick: (Long) -> Unit,
+    onOpenTrash: (Long) -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
@@ -65,6 +67,11 @@ internal fun PageTreeScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Trash")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),

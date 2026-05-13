@@ -72,6 +72,7 @@ internal fun PageViewScreen(
     var showTagPicker by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMoveSheet by remember { mutableStateOf(false) }
+    var showTrashConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
         val msg = ui.statusMessage ?: ui.errorMessage
@@ -153,6 +154,13 @@ internal fun PageViewScreen(
                                         showMoveSheet = true
                                     },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Move to trash") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showTrashConfirm = true
+                                    },
+                                )
                             }
                         }
                     }
@@ -222,6 +230,29 @@ internal fun PageViewScreen(
                 showMoveSheet = false
             },
             onDismiss = { showMoveSheet = false },
+        )
+    }
+
+    if (showTrashConfirm) {
+        val target = page
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showTrashConfirm = false },
+            title = { Text("Move to trash?") },
+            text = {
+                Text(
+                    text = "\"${target?.title.orEmpty()}\" will be moved to the collective's trash. " +
+                        "You can restore it from Trash.",
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showTrashConfirm = false
+                    viewModel.trashPage(onTrashed = onBack)
+                }) { Text("Move to trash") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showTrashConfirm = false }) { Text("Cancel") }
+            },
         )
     }
 }

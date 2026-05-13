@@ -46,7 +46,7 @@ class PageTreeViewModel
         private val collectiveRepository: CollectiveRepository,
         private val pageRepository: PageRepository,
     ) : ViewModel() {
-        private val collectiveId: Long = checkNotNull(
+        val collectiveId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageTree.ARG_COLLECTIVE_ID),
         )
 

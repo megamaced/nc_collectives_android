@@ -51,6 +51,13 @@ internal sealed class Destination(
     /** Nested destination — not in the bottom bar. Reached from share intents. */
     object ShareCapture : Destination("share", "Share to collective", Icons.Outlined.MenuBook)
 
+    /** Nested destination — not in the bottom bar. */
+    object Trash : Destination("collective/{collectiveId}/trash", "Trash", Icons.Outlined.MenuBook) {
+        const val ARG_COLLECTIVE_ID = "collectiveId"
+
+        fun route(collectiveId: Long) = "collective/$collectiveId/trash"
+    }
+
     companion object {
         val bottomBar: List<Destination> = listOf(Collectives, Search, Favorites, Settings)
     }

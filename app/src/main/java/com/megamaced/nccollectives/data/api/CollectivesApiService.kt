@@ -65,4 +65,34 @@ interface CollectivesApiService {
         @Path("pageId") pageId: Long,
         @Path("tagId") tagId: Long,
     )
+
+    /**
+     * Soft-delete a page. The page moves to the per-collective trash; its
+     * markdown file becomes inaccessible at the original path. Restore /
+     * purge endpoints below operate on the trashed page.
+     */
+    @DELETE("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}")
+    suspend fun trashPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+    )
+
+    @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/trash")
+    suspend fun listTrashedPages(
+        @Path("collectiveId") collectiveId: Long,
+    ): Envelope<PagesEnvelopeData>
+
+    /** Restore a trashed page to its original location. */
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/trash/{pageId}")
+    suspend fun restoreTrashedPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+    )
+
+    /** Permanently delete a trashed page. Irreversible. */
+    @DELETE("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/trash/{pageId}")
+    suspend fun purgeTrashedPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+    )
 }

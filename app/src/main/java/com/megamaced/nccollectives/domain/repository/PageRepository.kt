@@ -100,4 +100,30 @@ interface PageRepository {
         pageId: Long,
         text: String,
     ): com.megamaced.nccollectives.domain.model.SaveOutcome
+
+    /**
+     * Soft-delete a page. Refuses the landing page (parentId == 0); rename
+     * the collective instead. On success the local row is dropped from the
+     * active list so observers reflect the change immediately.
+     */
+    suspend fun trashPage(pageId: Long): ApiResult<Unit>
+
+    /**
+     * Fetch the per-collective trash. Trashed pages aren't cached in Room
+     * (they don't show up in the regular listing) so this returns a
+     * snapshot list rather than a Flow.
+     */
+    suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<com.megamaced.nccollectives.domain.model.Page>>
+
+    /** Restore a trashed page; triggers a `refresh(collectiveId)` on success. */
+    suspend fun restorePage(
+        collectiveId: Long,
+        pageId: Long,
+    ): ApiResult<Unit>
+
+    /** Permanently delete a trashed page. Irreversible. */
+    suspend fun purgePage(
+        collectiveId: Long,
+        pageId: Long,
+    ): ApiResult<Unit>
 }

@@ -174,6 +174,17 @@ class PageViewModel
             }
         }
 
+        fun trashPage(onTrashed: () -> Unit) {
+            viewModelScope.launch {
+                val result = pageRepository.trashPage(pageId)
+                if (result is ApiResult.Success) {
+                    onTrashed()
+                } else {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
         fun replaceWithDraft() {
             val draft = page.value?.draftBodyMd ?: return
             viewModelScope.launch {

@@ -343,6 +343,72 @@ class PageRepositoryImpl
             return rows.firstOrNull { it.parentId == parentPageId && it.title == title }?.toDomain()
         }
 
+        override suspend fun trashPage(pageId: Long): ApiResult<Unit> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            if (entity.parentId == 0L) {
+                return ApiResult.Unexpected(
+                    UnsupportedOperationException("Can't trash the landing page — delete the collective instead"),
+                )
+            }
+            val result = apiCall { api.trashPage(entity.collectiveId, pageId) }
+            if (result is ApiResult.Success) {
+                // Optimistically drop the local row; the server-side trash
+                // list is fetched on demand.
+                pageDao.deleteMissingForCollective(
+                    collectiveId = entity.collectiveId,
+                    keepIds = pageDao
+                        .observeForCollective(entity.collectiveId)
+                        .first()
+                        .map { it.id }
+                        .filter { it != pageId },
+                )
+                // The previous call removes everything except the keepIds —
+                // since we already excluded pageId, the entity is now gone.
+            }
+            return result
+        }
+
+        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> {
+            val result = apiCall { api.listTrashedPages(collectiveId) }
+            return when (result) {
+                is ApiResult.Success ->
+                    ApiResult.Success(
+                        result.data.ocs.data.pages.map { dto ->
+                            dto
+                                .toEntity(
+                                    collectiveId = collectiveId,
+                                    now = System.currentTimeMillis(),
+                                    existingBody = null,
+                                    existingEtag = null,
+                                    existingDraft = null,
+                                ).toDomain()
+                        },
+                    )
+                is ApiResult.NetworkError -> result
+                is ApiResult.HttpError -> result
+                ApiResult.Unauthorised -> ApiResult.Unauthorised
+                ApiResult.Conflict -> ApiResult.Conflict
+                is ApiResult.Unexpected -> result
+            }
+        }
+
+        override suspend fun restorePage(
+            collectiveId: Long,
+            pageId: Long,
+        ): ApiResult<Unit> {
+            val result = apiCall { api.restoreTrashedPage(collectiveId, pageId) }
+            if (result is ApiResult.Success) {
+                refresh(collectiveId)
+            }
+            return result
+        }
+
+        override suspend fun purgePage(
+            collectiveId: Long,
+            pageId: Long,
+        ): ApiResult<Unit> = apiCall { api.purgeTrashedPage(collectiveId, pageId) }
+
         override suspend fun appendToPage(
             pageId: Long,
             text: String,
