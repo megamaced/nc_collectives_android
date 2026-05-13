@@ -15,6 +15,7 @@ import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
 import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
 import com.megamaced.nccollectives.ui.screen.settings.SettingsScreen
+import com.megamaced.nccollectives.ui.screen.share.ShareCaptureScreen
 
 @Composable
 internal fun NcCollectivesNavHost(
@@ -87,6 +88,18 @@ internal fun NcCollectivesNavHost(
             AttachmentsScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Destination.ShareCapture.route) {
+            ShareCaptureScreen(
+                innerPadding = innerPadding,
+                onDismiss = {
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Destination.Collectives.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                },
             )
         }
     }

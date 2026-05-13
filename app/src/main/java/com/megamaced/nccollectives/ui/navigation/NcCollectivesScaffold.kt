@@ -20,8 +20,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.megamaced.nccollectives.data.auth.AuthState
 import com.megamaced.nccollectives.data.auth.SessionManager
+import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.ui.screen.login.LoginScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 @HiltViewModel
@@ -29,13 +31,17 @@ internal class AuthGateViewModel
     @Inject
     constructor(
         sessionManager: SessionManager,
+        sharePayloadHolder: SharePayloadHolder,
     ) : ViewModel() {
         val authState = sessionManager.authState
+        val sharePayload: StateFlow<com.megamaced.nccollectives.share.SharePayload?> =
+            sharePayloadHolder.payload
     }
 
 @Composable
 internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel()) {
     val authState by viewModel.authState.collectAsState()
+    val sharePayload by viewModel.sharePayload.collectAsState()
 
     when (authState) {
         AuthState.Unknown -> {
@@ -47,15 +53,23 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
             }
         }
         AuthState.Unauthenticated -> LoginScreen()
-        AuthState.Authenticated -> AuthenticatedScaffold()
+        AuthState.Authenticated -> AuthenticatedScaffold(hasSharePayload = sharePayload != null)
     }
 }
 
 @Composable
-private fun AuthenticatedScaffold() {
+private fun AuthenticatedScaffold(hasSharePayload: Boolean) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
+    androidx.compose.runtime.LaunchedEffect(hasSharePayload) {
+        if (hasSharePayload && currentRoute != Destination.ShareCapture.route) {
+            navController.navigate(Destination.ShareCapture.route) {
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {

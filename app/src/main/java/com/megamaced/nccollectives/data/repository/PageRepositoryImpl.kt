@@ -17,8 +17,12 @@ import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -251,6 +255,114 @@ class PageRepositoryImpl
                 pageDao.updateTitleAndPath(pageId, previousTitle, previousFileName, entity.filePath)
             }
             return result
+        }
+
+        override suspend fun createPage(
+            collectiveId: Long,
+            parentPageId: Long,
+            title: String,
+            body: String,
+        ): ApiResult<Page> {
+            val parent = pageDao.getById(parentPageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Parent $parentPageId not cached"))
+            if (parent.collectiveId != collectiveId) {
+                return ApiResult.Unexpected(IllegalStateException("Parent belongs to a different collective"))
+            }
+            if (!parent.isFolderPage()) {
+                return ApiResult.Unexpected(
+                    UnsupportedOperationException(
+                        "Pick a folder page or the landing page — new pages can only nest under a folder",
+                    ),
+                )
+            }
+            val cleaned = try {
+                sanitiseTitleForFilename(title)
+            } catch (e: IllegalArgumentException) {
+                return ApiResult.Unexpected(e)
+            }
+            val newFileName = "$cleaned.md"
+            // Children of a folder page live in that folder's filePath. For
+            // the landing page (parentId == 0) that's the collective root,
+            // i.e. filePath == "".
+            val childFilePath = parent.filePath
+            // Refuse to silently overwrite an existing sibling — WebDAV PUT
+            // doesn't carry an If-None-Match in our wrapper, and a clash is
+            // almost always user error rather than intent.
+            val existingSibling = pageDao.observeForCollective(collectiveId).first().firstOrNull {
+                it.parentId == parentPageId && it.title.equals(cleaned, ignoreCase = true)
+            }
+            if (existingSibling != null) {
+                return ApiResult.Unexpected(
+                    IllegalStateException("A page titled \"$cleaned\" already exists under this parent"),
+                )
+            }
+            val putResult = bodyService.uploadFile(
+                collectivePath = parent.collectivePath,
+                filePath = childFilePath,
+                fileName = newFileName,
+                body = body.toRequestBody("text/markdown; charset=utf-8".toMediaType()),
+            )
+            when (putResult) {
+                is ApiResult.Success -> Unit
+                is ApiResult.NetworkError -> return putResult
+                is ApiResult.HttpError -> return putResult
+                ApiResult.Unauthorised -> return ApiResult.Unauthorised
+                ApiResult.Conflict -> return ApiResult.Conflict
+                is ApiResult.Unexpected -> return putResult
+            }
+            // Collectives indexes the new file via its filesystem watcher;
+            // the page list usually contains it after a short pause. Try
+            // immediately, then once more with a brief delay.
+            val refreshed = refresh(collectiveId)
+            when (refreshed) {
+                is ApiResult.Success -> Unit
+                is ApiResult.NetworkError -> return refreshed
+                is ApiResult.HttpError -> return refreshed
+                ApiResult.Unauthorised -> return ApiResult.Unauthorised
+                ApiResult.Conflict -> return ApiResult.Conflict
+                is ApiResult.Unexpected -> return refreshed
+            }
+            var created = findCreatedPage(collectiveId, parentPageId, cleaned)
+            if (created == null) {
+                delay(750)
+                refresh(collectiveId)
+                created = findCreatedPage(collectiveId, parentPageId, cleaned)
+            }
+            return created?.let { ApiResult.Success(it) }
+                ?: ApiResult.Unexpected(
+                    IllegalStateException("Page created but server hasn't indexed it yet"),
+                )
+        }
+
+        private suspend fun findCreatedPage(
+            collectiveId: Long,
+            parentPageId: Long,
+            title: String,
+        ): Page? {
+            val rows = pageDao.observeForCollective(collectiveId).first()
+            return rows.firstOrNull { it.parentId == parentPageId && it.title == title }?.toDomain()
+        }
+
+        override suspend fun appendToPage(
+            pageId: Long,
+            text: String,
+        ): SaveOutcome {
+            val entity = pageDao.getById(pageId)
+                ?: return SaveOutcome.Error("Page not cached")
+            // Make sure we have the current body before appending, otherwise
+            // we'd overwrite the page with just the appended snippet.
+            val baseBody = if (entity.bodyMd == null) {
+                val fetched = fetchBody(pageId)
+                if (fetched !is ApiResult.Success) {
+                    return SaveOutcome.Error(fetched.userMessage() ?: "Couldn't load page body")
+                }
+                fetched.data
+            } else {
+                entity.bodyMd
+            }
+            val separator = if (baseBody.isEmpty() || baseBody.endsWith('\n')) "" else "\n"
+            val newBody = baseBody + separator + text
+            return saveBody(pageId, newBody)
         }
 
         override suspend fun movePage(

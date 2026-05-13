@@ -73,4 +73,31 @@ interface PageRepository {
         pageId: Long,
         newParentPageId: Long,
     ): ApiResult<Unit>
+
+    /**
+     * Create a new leaf page under [parentPageId] (must be a folder page
+     * — i.e. its file is `Readme.md`). PUTs the body over WebDAV and then
+     * refreshes the page list so the new id appears locally. Returns the
+     * resolved domain [com.megamaced.nccollectives.domain.model.Page] on
+     * success.
+     *
+     * Promotion of a leaf parent into a folder isn't supported yet —
+     * callers must pick an existing folder.
+     */
+    suspend fun createPage(
+        collectiveId: Long,
+        parentPageId: Long,
+        title: String,
+        body: String,
+    ): ApiResult<com.megamaced.nccollectives.domain.model.Page>
+
+    /**
+     * Append [text] to a page's markdown body. Uses the regular save path
+     * (with offline queueing). If the cached body is null, it's fetched
+     * first.
+     */
+    suspend fun appendToPage(
+        pageId: Long,
+        text: String,
+    ): com.megamaced.nccollectives.domain.model.SaveOutcome
 }

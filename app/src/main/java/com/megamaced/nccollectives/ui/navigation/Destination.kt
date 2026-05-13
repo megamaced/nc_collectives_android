@@ -48,6 +48,9 @@ internal sealed class Destination(
         fun route(pageId: Long) = "page/$pageId/attachments"
     }
 
+    /** Nested destination — not in the bottom bar. Reached from share intents. */
+    object ShareCapture : Destination("share", "Share to collective", Icons.Outlined.MenuBook)
+
     companion object {
         val bottomBar: List<Destination> = listOf(Collectives, Search, Favorites, Settings)
     }
