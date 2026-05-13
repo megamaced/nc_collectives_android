@@ -49,6 +49,35 @@ interface PageDao {
         draft: String?,
     )
 
+    @Query("UPDATE pages SET emoji = :emoji WHERE id = :id")
+    suspend fun updateEmoji(
+        id: Long,
+        emoji: String?,
+    )
+
+    @Query("UPDATE pages SET tagsCsv = :csv WHERE id = :id")
+    suspend fun updateTagsCsv(
+        id: Long,
+        csv: String,
+    )
+
+    @Query(
+        "UPDATE pages SET title = :title, fileName = :fileName, filePath = :filePath WHERE id = :id",
+    )
+    suspend fun updateTitleAndPath(
+        id: Long,
+        title: String,
+        fileName: String,
+        filePath: String,
+    )
+
+    @Query("UPDATE pages SET parentId = :parentId, filePath = :filePath WHERE id = :id")
+    suspend fun updateParentAndPath(
+        id: Long,
+        parentId: Long,
+        filePath: String,
+    )
+
     @Query("DELETE FROM pages WHERE collectiveId = :collectiveId AND id NOT IN (:keepIds)")
     suspend fun deleteMissingForCollective(
         collectiveId: Long,

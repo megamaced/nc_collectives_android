@@ -8,9 +8,12 @@ import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
+import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
+import com.megamaced.nccollectives.data.splitTags
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
@@ -149,5 +152,152 @@ class PageRepositoryImpl
 
         override suspend fun discardDraft(pageId: Long) {
             pageDao.updateDraft(pageId, null)
+        }
+
+        override suspend fun setEmoji(
+            pageId: Long,
+            emoji: String,
+        ): ApiResult<Unit> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val previous = entity.emoji
+            // Optimistic local update.
+            pageDao.updateEmoji(pageId, emoji.ifBlank { null })
+            val result = apiCall { api.setPageEmoji(entity.collectiveId, pageId, emoji) }
+            if (result !is ApiResult.Success) {
+                pageDao.updateEmoji(pageId, previous)
+            }
+            return result
+        }
+
+        override suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<PageTag>> {
+            val result = apiCall {
+                api
+                    .listTags(collectiveId)
+                    .ocs.data.tags
+            }
+            return when (result) {
+                is ApiResult.Success ->
+                    ApiResult.Success(result.data.map { PageTag(id = it.id, name = it.name) })
+                is ApiResult.NetworkError -> result
+                is ApiResult.HttpError -> result
+                ApiResult.Unauthorised -> ApiResult.Unauthorised
+                ApiResult.Conflict -> ApiResult.Conflict
+                is ApiResult.Unexpected -> result
+            }
+        }
+
+        override suspend fun togglePageTag(
+            pageId: Long,
+            tagId: Long,
+            tagName: String,
+            add: Boolean,
+        ): ApiResult<Unit> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val current = splitTags(entity.tagsCsv)
+            val next = if (add) {
+                if (tagName in current) current else current + tagName
+            } else {
+                current - tagName
+            }
+            if (next == current) return ApiResult.Success(Unit)
+            // Optimistic update.
+            pageDao.updateTagsCsv(pageId, joinTags(next))
+            val result = apiCall {
+                if (add) {
+                    api.addPageTag(entity.collectiveId, pageId, tagId)
+                } else {
+                    api.removePageTag(entity.collectiveId, pageId, tagId)
+                }
+            }
+            if (result !is ApiResult.Success) {
+                pageDao.updateTagsCsv(pageId, entity.tagsCsv)
+            }
+            return result
+        }
+
+        override suspend fun renamePage(
+            pageId: Long,
+            newTitle: String,
+        ): ApiResult<Unit> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            if (entity.isFolderPage()) {
+                return ApiResult.Unexpected(
+                    UnsupportedOperationException("Renaming folder pages isn't supported yet"),
+                )
+            }
+            val cleaned = try {
+                sanitiseTitleForFilename(newTitle)
+            } catch (e: IllegalArgumentException) {
+                return ApiResult.Unexpected(e)
+            }
+            if (cleaned == entity.title) return ApiResult.Success(Unit)
+            val newFileName = "$cleaned.md"
+            val previousTitle = entity.title
+            val previousFileName = entity.fileName
+            // Optimistic local update.
+            pageDao.updateTitleAndPath(pageId, cleaned, newFileName, entity.filePath)
+            val result = bodyService.moveFile(
+                collectivePath = entity.collectivePath,
+                filePath = entity.filePath,
+                fileName = previousFileName,
+                destCollectivePath = entity.collectivePath,
+                destFilePath = entity.filePath,
+                destFileName = newFileName,
+            )
+            if (result !is ApiResult.Success) {
+                pageDao.updateTitleAndPath(pageId, previousTitle, previousFileName, entity.filePath)
+            }
+            return result
+        }
+
+        override suspend fun movePage(
+            pageId: Long,
+            newParentPageId: Long,
+        ): ApiResult<Unit> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            if (entity.isFolderPage()) {
+                return ApiResult.Unexpected(
+                    UnsupportedOperationException("Moving folder pages isn't supported yet"),
+                )
+            }
+            val newParent = pageDao.getById(newParentPageId) ?: return ApiResult.Unexpected(
+                IllegalStateException("Target parent $newParentPageId not cached"),
+            )
+            if (newParent.collectiveId != entity.collectiveId) {
+                return ApiResult.Unexpected(
+                    UnsupportedOperationException("Cross-collective moves aren't supported yet"),
+                )
+            }
+            // Children of a folder page live in that folder's filePath (the
+            // directory containing its Readme.md). Children of the landing
+            // page live at filePath "" — the collective root.
+            val newFilePath = when {
+                newParent.parentId == 0L -> "" // landing page → collective root
+                newParent.isFolderPage() -> newParent.filePath
+                else -> return ApiResult.Unexpected(
+                    UnsupportedOperationException("Target page isn't a folder"),
+                )
+            }
+            if (newFilePath == entity.filePath) return ApiResult.Success(Unit)
+            val previousParentId = entity.parentId
+            val previousFilePath = entity.filePath
+            // Optimistic.
+            pageDao.updateParentAndPath(pageId, newParentPageId, newFilePath)
+            val result = bodyService.moveFile(
+                collectivePath = entity.collectivePath,
+                filePath = previousFilePath,
+                fileName = entity.fileName,
+                destCollectivePath = entity.collectivePath,
+                destFilePath = newFilePath,
+                destFileName = entity.fileName,
+            )
+            if (result !is ApiResult.Success) {
+                pageDao.updateParentAndPath(pageId, previousParentId, previousFilePath)
+            }
+            return result
         }
     }

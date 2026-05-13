@@ -120,6 +120,9 @@ dependencies {
     // Markdown rendering
     implementation(libs.markwon.core)
     implementation(libs.markwon.linkify)
+    implementation(libs.markwon.ext.tables)
+    implementation(libs.markwon.ext.tasklist)
+    implementation(libs.markwon.ext.strikethrough)
 
     // Hilt
     implementation(libs.hilt.android)

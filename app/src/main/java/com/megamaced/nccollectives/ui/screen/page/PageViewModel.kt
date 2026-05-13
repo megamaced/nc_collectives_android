@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -25,6 +27,11 @@ data class PageViewUiState(
     val isLoadingBody: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
+    /** Available tags for the page's collective; populated when the tags sheet is opened. */
+    val availableTags: List<PageTag> = emptyList(),
+    val isLoadingTags: Boolean = false,
+    /** Pages in the same collective, used as targets for the move sheet. */
+    val movableTargets: List<Page> = emptyList(),
 )
 
 @HiltViewModel
@@ -93,13 +100,79 @@ class PageViewModel
             }
         }
 
+        fun setEmoji(emoji: String) {
+            viewModelScope.launch {
+                val result = pageRepository.setEmoji(pageId, emoji)
+                if (result !is ApiResult.Success) {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
+        fun loadAvailableTags() {
+            val current = page.value ?: return
+            if (_uiState.value.isLoadingTags) return
+            _uiState.update { it.copy(isLoadingTags = true) }
+            viewModelScope.launch {
+                val result = pageRepository.listTagsForCollective(current.collectiveId)
+                _uiState.update { state ->
+                    state.copy(
+                        isLoadingTags = false,
+                        availableTags = if (result is ApiResult.Success) result.data else state.availableTags,
+                        statusMessage = if (result is ApiResult.Success) state.statusMessage else result.userMessage(),
+                    )
+                }
+            }
+        }
+
+        fun togglePageTag(
+            tag: PageTag,
+            add: Boolean,
+        ) {
+            viewModelScope.launch {
+                val result = pageRepository.togglePageTag(pageId, tag.id, tag.name, add)
+                if (result !is ApiResult.Success) {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
+        fun renamePage(newTitle: String) {
+            viewModelScope.launch {
+                val result = pageRepository.renamePage(pageId, newTitle)
+                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, "renamed")) }
+            }
+        }
+
+        fun loadMoveTargets() {
+            val current = page.value ?: return
+            viewModelScope.launch {
+                val pages = pageRepository.observePages(current.collectiveId)
+                // Take the first emission and use it; suitable since we just
+                // need a snapshot to show in the picker. Already filters out
+                // the page itself and any of its descendants would be flagged
+                // by the repository on attempt.
+                pages.collect { list ->
+                    _uiState.update {
+                        it.copy(movableTargets = list.filter { p -> p.id != pageId })
+                    }
+                    return@collect
+                }
+            }
+        }
+
+        fun movePage(newParentPageId: Long) {
+            viewModelScope.launch {
+                val result = pageRepository.movePage(pageId, newParentPageId)
+                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, "moved")) }
+            }
+        }
+
         fun replaceWithDraft() {
             val draft = page.value?.draftBodyMd ?: return
             viewModelScope.launch {
                 val outcome = pageRepository.replaceWithDraft(pageId, draft)
-                _uiState.update {
-                    it.copy(statusMessage = saveOutcomeMessage(outcome))
-                }
+                _uiState.update { it.copy(statusMessage = saveOutcomeMessage(outcome)) }
             }
         }
 
@@ -111,6 +184,15 @@ class PageViewModel
             _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
         }
 
+        private fun renameOrMoveMessage(
+            result: ApiResult<Unit>,
+            verb: String,
+        ): String? =
+            when (result) {
+                is ApiResult.Success -> "Page $verb"
+                else -> result.userMessage()
+            }
+
         private fun saveOutcomeMessage(outcome: SaveOutcome): String? =
             when (outcome) {
                 SaveOutcome.Saved -> "Page replaced"
@@ -118,6 +200,10 @@ class PageViewModel
                 SaveOutcome.Conflict -> "Still conflicting — try again later"
                 is SaveOutcome.Error -> outcome.message
             }
+
+        // Suppress unused — combine() in isFavorite reads Collective.
+        @Suppress("unused")
+        private fun debugCollective(): Collective? = null
 
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L

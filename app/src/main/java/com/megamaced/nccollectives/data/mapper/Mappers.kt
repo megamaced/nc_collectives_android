@@ -4,6 +4,8 @@ import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.PageDto
 import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
+import com.megamaced.nccollectives.data.joinTags
+import com.megamaced.nccollectives.data.splitTags
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
 
@@ -47,7 +49,7 @@ internal fun PageDto.toEntity(
         parentId = parentId,
         title = title,
         emoji = emoji,
-        tagsCsv = tags.joinToString(TAG_SEP),
+        tagsCsv = joinTags(tags),
         subpageOrderCsv = subpageOrder.joinToString(","),
         isFullWidth = isFullWidth,
         trashTimestamp = trashTimestamp,
@@ -71,7 +73,7 @@ internal fun PageEntity.toDomain(): Page =
         parentId = parentId,
         title = title,
         emoji = emoji,
-        tags = if (tagsCsv.isEmpty()) emptyList() else tagsCsv.split(TAG_SEP),
+        tags = splitTags(tagsCsv),
         subpageOrder = subpageOrderCsv.toLongCsvList(),
         isFullWidth = isFullWidth,
         trashed = trashTimestamp != null,
@@ -85,10 +87,6 @@ internal fun PageEntity.toDomain(): Page =
         bodyMd = bodyMd,
         draftBodyMd = draftBodyMd,
     )
-
-// Tag values may contain commas, so we use the Unit Separator control
-// character (U+001F) — never produced by user input.
-private const val TAG_SEP = ""
 
 private fun String.toLongCsvList(): List<Long> = if (isEmpty()) emptyList() else split(',').mapNotNull { it.trim().toLongOrNull() }
 

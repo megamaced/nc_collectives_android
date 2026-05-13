@@ -16,14 +16,21 @@ import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.core.MarkwonTheme
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tables.TableTheme
+import io.noties.markwon.ext.tasklist.TaskListDrawable
+import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 
 /**
  * Renders [markdown] into an Android `TextView` via Markwon, themed against
- * the current M3 colour scheme. Direct Markwon (rather than the
- * compose-markdown wrapper) so we can override the code background and
- * text colours — the wrapper's defaults render unreadable text on the
- * app's dark scheme.
+ * the current M3 colour scheme. Direct Markwon (rather than a generic
+ * wrapper) so we can override code-block, table, and task-list colours
+ * — the defaults render unreadable text on the app's dark scheme.
+ *
+ * Supports GFM tables, task lists, strikethrough, and inline link
+ * autolinking via Markwon's ext-* plugins.
  */
 @Composable
 fun MarkdownView(
@@ -38,17 +45,51 @@ fun MarkdownView(
     val codeBg = colorScheme.surfaceContainerHigh.toArgb()
     val codeFg = colorScheme.onSurface.toArgb()
     val linkColor = colorScheme.primary.toArgb()
+    val outline = colorScheme.outline.toArgb()
+    val tableHeaderRow = colorScheme.surfaceContainerHighest.toArgb()
+    val tableOddRow = colorScheme.surface.toArgb()
+    val tableEvenRow = colorScheme.surfaceContainer.toArgb()
+    val taskBoxChecked = colorScheme.primary.toArgb()
+    val taskBoxUnchecked = colorScheme.onSurfaceVariant.toArgb()
 
     val bodyTextSizeSp = MaterialTheme.typography.bodyLarge.fontSize
         .takeIf { it.type == TextUnitType.Sp }
         ?.value
         ?: 16f
 
-    val markwon = remember(codeBg, codeFg, linkColor) {
+    val markwon = remember(
+        codeBg,
+        codeFg,
+        linkColor,
+        outline,
+        tableHeaderRow,
+        tableOddRow,
+        tableEvenRow,
+        taskBoxChecked,
+        taskBoxUnchecked,
+    ) {
         Markwon
             .builder(context)
             .usePlugin(LinkifyPlugin.create())
+            .usePlugin(StrikethroughPlugin.create())
             .usePlugin(
+                TablePlugin.create { builder ->
+                    builder
+                        .tableBorderColor(outline)
+                        .tableHeaderRowBackgroundColor(tableHeaderRow)
+                        .tableOddRowBackgroundColor(tableOddRow)
+                        .tableEvenRowBackgroundColor(tableEvenRow)
+                },
+            ).usePlugin(
+                TaskListPlugin.create(
+                    TaskListDrawable(
+                        taskBoxUnchecked,
+                        taskBoxChecked,
+                        // Checkmark inside the checked box.
+                        bodyColor,
+                    ),
+                ),
+            ).usePlugin(
                 object : AbstractMarkwonPlugin() {
                     override fun configureTheme(builder: MarkwonTheme.Builder) {
                         builder
@@ -81,3 +122,8 @@ fun MarkdownView(
         },
     )
 }
+
+// `TableTheme` is referenced via TablePlugin's builder lambda above and is
+// otherwise unused at the file level — silence the unused-import warning.
+@Suppress("unused")
+private val tableThemeReference = TableTheme::class

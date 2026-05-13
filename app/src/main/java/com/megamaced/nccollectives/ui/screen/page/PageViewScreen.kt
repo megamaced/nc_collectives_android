@@ -14,10 +14,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +36,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,6 +64,12 @@ internal fun PageViewScreen(
     val page by viewModel.page.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    var showTagPicker by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showMoveSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
         val msg = ui.statusMessage ?: ui.errorMessage
@@ -95,6 +106,46 @@ internal fun PageViewScreen(
                         IconButton(onClick = onEdit) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Set emoji…") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showEmojiPicker = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Tags…") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.loadAvailableTags()
+                                        showTagPicker = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Rename…") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showRenameDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Move…") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.loadMoveTargets()
+                                        showMoveSheet = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -120,6 +171,48 @@ internal fun PageViewScreen(
                 )
             }
         }
+    }
+
+    if (showEmojiPicker) {
+        EmojiPickerSheet(
+            onPick = { emoji ->
+                viewModel.setEmoji(emoji)
+                showEmojiPicker = false
+            },
+            onDismiss = { showEmojiPicker = false },
+        )
+    }
+
+    if (showTagPicker) {
+        TagPickerSheet(
+            available = ui.availableTags,
+            selectedTagNames = page?.tags?.toSet().orEmpty(),
+            isLoading = ui.isLoadingTags,
+            onToggle = viewModel::togglePageTag,
+            onDismiss = { showTagPicker = false },
+        )
+    }
+
+    if (showRenameDialog) {
+        RenameDialog(
+            currentTitle = page?.title.orEmpty(),
+            onRename = {
+                viewModel.renamePage(it)
+                showRenameDialog = false
+            },
+            onDismiss = { showRenameDialog = false },
+        )
+    }
+
+    if (showMoveSheet) {
+        MovePageSheet(
+            targets = ui.movableTargets,
+            onPick = {
+                viewModel.movePage(it.id)
+                showMoveSheet = false
+            },
+            onDismiss = { showMoveSheet = false },
+        )
     }
 }
 

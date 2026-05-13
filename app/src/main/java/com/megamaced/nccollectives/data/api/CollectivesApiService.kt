@@ -2,6 +2,8 @@ package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
+import com.megamaced.nccollectives.data.api.dto.TagsEnvelopeData
+import retrofit2.http.DELETE
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
@@ -35,5 +37,32 @@ interface CollectivesApiService {
     suspend fun setFavoritePages(
         @Path("collectiveId") collectiveId: Long,
         @Field("favoritePages") favoritePagesJson: String,
+    )
+
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/emoji")
+    suspend fun setPageEmoji(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @Field("emoji") emoji: String,
+    )
+
+    @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/tags")
+    suspend fun listTags(
+        @Path("collectiveId") collectiveId: Long,
+    ): Envelope<TagsEnvelopeData>
+
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/tags/{tagId}")
+    suspend fun addPageTag(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @Path("tagId") tagId: Long,
+    )
+
+    @DELETE("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/tags/{tagId}")
+    suspend fun removePageTag(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @Path("tagId") tagId: Long,
     )
 }

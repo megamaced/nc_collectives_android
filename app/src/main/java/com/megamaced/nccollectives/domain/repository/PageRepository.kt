@@ -37,4 +37,40 @@ interface PageRepository {
 
     /** Clears a page's local draft without changing the server. */
     suspend fun discardDraft(pageId: Long)
+
+    /** Set or clear a page's emoji. Empty string clears. Optimistic. */
+    suspend fun setEmoji(
+        pageId: Long,
+        emoji: String,
+    ): ApiResult<Unit>
+
+    /** List the tags defined in [collectiveId]. */
+    suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<com.megamaced.nccollectives.domain.model.PageTag>>
+
+    /** Add or remove a single tag. Optimistic local update, rolls back on failure. */
+    suspend fun togglePageTag(
+        pageId: Long,
+        tagId: Long,
+        tagName: String,
+        add: Boolean,
+    ): ApiResult<Unit>
+
+    /**
+     * Rename a leaf page within its current parent. Folder pages (those with
+     * children) return [ApiResult.Unexpected] with a descriptive message —
+     * full folder rename isn't supported yet.
+     */
+    suspend fun renamePage(
+        pageId: Long,
+        newTitle: String,
+    ): ApiResult<Unit>
+
+    /**
+     * Move a leaf page under [newParentPageId] in the same collective.
+     * Folder pages and cross-collective moves aren't supported yet.
+     */
+    suspend fun movePage(
+        pageId: Long,
+        newParentPageId: Long,
+    ): ApiResult<Unit>
 }
