@@ -10,7 +10,6 @@ import androidx.navigation.navArgument
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
-import com.megamaced.nccollectives.ui.screen.home.HomeScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
 import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
@@ -23,14 +22,8 @@ internal fun NcCollectivesNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Destination.Home.route,
+        startDestination = Destination.Collectives.route,
     ) {
-        composable(Destination.Home.route) {
-            HomeScreen(
-                innerPadding = innerPadding,
-                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
-            )
-        }
         composable(Destination.Collectives.route) {
             CollectiveListScreen(
                 innerPadding = innerPadding,

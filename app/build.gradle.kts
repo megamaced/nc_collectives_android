@@ -23,8 +23,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -118,7 +118,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
 
     // Markdown rendering
-    implementation(libs.compose.markdown)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.linkify)
 
     // Hilt
     implementation(libs.hilt.android)

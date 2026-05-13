@@ -2,7 +2,6 @@ package com.megamaced.nccollectives.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -13,8 +12,6 @@ internal sealed class Destination(
     val label: String,
     val icon: ImageVector,
 ) {
-    object Home : Destination("home", "Home", Icons.Outlined.Home)
-
     object Collectives : Destination("collectives", "Collectives", Icons.Outlined.MenuBook)
 
     object Search : Destination("search", "Search", Icons.Outlined.Search)
@@ -45,6 +42,6 @@ internal sealed class Destination(
     }
 
     companion object {
-        val bottomBar: List<Destination> = listOf(Home, Collectives, Search, Favorites, Settings)
+        val bottomBar: List<Destination> = listOf(Collectives, Search, Favorites, Settings)
     }
 }
