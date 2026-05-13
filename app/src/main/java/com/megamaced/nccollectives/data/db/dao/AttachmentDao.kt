@@ -1,0 +1,44 @@
+package com.megamaced.nccollectives.data.db.dao
+
+import androidx.room.Dao
+import androidx.room.Query
+import androidx.room.Upsert
+import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface AttachmentDao {
+    @Query("SELECT * FROM attachments WHERE pageId = :pageId ORDER BY lastModifiedMs DESC, fileName ASC")
+    fun observeForPage(pageId: Long): Flow<List<AttachmentEntity>>
+
+    @Query("SELECT * FROM attachments WHERE id = :id")
+    suspend fun getById(id: String): AttachmentEntity?
+
+    @Query(
+        "SELECT * FROM attachments WHERE status IN ('PENDING', 'UPLOADING') ORDER BY lastSyncedAt ASC",
+    )
+    suspend fun pendingUploads(): List<AttachmentEntity>
+
+    @Upsert
+    suspend fun upsert(entity: AttachmentEntity)
+
+    @Upsert
+    suspend fun upsertAll(entities: List<AttachmentEntity>)
+
+    @Query("UPDATE attachments SET status = :status WHERE id = :id")
+    suspend fun setStatus(
+        id: String,
+        status: String,
+    )
+
+    @Query("DELETE FROM attachments WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query(
+        "DELETE FROM attachments WHERE pageId = :pageId AND status = 'REMOTE' AND id NOT IN (:keepIds)",
+    )
+    suspend fun deleteMissingRemoteForPage(
+        pageId: Long,
+        keepIds: List<String>,
+    )
+}

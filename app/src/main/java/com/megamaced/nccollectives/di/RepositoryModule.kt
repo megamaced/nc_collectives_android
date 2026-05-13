@@ -1,8 +1,10 @@
 package com.megamaced.nccollectives.di
 
+import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.CollectiveRepositoryImpl
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
 import com.megamaced.nccollectives.data.repository.SearchRepositoryImpl
+import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
@@ -22,4 +24,7 @@ abstract class RepositoryModule {
 
     @Binds
     abstract fun bindSearchRepository(impl: SearchRepositoryImpl): SearchRepository
+
+    @Binds
+    abstract fun bindAttachmentRepository(impl: AttachmentRepositoryImpl): AttachmentRepository
 }

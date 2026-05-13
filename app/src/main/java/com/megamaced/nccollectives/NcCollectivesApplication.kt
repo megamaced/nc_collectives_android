@@ -46,6 +46,7 @@ class NcCollectivesApplication :
                 override fun onStart(owner: LifecycleOwner) {
                     syncScheduler.syncNow()
                     syncScheduler.flushEditsWhenOnline()
+                    syncScheduler.flushAttachmentUploadsWhenOnline()
                 }
             },
         )

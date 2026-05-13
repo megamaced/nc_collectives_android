@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -31,6 +32,7 @@ class PageEditViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val repository: PageRepository,
+        private val attachmentRepository: AttachmentRepository,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageEdit.ARG_PAGE_ID),
@@ -38,6 +40,9 @@ class PageEditViewModel
 
         private val _uiState = MutableStateFlow(PageEditUiState())
         val uiState: StateFlow<PageEditUiState> = _uiState.asStateFlow()
+
+        private val _imageBaseUrl = MutableStateFlow<String?>(null)
+        val imageBaseUrl: StateFlow<String?> = _imageBaseUrl.asStateFlow()
 
         init {
             viewModelScope.launch {
@@ -48,6 +53,7 @@ class PageEditViewModel
                         initialBody = page?.bodyMd,
                     )
                 }
+                _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
                 if (page != null && page.bodyMd == null) {
                     _uiState.update { it.copy(isLoadingBody = true) }
                     val result = repository.fetchBody(pageId)

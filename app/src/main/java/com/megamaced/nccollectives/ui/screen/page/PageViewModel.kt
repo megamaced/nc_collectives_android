@@ -9,6 +9,7 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
@@ -41,6 +42,7 @@ class PageViewModel
         savedStateHandle: SavedStateHandle,
         private val pageRepository: PageRepository,
         private val collectiveRepository: CollectiveRepository,
+        private val attachmentRepository: AttachmentRepository,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageView.ARG_PAGE_ID),
@@ -51,6 +53,9 @@ class PageViewModel
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = null,
         )
+
+        private val _imageBaseUrl = MutableStateFlow<String?>(null)
+        val imageBaseUrl: StateFlow<String?> = _imageBaseUrl.asStateFlow()
 
         val isFavorite: StateFlow<Boolean> = combine(
             page,
@@ -68,6 +73,7 @@ class PageViewModel
             viewModelScope.launch {
                 val cached = pageRepository.getPage(pageId)
                 if (cached != null && cached.bodyMd == null) refreshBody()
+                _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
             }
         }
 

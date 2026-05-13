@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.di
 import android.content.Context
 import androidx.room.Room
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
+import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
@@ -31,4 +32,6 @@ object DatabaseModule {
     @Provides fun providePageDao(db: NcCollectivesDatabase): PageDao = db.pageDao()
 
     @Provides fun provideEditQueueDao(db: NcCollectivesDatabase): EditQueueDao = db.editQueueDao()
+
+    @Provides fun provideAttachmentDao(db: NcCollectivesDatabase): AttachmentDao = db.attachmentDao()
 }

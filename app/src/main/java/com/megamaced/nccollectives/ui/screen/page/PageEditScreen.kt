@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Title
@@ -64,11 +65,13 @@ internal fun PageEditScreen(
     viewModel: PageEditViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
+    val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var fieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var previewing by remember { mutableStateOf(false) }
     var showDiscardPrompt by remember { mutableStateOf(false) }
+    var showAttachmentPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.initialBody) {
         if (ui.initialBody != null && fieldValue.text.isEmpty()) {
@@ -93,6 +96,16 @@ internal fun PageEditScreen(
     }
 
     BackHandler(enabled = true, onBack = tryClose)
+
+    if (showAttachmentPicker) {
+        AttachmentPickerSheet(
+            onPick = { fileName ->
+                fieldValue = MarkdownToolbarActions.insertImage(fieldValue, fileName)
+                showAttachmentPicker = false
+            },
+            onDismiss = { showAttachmentPicker = false },
+        )
+    }
 
     if (showDiscardPrompt) {
         AlertDialog(
@@ -165,12 +178,13 @@ internal fun PageEditScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(20.dp),
                     ) {
-                        MarkdownView(markdown = fieldValue.text)
+                        MarkdownView(markdown = fieldValue.text, imageBaseUrl = imageBaseUrl)
                     }
                 else ->
                     Column(modifier = Modifier.fillMaxSize()) {
                         MarkdownToolbar(
                             onAction = { fieldValue = it(fieldValue) },
+                            onInsertImage = { showAttachmentPicker = true },
                         )
                         HorizontalDivider()
                         BasicTextField(
@@ -192,7 +206,10 @@ internal fun PageEditScreen(
 }
 
 @Composable
-private fun MarkdownToolbar(onAction: ((TextFieldValue) -> TextFieldValue) -> Unit) {
+private fun MarkdownToolbar(
+    onAction: ((TextFieldValue) -> TextFieldValue) -> Unit,
+    onInsertImage: () -> Unit,
+) {
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .padding(horizontal = 4.dp, vertical = 4.dp),
@@ -209,6 +226,7 @@ private fun MarkdownToolbar(onAction: ((TextFieldValue) -> TextFieldValue) -> Un
         }
         ToolbarButton(Icons.Filled.CheckBox, "Checklist") { onAction(MarkdownToolbarActions::checklist) }
         ToolbarButton(Icons.Filled.Link, "Link") { onAction(MarkdownToolbarActions::link) }
+        ToolbarButton(Icons.Filled.Image, "Insert image", onClick = onInsertImage)
         ToolbarButton(Icons.Filled.Code, "Inline code") { onAction(MarkdownToolbarActions::inlineCode) }
     }
 }

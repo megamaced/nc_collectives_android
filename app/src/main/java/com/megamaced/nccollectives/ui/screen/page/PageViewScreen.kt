@@ -58,11 +58,13 @@ internal fun PageViewScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onAttachments: () -> Unit,
     viewModel: PageViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
     val page by viewModel.page.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
+    val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -115,6 +117,13 @@ internal fun PageViewScreen(
                                 onDismissRequest = { menuExpanded = false },
                             ) {
                                 DropdownMenuItem(
+                                    text = { Text("Attachments…") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onAttachments()
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Set emoji…") },
                                     onClick = {
                                         menuExpanded = false
@@ -166,6 +175,7 @@ internal fun PageViewScreen(
                 else -> PageViewContent(
                     page = currentPage,
                     body = currentPage.bodyMd.orEmpty(),
+                    imageBaseUrl = imageBaseUrl,
                     onReplaceWithDraft = viewModel::replaceWithDraft,
                     onDiscardDraft = viewModel::discardDraft,
                 )
@@ -221,6 +231,7 @@ internal fun PageViewScreen(
 private fun PageViewContent(
     page: Page,
     body: String,
+    imageBaseUrl: String?,
     onReplaceWithDraft: () -> Unit,
     onDiscardDraft: () -> Unit,
 ) {
@@ -275,6 +286,6 @@ private fun PageViewContent(
                 }
             }
         }
-        MarkdownView(markdown = body)
+        MarkdownView(markdown = body, imageBaseUrl = imageBaseUrl)
     }
 }

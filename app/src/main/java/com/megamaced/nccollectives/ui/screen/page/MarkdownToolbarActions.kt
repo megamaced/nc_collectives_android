@@ -53,6 +53,24 @@ internal object MarkdownToolbarActions {
         }
     }
 
+    /**
+     * Inserts a markdown image reference for [fileName] at the cursor. The
+     * URL part is the bare filename — `MarkdownView` resolves it against
+     * the page's `.attachments.<pageId>/` directory at render time.
+     */
+    fun insertImage(
+        value: TextFieldValue,
+        fileName: String,
+    ): TextFieldValue {
+        val text = value.text
+        val sel = value.selection
+        val before = text.substring(0, sel.min)
+        val after = text.substring(sel.max)
+        val snippet = "![$fileName]($fileName)"
+        val newText = before + snippet + after
+        return value.copy(text = newText, selection = TextRange(sel.min + snippet.length))
+    }
+
     fun checklist(value: TextFieldValue): TextFieldValue =
         lineMutate(value) { line ->
             when {

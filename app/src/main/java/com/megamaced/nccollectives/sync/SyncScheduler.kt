@@ -54,10 +54,19 @@ class SyncScheduler
             workManager.enqueueUniqueWork(EDIT_FLUSH, ExistingWorkPolicy.REPLACE, oneShot)
         }
 
+        /** Schedules a one-shot attachment upload flush; runs as soon as the network is up. */
+        fun flushAttachmentUploadsWhenOnline() {
+            val oneShot = OneTimeWorkRequestBuilder<AttachmentUploadWorker>()
+                .setConstraints(connectedConstraints)
+                .build()
+            workManager.enqueueUniqueWork(ATTACHMENT_FLUSH, ExistingWorkPolicy.REPLACE, oneShot)
+        }
+
         companion object {
             private const val PERIODIC_SYNC = "nc-collectives-sync-periodic"
             private const val ONE_SHOT_SYNC = "nc-collectives-sync-now"
             private const val EDIT_FLUSH = "nc-collectives-edit-flush"
+            private const val ATTACHMENT_FLUSH = "nc-collectives-attachment-flush"
             private const val PERIODIC_INTERVAL_HOURS = 6L
         }
     }

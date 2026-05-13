@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Captured-photo temp files live in the app's internal cache under
+        `attachments/`. Never expose the wider cache or external storage —
+        the FileProvider is only here so the system camera can write a
+        single image back into our process via a content:// URI.
+    -->
+    <cache-path name="captures" path="attachments/" />
+</paths>

@@ -123,6 +123,7 @@ dependencies {
     implementation(libs.markwon.ext.tables)
     implementation(libs.markwon.ext.tasklist)
     implementation(libs.markwon.ext.strikethrough)
+    implementation(libs.markwon.image)
 
     // Hilt
     implementation(libs.hilt.android)

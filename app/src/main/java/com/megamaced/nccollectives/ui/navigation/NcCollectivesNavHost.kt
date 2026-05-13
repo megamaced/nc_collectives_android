@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
+import com.megamaced.nccollectives.ui.screen.page.AttachmentsScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
 import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
@@ -63,6 +64,7 @@ internal fun NcCollectivesNavHost(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate(Destination.PageEdit.route(pageId)) },
+                onAttachments = { navController.navigate(Destination.Attachments.route(pageId)) },
             )
         }
         composable(
@@ -74,6 +76,17 @@ internal fun NcCollectivesNavHost(
             PageEditScreen(
                 innerPadding = innerPadding,
                 onClose = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Destination.Attachments.route,
+            arguments = listOf(
+                navArgument(Destination.Attachments.ARG_PAGE_ID) { type = NavType.LongType },
+            ),
+        ) {
+            AttachmentsScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
             )
         }
     }
