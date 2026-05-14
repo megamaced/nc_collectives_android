@@ -8,7 +8,7 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Status
 
-**v0.2.0** — settings, backlinks, tag creation, folder rename/move, undo on trash. The Collectives OCS REST API is now used for all page CRUD (create / rename / move / list-attachments / delete-attachment / tag creation) — the previous WebDAV implementations for those are gone. Real Room migrations replace the destructive fallback so cached pages, drafts, and queued edits survive schema bumps. The full Batch 17 audit fix-up list landed. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+**v0.2.1** — hotfix on top of v0.2.0. `PageDto.tags` is now deserialised as a list of tag IDs (the server's actual shape) and the names are resolved client-side from the per-collective tag list. Without this, opening a collective whose pages have any tags applied failed with a JSON-parse error. v0.2.0 itself shipped settings, backlinks, tag creation, folder rename/move, undo on trash, OCS migration of all page CRUD (create / rename / move / list-attachments / delete-attachment / tag creation), real Room migrations replacing the destructive fallback, and the full Batch 17 audit fix-up list. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
 
 Releases are currently **debug builds only**: in-place upgrades from v0.1.x require an uninstall first (signing-key change). Subsequent v0.2.x debug builds upgrade in place. Signed release builds land in a later milestone.
 

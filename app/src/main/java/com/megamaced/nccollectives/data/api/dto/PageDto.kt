@@ -17,7 +17,12 @@ data class PageDto(
     val parentId: Long = 0,
     val subpageOrder: List<Long> = emptyList(),
     val isFullWidth: Boolean = false,
-    val tags: List<String> = emptyList(),
+    /**
+     * Tag IDs attached to the page. The server returns numeric IDs here, not
+     * names — names live in `GET /collectives/{id}/tags` and must be joined
+     * client-side. See [com.megamaced.nccollectives.data.mapper.toEntity].
+     */
+    val tags: List<Long> = emptyList(),
     val trashTimestamp: Long? = null,
     /** Last-modified timestamp, seconds since epoch. */
     val timestamp: Long = 0,

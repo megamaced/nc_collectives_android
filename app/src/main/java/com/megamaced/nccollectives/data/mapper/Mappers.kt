@@ -45,6 +45,7 @@ internal fun PageDto.toEntity(
     existingBody: String?,
     existingEtag: String?,
     existingDraft: String?,
+    tagNamesById: Map<Long, String> = emptyMap(),
 ): PageEntity =
     PageEntity(
         id = id,
@@ -52,7 +53,10 @@ internal fun PageDto.toEntity(
         parentId = parentId,
         title = title,
         emoji = emoji,
-        tagsCsv = joinTags(tags),
+        // Server returns tag IDs only; resolve to names via the per-collective
+        // tag map. Unknown IDs (newly created tag we haven't refreshed yet) are
+        // dropped rather than rendered as bare numbers.
+        tagsCsv = joinTags(tags.mapNotNull { tagNamesById[it] }),
         subpageOrderCsv = subpageOrder.toLongCsv(),
         isFullWidth = isFullWidth,
         trashTimestamp = trashTimestamp,

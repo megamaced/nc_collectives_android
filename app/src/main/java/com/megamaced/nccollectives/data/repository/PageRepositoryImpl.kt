@@ -44,6 +44,7 @@ class PageRepositoryImpl
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
             apiCall {
                 val now = System.currentTimeMillis()
+                val tagNames = fetchTagNamesById(collectiveId)
                 val response = api.listPages(collectiveId)
                 val entities = response.ocs.data.pages.map { dto ->
                     val existing = pageDao.getById(dto.id)
@@ -53,11 +54,32 @@ class PageRepositoryImpl
                         existingBody = existing?.bodyMd,
                         existingEtag = existing?.bodyEtag,
                         existingDraft = existing?.draftBodyMd,
+                        tagNamesById = tagNames,
                     )
                 }
                 pageDao.upsertAll(entities)
                 pageDao.deleteMissingForCollective(collectiveId, entities.map { it.id })
             }
+
+        /**
+         * Server returns `PageDto.tags` as numeric IDs; we resolve them to
+         * names at mapping time by pulling the per-collective tag list. A
+         * failure here returns an empty map so a tag-service blip doesn't
+         * break the page list — affected pages will display with no tag chips
+         * until the next refresh.
+         */
+        private suspend fun fetchTagNamesById(collectiveId: Long): Map<Long, String> {
+            val result = apiCall {
+                api
+                    .listTags(collectiveId)
+                    .ocs.data.tags
+            }
+            return if (result is ApiResult.Success) {
+                result.data.associate { it.id to it.name }
+            } else {
+                emptyMap()
+            }
+        }
 
         override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain()
 
@@ -361,8 +383,9 @@ class PageRepositoryImpl
             return result
         }
 
-        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> =
-            apiCall { api.listTrashedPages(collectiveId) }.mapSuccess { envelope ->
+        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> {
+            val tagNames = fetchTagNamesById(collectiveId)
+            return apiCall { api.listTrashedPages(collectiveId) }.mapSuccess { envelope ->
                 val now = System.currentTimeMillis()
                 envelope.ocs.data.pages.map { dto ->
                     dto
@@ -372,9 +395,11 @@ class PageRepositoryImpl
                             existingBody = null,
                             existingEtag = null,
                             existingDraft = null,
+                            tagNamesById = tagNames,
                         ).toDomain()
                 }
             }
+        }
 
         override suspend fun restorePage(
             collectiveId: Long,
