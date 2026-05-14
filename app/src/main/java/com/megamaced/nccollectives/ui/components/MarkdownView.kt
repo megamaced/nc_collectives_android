@@ -5,12 +5,15 @@ import android.widget.TextView
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.util.expandWikilinks
 import com.megamaced.nccollectives.util.handleMarkdownLink
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -50,10 +53,17 @@ fun MarkdownView(
      * relative links fall through unchanged.
      */
     imageBaseUrl: String? = null,
+    /**
+     * Invoked when the user taps an in-app link — `[[Wiki]]` or a relative
+     * markdown reference. The argument is the cleaned page title (URL-decoded,
+     * `./` and `.md` stripped). Default ignores them.
+     */
+    onWikiLink: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val contentColor = LocalContentColor.current
+    val onWikiLinkLatest by rememberUpdatedState(onWikiLink)
     val okHttpClient = remember {
         EntryPointAccessors
             .fromApplication(
@@ -62,7 +72,12 @@ fun MarkdownView(
             ).okHttpClient()
     }
     val resolvedMarkdown = remember(markdown, imageBaseUrl) {
-        if (imageBaseUrl.isNullOrEmpty()) markdown else absolutizeImageRefs(markdown, imageBaseUrl)
+        val withWikiLinks = expandWikilinks(markdown)
+        if (imageBaseUrl.isNullOrEmpty()) {
+            withWikiLinks
+        } else {
+            absolutizeImageRefs(withWikiLinks, imageBaseUrl)
+        }
     }
 
     val bodyColor = contentColor.toArgb()
@@ -129,7 +144,9 @@ fun MarkdownView(
                     }
 
                     override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                        builder.linkResolver { _, link -> handleMarkdownLink(context, link) }
+                        builder.linkResolver { _, link ->
+                            handleMarkdownLink(context, link, onWikiLinkLatest)
+                        }
                     }
                 },
             ).build()

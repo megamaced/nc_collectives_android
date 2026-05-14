@@ -73,6 +73,9 @@ internal fun NcCollectivesNavHost(
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate(Destination.PageEdit.route(pageId)) },
                 onAttachments = { navController.navigate(Destination.Attachments.route(pageId)) },
+                onOpenPage = { target ->
+                    if (target != pageId) navController.navigate(Destination.PageView.route(target))
+                },
             )
         }
         composable(

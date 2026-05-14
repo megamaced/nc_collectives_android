@@ -409,6 +409,38 @@ class PageRepositoryImpl
             pageId: Long,
         ): ApiResult<Unit> = apiCall { api.purgeTrashedPage(collectiveId, pageId) }
 
+        override fun observeBacklinksFor(
+            collectiveId: Long,
+            pageId: Long,
+        ): Flow<List<Page>> =
+            pageDao.observeForCollective(collectiveId).map { rows ->
+                rows
+                    .asSequence()
+                    .filter { row -> row.id != pageId && pageId in row.linkedPageIdsCsv.toLongCsvList() }
+                    .map { it.toDomain() }
+                    .toList()
+            }
+
+        override suspend fun resolvePageByTitle(
+            collectiveId: Long,
+            title: String,
+        ): Long? {
+            val cleaned = title
+                .trim()
+                .removeSuffix(".md")
+                .removeSuffix(".MD")
+                .trim()
+            if (cleaned.isEmpty()) return null
+            return pageDao.findIdByTitleInCollective(collectiveId, cleaned)
+        }
+
+        private fun String.toLongCsvList(): List<Long> =
+            if (isEmpty()) {
+                emptyList()
+            } else {
+                split(',').mapNotNull { it.trim().toLongOrNull() }
+            }
+
         override suspend fun appendToPage(
             pageId: Long,
             text: String,

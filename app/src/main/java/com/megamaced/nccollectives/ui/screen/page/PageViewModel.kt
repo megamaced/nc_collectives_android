@@ -14,11 +14,14 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,6 +38,7 @@ data class PageViewUiState(
     val movableTargets: List<Page> = emptyList(),
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PageViewModel
     @Inject
@@ -65,6 +69,15 @@ class PageViewModel
                 collectives.firstOrNull { it.id == current.collectiveId }?.favoritePageIds?.contains(current.id) ?: false
             } ?: false
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
+
+        val backlinks: StateFlow<List<Page>> = page
+            .flatMapLatest { current ->
+                if (current == null) {
+                    flowOf(emptyList())
+                } else {
+                    pageRepository.observeBacklinksFor(current.collectiveId, current.id)
+                }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
         private val _uiState = MutableStateFlow(PageViewUiState())
         val uiState: StateFlow<PageViewUiState> = _uiState.asStateFlow()
@@ -199,6 +212,28 @@ class PageViewModel
 
         fun dismissStatus() {
             _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+        }
+
+        /**
+         * Resolve a wikilink (or relative markdown reference) to a page id in
+         * the same collective. Returns null if the target isn't cached — the
+         * caller should fall back to a status message.
+         */
+        fun resolveWikilink(
+            target: String,
+            onResolved: (Long) -> Unit,
+        ) {
+            val current = page.value ?: return
+            viewModelScope.launch {
+                val resolved = pageRepository.resolvePageByTitle(current.collectiveId, target)
+                if (resolved != null) {
+                    onResolved(resolved)
+                } else {
+                    _uiState.update {
+                        it.copy(statusMessage = "Linked page \"$target\" not found")
+                    }
+                }
+            }
         }
 
         private fun renameOrMoveMessage(

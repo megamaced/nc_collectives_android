@@ -24,6 +24,15 @@ interface PageDao {
     suspend fun findIdByTitle(title: String): Long?
 
     @Query(
+        "SELECT id FROM pages WHERE collectiveId = :collectiveId " +
+            "AND title = :title COLLATE NOCASE AND trashTimestamp IS NULL LIMIT 1",
+    )
+    suspend fun findIdByTitleInCollective(
+        collectiveId: Long,
+        title: String,
+    ): Long?
+
+    @Query(
         "SELECT * FROM pages WHERE trashTimestamp IS NULL " +
             "ORDER BY serverTimestamp DESC LIMIT :limit",
     )

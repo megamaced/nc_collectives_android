@@ -126,4 +126,24 @@ interface PageRepository {
         collectiveId: Long,
         pageId: Long,
     ): ApiResult<Unit>
+
+    /**
+     * Pages whose `linkedPageIds` contain [pageId]. Backlinks live in the
+     * same collective by design — Collectives' indexer only tracks
+     * intra-collective references.
+     */
+    fun observeBacklinksFor(
+        collectiveId: Long,
+        pageId: Long,
+    ): Flow<List<Page>>
+
+    /**
+     * Resolve a wikilink target (`[[Page Name]]`, `./Page%20Name`, etc.) to a
+     * cached page id within [collectiveId]. Matches title case-insensitively
+     * and strips a trailing `.md` extension.
+     */
+    suspend fun resolvePageByTitle(
+        collectiveId: Long,
+        title: String,
+    ): Long?
 }

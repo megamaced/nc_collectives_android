@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
@@ -59,12 +60,14 @@ internal fun PageViewScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onAttachments: () -> Unit,
+    onOpenPage: (Long) -> Unit,
     viewModel: PageViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
     val page by viewModel.page.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
     val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
+    val backlinks by viewModel.backlinks.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -184,8 +187,11 @@ internal fun PageViewScreen(
                     page = currentPage,
                     body = currentPage.bodyMd.orEmpty(),
                     imageBaseUrl = imageBaseUrl,
+                    backlinks = backlinks,
                     onReplaceWithDraft = viewModel::replaceWithDraft,
                     onDiscardDraft = viewModel::discardDraft,
+                    onOpenPage = onOpenPage,
+                    onWikiLink = { target -> viewModel.resolveWikilink(target, onOpenPage) },
                 )
             }
         }
@@ -263,8 +269,11 @@ private fun PageViewContent(
     page: Page,
     body: String,
     imageBaseUrl: String?,
+    backlinks: List<Page>,
     onReplaceWithDraft: () -> Unit,
     onDiscardDraft: () -> Unit,
+    onOpenPage: (Long) -> Unit,
+    onWikiLink: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -317,6 +326,11 @@ private fun PageViewContent(
                 }
             }
         }
-        MarkdownView(markdown = body, imageBaseUrl = imageBaseUrl)
+        MarkdownView(
+            markdown = body,
+            imageBaseUrl = imageBaseUrl,
+            onWikiLink = onWikiLink,
+        )
+        BacklinkChipRow(pages = backlinks, onOpenPage = onOpenPage)
     }
 }
