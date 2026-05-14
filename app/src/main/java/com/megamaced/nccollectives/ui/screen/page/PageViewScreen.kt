@@ -27,8 +27,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -76,6 +78,10 @@ internal fun PageViewScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMoveSheet by remember { mutableStateOf(false) }
     var showTrashConfirm by remember { mutableStateOf(false) }
+    // Pre-commit undo for trash (Batch 18m). When the user confirms the
+    // dialog this flips true; the LaunchedEffect below shows the snackbar
+    // and either fires the server delete or quietly cancels.
+    var pendingTrash by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
         val msg = ui.statusMessage ?: ui.errorMessage
@@ -83,6 +89,22 @@ internal fun PageViewScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.dismissStatus()
         }
+    }
+
+    LaunchedEffect(pendingTrash) {
+        if (!pendingTrash) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "Moved to trash",
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Short,
+        )
+        pendingTrash = false
+        if (result != SnackbarResult.ActionPerformed) {
+            // Snackbar dismissed (timeout or other) → commit the trash.
+            viewModel.trashPage(onTrashed = onBack)
+        }
+        // If `ActionPerformed`, the user tapped UNDO — no server call,
+        // no navigation. Page-view stays as-is.
     }
 
     Scaffold(
@@ -254,7 +276,10 @@ internal fun PageViewScreen(
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     showTrashConfirm = false
-                    viewModel.trashPage(onTrashed = onBack)
+                    // Stage the trash — the LaunchedEffect on `pendingTrash`
+                    // shows the snackbar and decides whether to commit based
+                    // on whether the user taps UNDO.
+                    pendingTrash = true
                 }) { Text("Move to trash") }
             },
             dismissButton = {

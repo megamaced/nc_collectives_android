@@ -9,6 +9,9 @@ import androidx.room.PrimaryKey
     indices = [
         Index("collectiveId"),
         Index(value = ["collectiveId", "parentId"]),
+        // R-11: covers the hot `observeForCollective` query, which orders
+        // by `title COLLATE NOCASE`. Added in DB v6 / Batch 18m.
+        Index(value = ["collectiveId", "title"]),
     ],
 )
 data class PageEntity(

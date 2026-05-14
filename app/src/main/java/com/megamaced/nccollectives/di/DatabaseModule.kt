@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.di
 
 import android.content.Context
 import androidx.room.Room
+import com.megamaced.nccollectives.data.db.ALL_MIGRATIONS
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
@@ -24,7 +25,9 @@ object DatabaseModule {
     ): NcCollectivesDatabase =
         Room
             .databaseBuilder(context, NcCollectivesDatabase::class.java, "nc_collectives.db")
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // Real migrations land in Batch 18m, replacing the destructive
+            // fallback. See `data/db/Migrations.kt` for the per-version SQL.
+            .addMigrations(*ALL_MIGRATIONS)
             .build()
 
     @Provides fun provideCollectiveDao(db: NcCollectivesDatabase): CollectiveDao = db.collectiveDao()

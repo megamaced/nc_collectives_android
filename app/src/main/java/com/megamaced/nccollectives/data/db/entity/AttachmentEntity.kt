@@ -17,7 +17,13 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "attachments",
-    indices = [Index("pageId")],
+    indices = [
+        Index("pageId"),
+        // R-11: covers `AttachmentDao.pendingUploads()` which filters
+        // `status IN ('PENDING', 'UPLOADING')` on every worker wakeup.
+        // Added in DB v6 / Batch 18m.
+        Index("status"),
+    ],
 )
 data class AttachmentEntity(
     @PrimaryKey val id: String,
