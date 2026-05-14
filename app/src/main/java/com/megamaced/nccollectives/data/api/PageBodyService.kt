@@ -58,7 +58,7 @@ class PageBodyService
             fileName: String,
         ): ApiResult<PageBody> =
             withContext(Dispatchers.IO) {
-                apiCall {
+                try {
                     val url = buildWebDavUrl(collectivePath, filePath, fileName)
                     val request = Request
                         .Builder()
@@ -66,16 +66,23 @@ class PageBodyService
                         .get()
                         .build()
                     client.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            throw IllegalStateException(
-                                "WebDAV GET returned ${response.code} for ${response.request.url.encodedPath}",
-                            )
+                        when (response.code) {
+                            in 200..299 ->
+                                ApiResult.Success(
+                                    PageBody(
+                                        markdown = response.body?.string().orEmpty(),
+                                        etag = response.header("ETag")?.trim('"'),
+                                    ),
+                                )
+                            401 -> ApiResult.Unauthorised
+                            412 -> ApiResult.Conflict
+                            else -> ApiResult.HttpError(response.code, response.message)
                         }
-                        PageBody(
-                            markdown = response.body?.string().orEmpty(),
-                            etag = response.header("ETag")?.trim('"'),
-                        )
                     }
+                } catch (e: java.io.IOException) {
+                    ApiResult.NetworkError(e)
+                } catch (e: Exception) {
+                    ApiResult.Unexpected(e)
                 }
             }
 

@@ -90,8 +90,13 @@ class NextcloudLoginFlow
                 .build()
 
             repeat(MAX_POLL_ATTEMPTS) {
+                // Track the in-flight call so a thrown / cancelled iteration
+                // cancels the OkHttp exchange instead of leaving a blocking
+                // thread alive until the server times out (B-22). `cancel()`
+                // is a safe no-op once the call has completed.
+                val call = client.newCall(request)
                 try {
-                    val response = client.newCall(request).execute()
+                    val response = call.execute()
                     when (response.code) {
                         200 -> {
                             val responseBody = response.body?.string()
@@ -108,6 +113,8 @@ class NextcloudLoginFlow
                     }
                 } catch (e: Exception) {
                     Timber.w(e, "Poll attempt failed")
+                } finally {
+                    call.cancel()
                 }
                 delay(POLL_INTERVAL_MS)
             }

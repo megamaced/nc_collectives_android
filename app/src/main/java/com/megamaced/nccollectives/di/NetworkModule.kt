@@ -10,11 +10,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -42,6 +44,17 @@ object NetworkModule {
     ): OkHttpClient =
         OkHttpClient
             .Builder()
+            // Explicit timeouts — OkHttp's defaults are 10 s connect / no
+            // read-write timeout, which leaves the UI scope hanging on a
+            // slow Nextcloud. Attachment uploads disable the call timeout
+            // separately at their request site so multi-MB images can
+            // stream over slow links without hitting it (B-11).
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            // Keep TLS handshakes amortised across the rapid PROPFIND +
+            // GET + ETag refresh sequence on a single page view (R-12).
+            .connectionPool(ConnectionPool(maxIdleConnections = 5, keepAliveDuration = 5, TimeUnit.MINUTES))
             .addInterceptor(hostInterceptor)
             .addInterceptor(authInterceptor)
             .apply {
