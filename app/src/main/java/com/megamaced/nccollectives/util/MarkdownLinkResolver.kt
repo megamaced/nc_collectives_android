@@ -46,22 +46,49 @@ internal fun decodeWikiTarget(raw: String): String {
         .trim()
 }
 
+// Combined pattern for [expandWikilinks]. Alternation order matters:
+//   - fenced code blocks (``` ... ``` or ~~~ ... ~~~) on group `fence`,
+//   - inline code spans (`...`) on group `code`,
+//   - wikilinks `[[Target]]` or `[[Target|Alias]]` on group `wiki`.
+//
+// Earlier alternations win, so a `[[...]]` *inside* a fenced block or
+// inline span is consumed by the code group first and falls through
+// untouched. Closes B-4 (raw-string regex was mangling code samples).
+//
+// Caveat: indented code blocks (4+ spaces at line start) aren't tracked
+// — they're rare in practice and mis-rewriting one is annoying, not
+// destructive. The AST parser route would catch them but the additional
+// complexity isn't worth it until someone reports it.
+private val WIKILINK_PATTERN = Regex(
+    "(?s)" +
+        "(?<fence>```.*?```|~~~.*?~~~)" +
+        "|(?<code>`[^`\\n]+`)" +
+        "|(?<wiki>(?<!\\\\)\\[\\[(?<target>[^\\[\\]\\n|]+?)(?:\\|(?<alias>[^\\[\\]\\n]+?))?]])",
+)
+
 /**
  * Rewrites every `[[Page Name]]` occurrence in [markdown] into a regular
  * markdown link `[Page Name](Page%20Name)` so Markwon renders it as
  * tappable. Pipe-aliased forms (`[[Target|Alias]]`) keep the alias as the
- * visible label. Escaped openers `\[[` are left alone.
+ * visible label. Escaped openers `\[[` are left alone. Wikilinks inside
+ * fenced code blocks or inline code spans are left unchanged.
  */
-internal fun expandWikilinks(markdown: String): String {
-    val pattern = Regex("(?<!\\\\)\\[\\[([^\\[\\]\\n]+?)]]")
-    return pattern.replace(markdown) { match ->
-        val raw = match.groupValues[1]
-        val pipe = raw.indexOf('|')
-        val target = if (pipe >= 0) raw.substring(0, pipe).trim() else raw.trim()
-        val label = if (pipe >= 0) raw.substring(pipe + 1).trim() else target
-        // Percent-encode spaces so Markwon picks up the link correctly; the
-        // resolver decodes it back before lookup.
-        val encoded = target.replace(" ", "%20")
-        "[$label]($encoded)"
+internal fun expandWikilinks(markdown: String): String =
+    WIKILINK_PATTERN.replace(markdown) { match ->
+        val wiki = match.groups["wiki"]
+        if (wiki == null) {
+            // Fence or inline code — emit verbatim.
+            match.value
+        } else {
+            val target = match.groups["target"]
+                ?.value
+                ?.trim()
+                .orEmpty()
+            val alias = match.groups["alias"]?.value?.trim()
+            val label = alias?.takeIf { it.isNotEmpty() } ?: target
+            // Percent-encode spaces so Markwon picks up the link correctly; the
+            // resolver decodes it back before lookup.
+            val encoded = target.replace(" ", "%20")
+            "[$label]($encoded)"
+        }
     }
-}

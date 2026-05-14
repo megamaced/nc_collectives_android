@@ -169,33 +169,47 @@ fun MarkdownView(
 
 /**
  * Rewrites every `![alt](relativeRef)` whose URL has no scheme + no leading
- * slash so it points at `imageBaseUrl/relativeRef`. Leaves absolute URLs
- * (`http`, `https`, `data:`, `file://`) untouched.
+ * slash so it points at `imageBaseUrl/relativeRef`. Leaves `http(s)://`
+ * URLs untouched; **drops** `data:`, `file://`, and other schemes by
+ * resolving them as relative (S-8). Image references inside fenced code
+ * blocks or inline code spans are left alone (B-4).
  */
 internal fun absolutizeImageRefs(
     markdown: String,
     imageBaseUrl: String,
 ): String {
     val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
-    val pattern = Regex("!\\[([^\\]]*)]\\(([^)\\s]+)(\\s+[^)]*)?\\)")
-    return pattern.replace(markdown) { match ->
-        val alt = match.groupValues[1]
-        val target = match.groupValues[2]
-        val trailing = match.groupValues[3]
-        val resolved = if (
+    return IMAGE_REF_PATTERN.replace(markdown) { match ->
+        val image = match.groups["image"]
+        if (image == null) {
+            // Fence or inline code — emit verbatim.
+            return@replace match.value
+        }
+        val alt = match.groups["alt"]?.value.orEmpty()
+        val target = match.groups["target"]?.value.orEmpty()
+        val trailing = match.groups["trailing"]?.value.orEmpty()
+        val resolved = when {
             target.startsWith("http://", ignoreCase = true) ||
-            target.startsWith("https://", ignoreCase = true) ||
-            target.startsWith("data:", ignoreCase = true) ||
-            target.startsWith("file://", ignoreCase = true) ||
-            target.startsWith('/')
-        ) {
-            target
-        } else {
-            base + target
+                target.startsWith("https://", ignoreCase = true) ||
+                target.startsWith('/') -> target
+            // `data:`, `file://`, custom schemes — treat as relative so
+            // they go through the authenticated OkHttp scheme handler,
+            // which only knows about http(s) and will fail loudly.
+            else -> base + target.substringAfter("://")
         }
         "![$alt]($resolved$trailing)"
     }
 }
+
+// Same alternation strategy as `WIKILINK_PATTERN` in `MarkdownLinkResolver.kt`:
+// fenced code → inline code → image ref. Earlier alternations win, so refs
+// inside code segments are consumed by the code groups first.
+private val IMAGE_REF_PATTERN = Regex(
+    "(?s)" +
+        "(?<fence>```.*?```|~~~.*?~~~)" +
+        "|(?<code>`[^`\\n]+`)" +
+        "|(?<image>!\\[(?<alt>[^\\]]*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
+)
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
