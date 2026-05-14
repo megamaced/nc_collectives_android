@@ -35,7 +35,10 @@ class SyncWorker
             }
             if (collectivesResult is ApiResult.Unauthorised) {
                 Timber.w("Sync aborted: unauthorised")
-                return Result.success() // SessionManager will surface this to the UI
+                // The interceptor already ticked SessionManager's consecutive-401
+                // counter; a sustained outage will flip the user to LoginScreen
+                // via that mechanism rather than via this worker. We just bail.
+                return Result.success()
             }
 
             val collectives = collectiveRepository.observeCollectives().first()
@@ -50,7 +53,11 @@ class SyncWorker
                         collective.id,
                         pages.message,
                     )
-                    ApiResult.Unauthorised -> return Result.success()
+                    ApiResult.Unauthorised -> {
+                        // Same rationale as the early-exit above — let the
+                        // SessionManager 401-streak drive any sign-out.
+                        return Result.success()
+                    }
                     ApiResult.Conflict -> Unit // not meaningful on a GET
                     is ApiResult.Unexpected -> Timber.w(pages.cause, "Sync unexpected error on collective %d", collective.id)
                 }

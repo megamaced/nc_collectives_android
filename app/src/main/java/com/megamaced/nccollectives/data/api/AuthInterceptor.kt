@@ -41,8 +41,11 @@ class AuthInterceptor
 
             val response = chain.proceed(request)
 
-            if (response.code == 401) {
-                sessionManager.onUnauthorised()
+            // Only authenticated requests count toward the 401 streak — a
+            // public probe (login-poll, etc) returning 401 doesn't mean our
+            // token is dead.
+            if (credentials != null) {
+                sessionManager.onAuthenticatedResponse(response.code)
             }
 
             return response

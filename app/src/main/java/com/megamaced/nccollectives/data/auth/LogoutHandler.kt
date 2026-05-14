@@ -16,16 +16,22 @@ import javax.inject.Singleton
  * supervisor scope so the work completes even when the caller's
  * `viewModelScope` is torn down as the scaffold swaps to `LoginScreen`.
  *
- * Order of operations:
- *  1. Cancel every WorkManager job we own so a sync doesn't run mid-wipe.
- *  2. Wipe every Room table in a single transaction.
- *  3. Clear the user's DataStore preferences (recent searches, theme,
- *     cadence). Re-applying defaults on next login feels right; the
- *     alternative — keeping prefs across user accounts — leaks the
+ * Order of operations (B-5, post-audit):
+ *  1. `sessionManager.beginSignOut()` flips `authState` to
+ *     `Unauthenticated` and arms the 401-suppression flag so any
+ *     in-flight `SyncWorker` / `EditFlushWorker` requests that race
+ *     against the wipe can't trigger a second sign-out cycle. The
+ *     scaffold observes the state change and mounts `LoginScreen`
+ *     on the next frame — observers of Room flows are torn down
+ *     before the DB transaction below begins.
+ *  2. Cancel every WorkManager job we own so the workers don't fire
+ *     against the user's now-empty cache.
+ *  3. Wipe every Room table in a single transaction.
+ *  4. Clear the user's DataStore preferences (recent searches, theme,
+ *     cadence). Keeping prefs across user accounts would leak the
  *     previous user's recent searches.
- *  4. Clear the encrypted token store and flip `authState` to
- *     `Unauthenticated`. The scaffold's auth gate observes this and
- *     swaps in `LoginScreen` on the next frame.
+ *  5. `sessionManager.endSignOut()` clears the encrypted token store
+ *     and releases the 401-suppression flag.
  */
 @Singleton
 class LogoutHandler
@@ -39,6 +45,7 @@ class LogoutHandler
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun signOut() {
+            sessionManager.beginSignOut()
             scope.launch {
                 syncScheduler.cancelAll()
                 database.withTransaction {
@@ -48,7 +55,7 @@ class LogoutHandler
                     database.collectiveDao().clear()
                 }
                 userPreferences.clearAll()
-                sessionManager.logout()
+                sessionManager.endSignOut()
             }
         }
     }
