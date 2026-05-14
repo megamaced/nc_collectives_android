@@ -8,9 +8,9 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Status
 
-**v0.1.0** — first tagged debug build. Browse collectives, view markdown pages, edit and save (with offline queueing and conflict handling), search across pages, and favourite the ones you come back to. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+**v0.2.0** — settings, backlinks, tag creation, folder rename/move, undo on trash. The Collectives OCS REST API is now used for all page CRUD (create / rename / move / list-attachments / delete-attachment / tag creation) — the previous WebDAV implementations for those are gone. Real Room migrations replace the destructive fallback so cached pages, drafts, and queued edits survive schema bumps. The full Batch 17 audit fix-up list landed. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
 
-Releases are currently **debug builds only**: in-place upgrades aren't supported, so each new version needs an uninstall first. Signed release builds land in a later milestone.
+Releases are currently **debug builds only**: in-place upgrades from v0.1.x require an uninstall first (signing-key change). Subsequent v0.2.x debug builds upgrade in place. Signed release builds land in a later milestone.
 
 Tested only by the human reviewer against a personal Nextcloud instance. Expect rough edges; please file issues for anything that breaks.
 
