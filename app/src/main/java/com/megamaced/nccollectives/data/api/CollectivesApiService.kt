@@ -7,6 +7,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.PUT
 import retrofit2.http.Path
 
@@ -82,8 +83,14 @@ interface CollectivesApiService {
         @Path("collectiveId") collectiveId: Long,
     ): Envelope<PagesEnvelopeData>
 
-    /** Restore a trashed page to its original location. */
-    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/trash/{pageId}")
+    /**
+     * Restore a trashed page to its original location. The HTTP method is
+     * `PATCH` (not `PUT` or `POST`) per the live-tested `ENDPOINTS.md`
+     * reference from `collectives-mcp` — Collectives 4.4.0 routes this
+     * verb only. Prior to Batch 18g this used `@PUT` and restore was
+     * silently broken against current servers (B-28).
+     */
+    @PATCH("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/trash/{pageId}")
     suspend fun restoreTrashedPage(
         @Path("collectiveId") collectiveId: Long,
         @Path("pageId") pageId: Long,
