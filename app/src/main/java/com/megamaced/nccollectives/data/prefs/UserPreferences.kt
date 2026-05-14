@@ -13,8 +13,23 @@ import javax.inject.Singleton
 
 enum class ThemeMode { System, Light, Dark }
 
+/**
+ * Period for the periodic metadata sync. `Off` cancels the WorkManager
+ * job entirely so the user only sees one-shot foreground refreshes.
+ */
+enum class SyncCadence(
+    val hours: Long?,
+) {
+    Off(null),
+    Hourly(1),
+    SixHourly(6),
+    TwiceDaily(12),
+    Daily(24),
+}
+
 data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
+    val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
 )
 
@@ -32,6 +47,10 @@ class UserPreferences
             context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
         }
 
+        suspend fun setSyncCadence(cadence: SyncCadence) {
+            context.dataStore.edit { it[KEY_SYNC_CADENCE] = cadence.name }
+        }
+
         suspend fun pushRecentSearch(term: String) {
             val cleaned = term.trim()
             if (cleaned.isEmpty()) return
@@ -47,11 +66,19 @@ class UserPreferences
             context.dataStore.edit { it.remove(KEY_RECENT_SEARCHES) }
         }
 
+        /** Wipe everything — invoked by the sign-out flow before the auth state flips. */
+        suspend fun clearAll() {
+            context.dataStore.edit { it.clear() }
+        }
+
         private fun Preferences.toModel(): UserPrefs {
             val mode = this[KEY_THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.System
+            val cadence = this[KEY_SYNC_CADENCE]?.let { runCatching { SyncCadence.valueOf(it) }.getOrNull() }
+                ?: SyncCadence.SixHourly
             return UserPrefs(
                 themeMode = mode,
+                syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
             )
         }
@@ -60,7 +87,9 @@ class UserPreferences
 
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+            val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
+
             const val MAX_RECENT_SEARCHES = 10
 
             // U+001F (Unit Separator) — same rationale as the tag CSV in

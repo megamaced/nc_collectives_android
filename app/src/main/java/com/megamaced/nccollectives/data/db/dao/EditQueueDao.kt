@@ -27,4 +27,7 @@ interface EditQueueDao {
 
     @Query("DELETE FROM edit_queue WHERE pageId = :pageId")
     suspend fun deleteForPage(pageId: Long)
+
+    @Query("DELETE FROM edit_queue")
+    suspend fun clear()
 }

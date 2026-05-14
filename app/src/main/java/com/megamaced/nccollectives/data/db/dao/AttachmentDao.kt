@@ -41,4 +41,7 @@ interface AttachmentDao {
         pageId: Long,
         keepIds: List<String>,
     )
+
+    @Query("DELETE FROM attachments")
+    suspend fun clear()
 }
