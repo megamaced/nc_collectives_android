@@ -345,18 +345,11 @@ class PageRepositoryImpl
             }
             val result = apiCall { api.trashPage(entity.collectiveId, pageId) }
             if (result is ApiResult.Success) {
-                // Optimistically drop the local row; the server-side trash
-                // list is fetched on demand.
-                pageDao.deleteMissingForCollective(
-                    collectiveId = entity.collectiveId,
-                    keepIds = pageDao
-                        .observeForCollective(entity.collectiveId)
-                        .first()
-                        .map { it.id }
-                        .filter { it != pageId },
-                )
-                // The previous call removes everything except the keepIds —
-                // since we already excluded pageId, the entity is now gone.
+                // Drop the local row directly. The previous keep-list dance
+                // (observe → first → filter → deleteMissingForCollective)
+                // raced against parallel syncs and could drop unrelated rows
+                // — see B-9 in the audit findings.
+                pageDao.deleteById(pageId)
             }
             return result
         }

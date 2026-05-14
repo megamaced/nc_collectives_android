@@ -10,6 +10,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -53,13 +54,13 @@ class FavoritesViewModel
         init {
             // Make sure both caches have at least had one chance to refresh so
             // favorites appear even before the user has opened a collective.
+            // Previously this used `.collect { … return@collect }`, which
+            // doesn't unsubscribe — every favourite toggle re-triggered a
+            // refresh fan-out across every collective (B-8 / R-6).
             viewModelScope.launch {
                 collectiveRepository.refresh()
-                val current = collectiveRepository.observeCollectives()
-                current.collect { list ->
-                    list.forEach { c -> pageRepository.refresh(c.id) }
-                    return@collect
-                }
+                val list = collectiveRepository.observeCollectives().first()
+                list.forEach { c -> pageRepository.refresh(c.id) }
             }
         }
 

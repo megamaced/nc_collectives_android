@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -165,16 +166,12 @@ class PageViewModel
         fun loadMoveTargets() {
             val current = page.value ?: return
             viewModelScope.launch {
-                val pages = pageRepository.observePages(current.collectiveId)
-                // Take the first emission and use it; suitable since we just
-                // need a snapshot to show in the picker. Already filters out
-                // the page itself and any of its descendants would be flagged
-                // by the repository on attempt.
-                pages.collect { list ->
-                    _uiState.update {
-                        it.copy(movableTargets = list.filter { p -> p.id != pageId })
-                    }
-                    return@collect
+                // `.first()` takes a snapshot and unsubscribes — previously
+                // `.collect { … return@collect }` left a Room observer running
+                // for the screen's lifetime (B-7).
+                val list = pageRepository.observePages(current.collectiveId).first()
+                _uiState.update {
+                    it.copy(movableTargets = list.filter { p -> p.id != pageId })
                 }
             }
         }

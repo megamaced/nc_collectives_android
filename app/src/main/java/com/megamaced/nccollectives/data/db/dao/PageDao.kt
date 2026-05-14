@@ -93,6 +93,9 @@ interface PageDao {
         keepIds: List<Long>,
     )
 
+    @Query("DELETE FROM pages WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("DELETE FROM pages")
     suspend fun clear()
 }
