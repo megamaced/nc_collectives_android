@@ -103,17 +103,28 @@ class PageRepositoryImpl
                     SaveOutcome.Saved
                 }
                 is ApiResult.NetworkError -> {
-                    editQueueDao.upsert(
-                        EditQueueEntity(
-                            pageId = pageId,
-                            baseEtag = entity.bodyEtag,
-                            newBodyMd = newBody,
-                            queuedAt = System.currentTimeMillis(),
-                            status = "PENDING",
-                        ),
-                    )
-                    syncScheduler.flushEditsWhenOnline()
-                    SaveOutcome.Queued
+                    // If a prior save lost an etag race and is still
+                    // CONFLICTED, refuse to queue a fresh edit on top — the
+                    // `@Upsert` would clobber the conflict marker (B-19) and
+                    // the user would silently lose the original draft. The
+                    // existing draft is on the page row; the user resolves
+                    // it via the `ConflictBanner` before queueing more.
+                    val existing = editQueueDao.forPage(pageId)
+                    if (existing?.status == "CONFLICTED") {
+                        SaveOutcome.Conflict
+                    } else {
+                        editQueueDao.upsert(
+                            EditQueueEntity(
+                                pageId = pageId,
+                                baseEtag = entity.bodyEtag,
+                                newBodyMd = newBody,
+                                queuedAt = System.currentTimeMillis(),
+                                status = "PENDING",
+                            ),
+                        )
+                        syncScheduler.flushEditsWhenOnline()
+                        SaveOutcome.Queued
+                    }
                 }
                 ApiResult.Conflict -> {
                     pageDao.updateDraft(pageId, newBody)
@@ -423,8 +434,16 @@ class PageRepositoryImpl
             } else {
                 entity.bodyMd
             }
-            val separator = if (baseBody.isEmpty() || baseBody.endsWith('\n')) "" else "\n"
-            val newBody = baseBody + separator + text
+            // Two newlines, not one — otherwise an append to a body ending
+            // in `# Heading` produces `# Heading\nshared text` which parses
+            // *inside* the heading (B-16). The blank line forces a fresh
+            // markdown block.
+            val newBody = when {
+                baseBody.isEmpty() -> text
+                baseBody.endsWith("\n\n") -> baseBody + text
+                baseBody.endsWith("\n") -> baseBody + "\n" + text
+                else -> baseBody + "\n\n" + text
+            }
             return saveBody(pageId, newBody)
         }
 

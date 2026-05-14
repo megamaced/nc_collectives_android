@@ -41,11 +41,12 @@ class SearchRepositoryImpl
         private suspend fun SearchEntryDto.toHit(): SearchHit {
             val pageIdFromAttr = attributes["fileId"]?.toLongOrNull()
             val pageIdFromUrl = resourceUrl?.let { extractFileIdFromQuery(it) }
-            val resolvedId = pageIdFromAttr ?: pageIdFromUrl
-            // Fall back: scan the local cache for an exact title match. Works
-            // for the common case where the page is already cached locally.
-            val viaTitle = if (resolvedId == null) pageDao.findIdByTitle(title) else null
-            val pageId = resolvedId ?: viaTitle
+            // No cross-collective title fallback (B-17). Two collectives can
+            // hold same-titled pages, and a global `findIdByTitle` lookup
+            // would navigate to the wrong one. If the server didn't give us
+            // a file id we just leave [SearchHit.pageId] null — the result
+            // still shows title + snippet but isn't tappable.
+            val pageId = pageIdFromAttr ?: pageIdFromUrl
             val collectiveId = pageId?.let { pageDao.getById(it)?.collectiveId }
             return SearchHit(
                 title = title,

@@ -9,8 +9,10 @@ import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,10 +39,21 @@ class SettingsViewModel
     ) : ViewModel() {
         val uiState: StateFlow<SettingsUiState> = userPreferences.flow
             .map { toState(it) }
+            // `toState` reads `EncryptedSharedPreferences` on disk via
+            // `tokenStore.getCredentials()`. Force it onto Dispatchers.IO
+            // so the disk hit doesn't run on the Compose collector's
+            // dispatcher (Main) — B-21. The `initialValue` below uses
+            // `account = null` for the same reason: avoids a synchronous
+            // disk read at VM construction.
+            .flowOn(Dispatchers.IO)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-                initialValue = toState(UserPrefs()),
+                initialValue = SettingsUiState(
+                    account = null,
+                    themeMode = ThemeMode.System,
+                    syncCadence = SyncCadence.SixHourly,
+                ),
             )
 
         fun setThemeMode(mode: ThemeMode) {

@@ -187,6 +187,7 @@ class AttachmentRepositoryImpl
             val cleaned = name
                 .filter { ch -> ch.code >= 0x20 && ch !in INVALID_FILENAME_CHARS }
                 .trim()
+                .trimStart('.') // S-5: refuse `.`, `..`, leading-dot names (`.htaccess` etc.)
                 .ifEmpty { "attachment" }
             // Cap at 200 chars — Nextcloud's hard cap is 250 bytes but UTF-8
             // headroom keeps us safe.

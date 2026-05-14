@@ -211,8 +211,15 @@ class ShareCaptureViewModel
             payload: SharePayload,
         ) {
             payload.images.forEach { uri ->
-                val name = displayNameFor(uri) ?: "share-${System.currentTimeMillis()}.jpg"
                 val type = context.contentResolver.getType(uri)
+                // S-5: refuse non-image Uris. The manifest only declares
+                // image/* + text/plain intent filters, so the OS routes
+                // matching senders only — but a malicious app can still
+                // target the activity explicitly with any mime.
+                if (type != null && !type.startsWith("image/")) {
+                    return@forEach
+                }
+                val name = displayNameFor(uri) ?: "share-${System.currentTimeMillis()}.jpg"
                 attachmentRepository.enqueueUpload(pageId, uri, name, type)
             }
         }

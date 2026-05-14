@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Refuses cleartext HTTP everywhere (S-1). App-password Basic-auth over
+  HTTP is a network-sniffing target; the LoginViewModel rejects
+  http:// hosts before they're stored, this is belt-and-braces in case
+  a future code path tries to build a cleartext URL by hand.
+
+  Self-signed certs and private CAs aren't allowed here. Users on
+  self-hosted Nextcloud behind a private CA should install the cert
+  to the system trust store (or, for Android 7+, ship a debug build
+  with `debug-overrides`).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

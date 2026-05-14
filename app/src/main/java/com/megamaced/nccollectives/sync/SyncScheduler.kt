@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -38,12 +39,16 @@ class SyncScheduler
             .build()
 
         init {
-            // Reschedule the periodic job whenever the user changes their
-            // cadence preference. WorkManager handles the "Off" case by
-            // cancelling the unique work name.
+            // Reschedule the periodic job whenever the user *changes* their
+            // cadence preference. `drop(1)` skips the initial replay
+            // emission from DataStore (B-15) — bootstrap is handled by the
+            // explicit `ensurePeriodicSync()` call at process start. Without
+            // the drop, every cold start would re-emit the same cadence and
+            // re-schedule with `UPDATE`, resetting the next-run timer.
             scope.launch {
                 userPreferences.flow
                     .distinctUntilChangedBy { it.syncCadence }
+                    .drop(1)
                     .collect { prefs ->
                         applyCadence(prefs.syncCadence, replaceExisting = true)
                     }

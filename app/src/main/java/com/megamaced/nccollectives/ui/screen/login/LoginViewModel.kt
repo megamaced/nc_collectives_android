@@ -46,7 +46,22 @@ class LoginViewModel
                 return
             }
 
-            val normalisedHost = if (!host.startsWith("http")) "https://$host" else host
+            // S-1: refuse `http://` outright. App-password Basic-auth over
+            // cleartext is exfil bait on any shared network; the manifest's
+            // `network_security_config.xml` also denies cleartext at the
+            // platform level, but we surface a clear error here rather than
+            // letting the underlying connection fail confusingly.
+            if (host.startsWith("http://", ignoreCase = true)) {
+                _uiState.update {
+                    it.copy(error = "HTTPS is required — drop the http:// prefix.")
+                }
+                return
+            }
+            val normalisedHost = if (!host.startsWith("https://", ignoreCase = true)) {
+                "https://$host"
+            } else {
+                host
+            }
 
             _uiState.update { it.copy(isLoading = true, error = null) }
 
