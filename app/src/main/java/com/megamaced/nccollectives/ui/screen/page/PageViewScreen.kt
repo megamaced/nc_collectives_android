@@ -213,6 +213,7 @@ internal fun PageViewScreen(
             selectedTagNames = page?.tags?.toSet().orEmpty(),
             isLoading = ui.isLoadingTags,
             onToggle = viewModel::togglePageTag,
+            onCreate = viewModel::createTag,
             onDismiss = { showTagPicker = false },
         )
     }

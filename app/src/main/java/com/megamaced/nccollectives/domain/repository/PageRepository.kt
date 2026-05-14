@@ -47,6 +47,17 @@ interface PageRepository {
     /** List the tags defined in [collectiveId]. */
     suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<com.megamaced.nccollectives.domain.model.PageTag>>
 
+    /**
+     * Create a new tag on [collectiveId] (OCS-5, Batch 18k). [color] is
+     * the 6-hex display colour without a `#` prefix. Returns the new
+     * tag with its server-assigned id.
+     */
+    suspend fun createTag(
+        collectiveId: Long,
+        name: String,
+        color: String,
+    ): ApiResult<com.megamaced.nccollectives.domain.model.PageTag>
+
     /** Add or remove a single tag. Optimistic local update, rolls back on failure. */
     suspend fun togglePageTag(
         pageId: Long,

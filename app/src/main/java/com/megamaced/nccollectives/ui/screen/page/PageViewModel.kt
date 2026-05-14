@@ -156,6 +156,42 @@ class PageViewModel
             }
         }
 
+        /**
+         * Create a tag on the current page's collective and immediately
+         * attach it to the page (OCS-5, Batch 18k). The colour is fixed
+         * to the brand slate-blue — Collectives uses the colour only as
+         * a visual marker and the tag picker doesn't surface it yet.
+         */
+        fun createTag(name: String) {
+            val current = page.value ?: return
+            val cleaned = name.trim()
+            if (cleaned.isEmpty()) return
+            viewModelScope.launch {
+                val createResult = pageRepository.createTag(
+                    collectiveId = current.collectiveId,
+                    name = cleaned,
+                    color = NEW_TAG_COLOUR,
+                )
+                when (createResult) {
+                    is ApiResult.Success -> {
+                        val created = createResult.data
+                        _uiState.update { state ->
+                            val nextAvailable = (state.availableTags + created)
+                                .distinctBy { it.id }
+                                .sortedBy { it.name.lowercase() }
+                            state.copy(availableTags = nextAvailable)
+                        }
+                        // Attach the new tag to the current page so the user
+                        // doesn't have to click again.
+                        togglePageTag(created, add = true)
+                    }
+                    else -> _uiState.update {
+                        it.copy(statusMessage = createResult.userMessage() ?: "Couldn't create tag")
+                    }
+                }
+            }
+        }
+
         fun renamePage(newTitle: String) {
             viewModelScope.launch {
                 val result = pageRepository.renamePage(pageId, newTitle)
@@ -251,5 +287,12 @@ class PageViewModel
 
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L
+
+            /**
+             * Default colour for tags created in-app — 6-hex without `#`
+             * per `ENDPOINTS.md` gotcha #2. Roughly matches the brand
+             * slate-blue (`0xFF38618C` in [com.megamaced.nccollectives.ui.theme.Color]).
+             */
+            const val NEW_TAG_COLOUR = "38618c"
         }
     }

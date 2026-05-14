@@ -4,6 +4,7 @@ import com.megamaced.nccollectives.data.api.dto.AttachmentsEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PageEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
+import com.megamaced.nccollectives.data.api.dto.TagEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.TagsEnvelopeData
 import retrofit2.http.DELETE
 import retrofit2.http.Field
@@ -104,6 +105,20 @@ interface CollectivesApiService {
     suspend fun listTags(
         @Path("collectiveId") collectiveId: Long,
     ): Envelope<TagsEnvelopeData>
+
+    /**
+     * Create a new tag on [collectiveId]. **Color must be 6 hex chars
+     * without a `#` prefix** (e.g. `"2d7d46"`) — `ENDPOINTS.md` gotcha
+     * #2: the column is `varchar(6)`, sending `"#2d7d46"` causes a DB
+     * overflow. Returns the created tag with its server-assigned id.
+     */
+    @FormUrlEncoded
+    @POST("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/tags")
+    suspend fun createTag(
+        @Path("collectiveId") collectiveId: Long,
+        @Field("name") name: String,
+        @Field("color") color: String,
+    ): Envelope<TagEnvelopeData>
 
     @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/tags/{tagId}")
     suspend fun addPageTag(

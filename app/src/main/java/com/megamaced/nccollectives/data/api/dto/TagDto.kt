@@ -18,3 +18,9 @@ data class TagDto(
 data class TagsEnvelopeData(
     val tags: List<TagDto> = emptyList(),
 )
+
+/** Single-tag envelope returned by `POST /tags` (create) and `PUT /tags/{id}`. */
+@Serializable
+data class TagEnvelopeData(
+    val tag: TagDto,
+)

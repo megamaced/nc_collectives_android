@@ -181,6 +181,17 @@ class PageRepositoryImpl
                     .ocs.data.tags
             }.mapSuccess { tags -> tags.map { PageTag(id = it.id, name = it.name) } }
 
+        override suspend fun createTag(
+            collectiveId: Long,
+            name: String,
+            color: String,
+        ): ApiResult<PageTag> =
+            apiCall {
+                api
+                    .createTag(collectiveId, name, color)
+                    .ocs.data.tag
+            }.mapSuccess { dto -> PageTag(id = dto.id, name = dto.name) }
+
         override suspend fun togglePageTag(
             pageId: Long,
             tagId: Long,
