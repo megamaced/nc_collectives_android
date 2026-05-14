@@ -39,7 +39,12 @@ internal fun NcCollectivesNavHost(
                 onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
             )
         }
-        composable(Destination.Favorites.route) { FavoritesScreen(innerPadding) }
+        composable(Destination.Favorites.route) {
+            FavoritesScreen(
+                innerPadding = innerPadding,
+                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+            )
+        }
         composable(Destination.Settings.route) { SettingsScreen(innerPadding) }
         composable(
             route = Destination.PageTree.route,

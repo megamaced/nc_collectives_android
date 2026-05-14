@@ -22,13 +22,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * A node in the rendered tree. [depth] is 0 for top-level pages and grows
- * by one per parent.
+ * A node in the rendered tree. [hasChildren] toggles the chevron; depth is
+ * intentionally omitted — the tree is rendered flat (no indentation).
  */
 data class PageNode(
     val page: Page,
-    val depth: Int,
     val hasChildren: Boolean,
+    val isFavorite: Boolean,
 )
 
 data class PageTreeUiState(
@@ -36,6 +36,9 @@ data class PageTreeUiState(
     val errorMessage: String? = null,
     val collectiveName: String = "",
     val expanded: Set<Long> = emptySet(),
+    val statusMessage: String? = null,
+    /** Pages eligible as the parent for a new top-level "Add page" — folder pages and the landing page. */
+    val parentChoices: List<Page> = emptyList(),
 )
 
 @HiltViewModel
@@ -51,14 +54,20 @@ class PageTreeViewModel
         )
 
         private val pagesFlow = pageRepository.observePages(collectiveId)
+        private val favoritesFlow = collectiveRepository
+            .observeCollectives()
+            .map { list -> list.firstOrNull { it.id == collectiveId }?.favoritePageIds.orEmpty() }
 
         private val _uiState = MutableStateFlow(PageTreeUiState())
         val uiState: StateFlow<PageTreeUiState> = _uiState.asStateFlow()
 
-        /** Flat tree projection, recomputed as pages or the expanded set change. */
         val nodes: StateFlow<List<PageNode>> =
-            combine(pagesFlow, _uiState.map { it.expanded }) { pages, expanded ->
-                buildVisibleNodes(pages, expanded)
+            combine(
+                pagesFlow,
+                _uiState.map { it.expanded },
+                favoritesFlow,
+            ) { pages, expanded, favoriteIds ->
+                buildVisibleNodes(pages, expanded, favoriteIds)
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -71,6 +80,14 @@ class PageTreeViewModel
                     collectives.firstOrNull { it.id == collectiveId }?.let { c ->
                         _uiState.update { it.copy(collectiveName = c.name) }
                     }
+                }
+            }
+            viewModelScope.launch {
+                pagesFlow.collect { pages ->
+                    val choices = pages
+                        .filter { it.parentId == 0L || it.fileName.equals("Readme.md", ignoreCase = true) }
+                        .sortedBy { it.title.lowercase() }
+                    _uiState.update { it.copy(parentChoices = choices) }
                 }
             }
             refresh()
@@ -98,30 +115,72 @@ class PageTreeViewModel
             }
         }
 
+        fun toggleFavorite(
+            pageId: Long,
+            currentlyFavorite: Boolean,
+        ) {
+            viewModelScope.launch {
+                val result = collectiveRepository.toggleFavorite(
+                    collectiveId = collectiveId,
+                    pageId = pageId,
+                    favorite = !currentlyFavorite,
+                )
+                if (result !is ApiResult.Success) {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
+        fun createPage(
+            parentPageId: Long,
+            title: String,
+        ) {
+            val cleaned = title.trim()
+            if (cleaned.isEmpty()) return
+            viewModelScope.launch {
+                val result = pageRepository.createPage(
+                    collectiveId = collectiveId,
+                    parentPageId = parentPageId,
+                    title = cleaned,
+                    body = "",
+                )
+                _uiState.update {
+                    it.copy(
+                        statusMessage = if (result is ApiResult.Success) "Page created" else result.userMessage(),
+                        // Auto-expand the parent so the new page is visible.
+                        expanded = if (result is ApiResult.Success) it.expanded + parentPageId else it.expanded,
+                    )
+                }
+            }
+        }
+
+        fun dismissStatus() {
+            _uiState.update { it.copy(statusMessage = null) }
+        }
+
         private fun buildVisibleNodes(
             pages: List<Page>,
             expanded: Set<Long>,
+            favoriteIds: Set<Long>,
         ): List<PageNode> {
-            // Collectives' page tree: every page has a `parentId`. Top-level
-            // pages have `parentId == 0`. Children are sorted by title to
-            // keep ordering stable across refreshes.
             val byParent: Map<Long, List<Page>> = pages
                 .groupBy { it.parentId }
                 .mapValues { (_, list) -> list.sortedBy { it.title.lowercase() } }
 
             val out = mutableListOf<PageNode>()
 
-            fun walk(
-                parent: Long,
-                depth: Int,
-            ) {
+            fun walk(parent: Long) {
                 for (child in byParent[parent].orEmpty()) {
                     val hasChildren = byParent[child.id]?.isNotEmpty() == true
-                    out += PageNode(child, depth, hasChildren)
-                    if (hasChildren && child.id in expanded) walk(child.id, depth + 1)
+                    out += PageNode(
+                        page = child,
+                        hasChildren = hasChildren,
+                        isFavorite = child.id in favoriteIds,
+                    )
+                    if (hasChildren && child.id in expanded) walk(child.id)
                 }
             }
-            walk(parent = 0L, depth = 0)
+            walk(parent = 0L)
             return out
         }
 
