@@ -21,15 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.Page
-import com.megamaced.nccollectives.domain.model.canHoldChildren
 
 /**
- * Pick a new parent for the current page. Only folder pages (`fileName ==
- * Readme.md`) and the collective's landing page (parentId == 0) are valid
- * targets; leaf pages can't have children.
- *
- * Cross-collective moves aren't supported in Batch 11; targets are filtered
- * to the page's own collective by the caller.
+ * Pick a new parent for the current page. With OCS-2 (Batch 18i) any page
+ * is a valid target — the server promotes a leaf parent to a folder
+ * automatically when it gains a child. Cross-collective moves are out of
+ * scope; targets are filtered to the page's own collective by the caller.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +36,6 @@ fun MovePageSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val folderTargets = targets.filter { it.canHoldChildren() }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -49,15 +45,15 @@ fun MovePageSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Move page to…", style = MaterialTheme.typography.titleMedium)
-            if (folderTargets.isEmpty()) {
+            if (targets.isEmpty()) {
                 Text(
-                    text = "No folder pages available in this collective.",
+                    text = "No other pages in this collective.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-                    items(folderTargets, key = { it.id }) { page ->
+                    items(targets, key = { it.id }) { page ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

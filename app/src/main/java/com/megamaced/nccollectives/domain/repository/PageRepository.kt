@@ -56,9 +56,9 @@ interface PageRepository {
     ): ApiResult<Unit>
 
     /**
-     * Rename a leaf page within its current parent. Folder pages (those with
-     * children) return [ApiResult.Unexpected] with a descriptive message —
-     * full folder rename isn't supported yet.
+     * Rename a page within its current parent. Works for both leaf and
+     * folder pages — the server handles the directory rename atomically
+     * (Batch 18i, OCS-2).
      */
     suspend fun renamePage(
         pageId: Long,
@@ -66,8 +66,10 @@ interface PageRepository {
     ): ApiResult<Unit>
 
     /**
-     * Move a leaf page under [newParentPageId] in the same collective.
-     * Folder pages and cross-collective moves aren't supported yet.
+     * Move a page under [newParentPageId] in the same collective. Works
+     * for both leaf and folder pages; the server promotes a leaf
+     * destination to a folder transparently (Batch 18i, OCS-2).
+     * Cross-collective moves are out of scope.
      */
     suspend fun movePage(
         pageId: Long,
@@ -75,14 +77,11 @@ interface PageRepository {
     ): ApiResult<Unit>
 
     /**
-     * Create a new leaf page under [parentPageId] (must be a folder page
-     * — i.e. its file is `Readme.md`). PUTs the body over WebDAV and then
-     * refreshes the page list so the new id appears locally. Returns the
-     * resolved domain [com.megamaced.nccollectives.domain.model.Page] on
-     * success.
-     *
-     * Promotion of a leaf parent into a folder isn't supported yet —
-     * callers must pick an existing folder.
+     * Create a new page under [parentPageId]. The server handles
+     * filesystem naming, indexing, and leaf-to-folder promotion of the
+     * parent atomically (Batch 18h, OCS-1). If [body] is non-empty it's
+     * written as the new page's markdown via WebDAV after the OCS POST
+     * succeeds. Returns the resolved domain page on success.
      */
     suspend fun createPage(
         collectiveId: Long,

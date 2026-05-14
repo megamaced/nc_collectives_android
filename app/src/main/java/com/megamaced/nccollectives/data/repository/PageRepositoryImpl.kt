@@ -217,34 +217,28 @@ class PageRepositoryImpl
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-            if (entity.isFolderPage()) {
-                return ApiResult.Unexpected(
-                    UnsupportedOperationException("Renaming folder pages isn't supported yet"),
-                )
-            }
             val cleaned = try {
                 sanitiseTitleForFilename(newTitle)
             } catch (e: IllegalArgumentException) {
                 return ApiResult.Unexpected(e)
             }
             if (cleaned == entity.title) return ApiResult.Success(Unit)
-            val newFileName = "$cleaned.md"
-            val previousTitle = entity.title
-            val previousFileName = entity.fileName
-            // Optimistic local update.
-            pageDao.updateTitleAndPath(pageId, cleaned, newFileName, entity.filePath)
-            val result = bodyService.moveFile(
-                collectivePath = entity.collectivePath,
-                filePath = entity.filePath,
-                fileName = previousFileName,
-                destCollectivePath = entity.collectivePath,
-                destFilePath = entity.filePath,
-                destFileName = newFileName,
-            )
-            if (result !is ApiResult.Success) {
-                pageDao.updateTitleAndPath(pageId, previousTitle, previousFileName, entity.filePath)
+            // OCS-2: `PUT /pages/{id}` body `{title}` renames atomically,
+            // including the directory in the folder-page case. Replaces
+            // the previous WebDAV MOVE + manual Room repath, lifts the
+            // folder-page refusal, and surfaces structured server errors
+            // for the rename-collision case (B-20).
+            val result = apiCall {
+                api.updatePage(entity.collectiveId, pageId, mapOf("title" to cleaned))
             }
-            return result
+            if (result is ApiResult.Success) {
+                // Refresh the collective to pick up any cascading filePath
+                // changes on descendants (folder rename moves the whole
+                // directory) and to reconcile if the server changed the
+                // page's id during the move (gotcha #16).
+                refresh(entity.collectiveId)
+            }
+            return result.mapSuccess { }
         }
 
         override suspend fun createPage(
@@ -429,45 +423,28 @@ class PageRepositoryImpl
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-            if (entity.isFolderPage()) {
-                return ApiResult.Unexpected(
-                    UnsupportedOperationException("Moving folder pages isn't supported yet"),
-                )
-            }
             val newParent = pageDao.getById(newParentPageId) ?: return ApiResult.Unexpected(
                 IllegalStateException("Target parent $newParentPageId not cached"),
             )
             if (newParent.collectiveId != entity.collectiveId) {
+                // Cross-collective moves use a separate `PUT /pages/{id}/to/{newCollectiveId}`
+                // endpoint. Out of scope for now.
                 return ApiResult.Unexpected(
-                    UnsupportedOperationException("Cross-collective moves aren't supported yet"),
+                    UnsupportedOperationException("Cross-collective moves aren't supported"),
                 )
             }
-            // Children of a folder page live in that folder's filePath (the
-            // directory containing its Readme.md). Children of the landing
-            // page live at filePath "" — the collective root.
-            val newFilePath = when {
-                newParent.parentId == 0L -> "" // landing page → collective root
-                newParent.isFolderPage() -> newParent.filePath
-                else -> return ApiResult.Unexpected(
-                    UnsupportedOperationException("Target page isn't a folder"),
-                )
+            if (entity.parentId == newParentPageId) return ApiResult.Success(Unit)
+            // OCS-2: `PUT /pages/{id}` body `{parentId}` moves the page
+            // (and its directory, if it's a folder page) atomically.
+            // Server handles leaf-to-folder promotion of the new parent,
+            // so the previous `isFolderPage()` guard on the target is
+            // gone — same as createPage in 18h.
+            val result = apiCall {
+                api.updatePage(entity.collectiveId, pageId, mapOf("parentId" to newParentPageId.toString()))
             }
-            if (newFilePath == entity.filePath) return ApiResult.Success(Unit)
-            val previousParentId = entity.parentId
-            val previousFilePath = entity.filePath
-            // Optimistic.
-            pageDao.updateParentAndPath(pageId, newParentPageId, newFilePath)
-            val result = bodyService.moveFile(
-                collectivePath = entity.collectivePath,
-                filePath = previousFilePath,
-                fileName = entity.fileName,
-                destCollectivePath = entity.collectivePath,
-                destFilePath = newFilePath,
-                destFileName = entity.fileName,
-            )
-            if (result !is ApiResult.Success) {
-                pageDao.updateParentAndPath(pageId, previousParentId, previousFilePath)
+            if (result is ApiResult.Success) {
+                refresh(entity.collectiveId)
             }
-            return result
+            return result.mapSuccess { }
         }
     }

@@ -56,7 +56,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
-import com.megamaced.nccollectives.domain.model.canHoldChildren
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -262,15 +261,16 @@ private fun NewPageSection(
     )
     Text("Parent page", style = MaterialTheme.typography.labelMedium)
     HorizontalDivider()
-    val folderTargets = pages.filter { it.canHoldChildren() }
-    if (folderTargets.isEmpty()) {
+    if (pages.isEmpty()) {
         Text(
-            text = "No folder pages in this collective. Promote a leaf to a folder in the web UI first.",
+            text = "No pages in this collective yet.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     } else {
-        folderTargets.forEach { page ->
+        pages.forEach { page ->
+            // Any page is a valid parent — the server promotes a leaf
+            // parent to a folder when it gains a child (Batch 18h).
             PageSelectableRow(
                 page = page,
                 selected = page.id == selectedParentId,

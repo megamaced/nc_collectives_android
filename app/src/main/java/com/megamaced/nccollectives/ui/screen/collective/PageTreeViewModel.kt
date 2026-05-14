@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
-import com.megamaced.nccollectives.domain.model.canHoldChildren
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
@@ -85,9 +84,10 @@ class PageTreeViewModel
             }
             viewModelScope.launch {
                 pagesFlow.collect { pages ->
-                    val choices = pages
-                        .filter { it.canHoldChildren() }
-                        .sortedBy { it.title.lowercase() }
+                    // Every page is a valid parent — the server promotes a
+                    // leaf parent to a folder when it gains a child (Batch
+                    // 18h / 18i OCS migration).
+                    val choices = pages.sortedBy { it.title.lowercase() }
                     _uiState.update { it.copy(parentChoices = choices) }
                 }
             }

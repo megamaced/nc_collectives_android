@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.TagsEnvelopeData
 import retrofit2.http.DELETE
 import retrofit2.http.Field
+import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.PATCH
@@ -56,6 +57,26 @@ interface CollectivesApiService {
         @Path("collectiveId") collectiveId: Long,
         @Path("parentPageId") parentPageId: Long,
         @Field("title") title: String,
+    ): Envelope<PageEnvelopeData>
+
+    /**
+     * One-stop rename / move / copy / reorder endpoint. The [params] map
+     * accepts any combination of `title`, `parentId`, `index`, `copy`
+     * (per spec). Use specific helpers below for typed call sites; the
+     * `@FieldMap` form keeps `null` fields out of the form body without
+     * needing separate Retrofit methods.
+     *
+     * Note (spec gotcha #16): a move/rename can change the page's
+     * Nextcloud file id. `GET /pages/{id}` may briefly 404 against the
+     * new id until reindex. Callers should refresh the collective via
+     * `listPages` to reconcile.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}")
+    suspend fun updatePage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @FieldMap params: Map<String, String>,
     ): Envelope<PageEnvelopeData>
 
     /**
