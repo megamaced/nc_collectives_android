@@ -32,6 +32,13 @@ data class AttachmentEntity(
     /** content:// URI to read bytes from for pending uploads. Null once REMOTE. */
     val localUriString: String?,
     val lastSyncedAt: Long,
+    /**
+     * Server-assigned id from the OCS attachments endpoint (Batch 18j).
+     * Null for rows that haven't been listed yet — pending uploads and
+     * pre-OCS-migration cached rows. Populated by `refresh()` after a
+     * successful list; used by [deleteAttachment] for stable deletion.
+     */
+    val serverAttachmentId: Long? = null,
 ) {
     companion object {
         const val STATUS_REMOTE = "REMOTE"

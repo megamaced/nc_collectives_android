@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.api
 
+import com.megamaced.nccollectives.data.api.dto.AttachmentsEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PageEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
@@ -152,5 +153,33 @@ interface CollectivesApiService {
     suspend fun purgeTrashedPage(
         @Path("collectiveId") collectiveId: Long,
         @Path("pageId") pageId: Long,
+    )
+
+    /**
+     * Per-page attachments metadata. Replaces the WebDAV PROPFIND in
+     * Batch 12 (OCS-3). Returns typed JSON; server-side ids let
+     * [deleteAttachment] target by stable id rather than user-typed
+     * filename.
+     *
+     * Spec gotcha #9: response has no `pageId` field — callers track
+     * it from their own context.
+     */
+    @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/attachments")
+    suspend fun listAttachments(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+    ): Envelope<AttachmentsEnvelopeData>
+
+    /**
+     * Delete an attachment by its server id (OCS-4). More robust than
+     * the previous WebDAV DELETE by filename — survives renames.
+     */
+    @DELETE(
+        "ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/attachments/{attachmentId}",
+    )
+    suspend fun deleteAttachment(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @Path("attachmentId") attachmentId: Long,
     )
 }

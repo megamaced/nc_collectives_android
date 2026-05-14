@@ -3,7 +3,9 @@ package com.megamaced.nccollectives.data.repository
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
@@ -19,6 +21,7 @@ import javax.inject.Singleton
 class AttachmentRepositoryImpl
     @Inject
     constructor(
+        private val api: CollectivesApiService,
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
         private val bodyService: PageBodyService,
@@ -32,27 +35,29 @@ class AttachmentRepositoryImpl
         override suspend fun refresh(pageId: Long): ApiResult<Unit> {
             val page = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-            val dir = attachmentsDirectoryFor(pageId)
-            val result = bodyService.propfind(
-                collectivePath = page.collectivePath,
-                filePath = page.filePath,
-                directoryName = dir,
-            )
+            // OCS-3: typed JSON list replaces the WebDAV PROPFIND + XML
+            // parse in Batch 12. The server's `id` field is the stable
+            // attachment id used by [delete] (OCS-4).
+            val result = apiCall { api.listAttachments(page.collectiveId, pageId) }
             return when (result) {
                 is ApiResult.Success -> {
                     val now = System.currentTimeMillis()
-                    val remoteEntities = result.data.map { entry ->
+                    val remoteEntities = result.data.ocs.data.attachments.map { dto ->
                         AttachmentEntity(
-                            id = AttachmentEntity.key(pageId, entry.displayName),
+                            id = AttachmentEntity.key(pageId, dto.name),
                             pageId = pageId,
-                            fileName = entry.displayName,
-                            contentType = entry.contentType,
-                            size = entry.size,
-                            lastModifiedMs = entry.lastModifiedMs,
-                            etag = entry.etag,
+                            fileName = dto.name,
+                            contentType = dto.mimetype,
+                            size = dto.filesize,
+                            // OCS returns seconds since epoch; Room/UI use millis.
+                            lastModifiedMs = dto.timestamp * 1000L,
+                            // OCS doesn't return an ETag; attachments don't use
+                            // If-Match anywhere so null is fine.
+                            etag = null,
                             status = AttachmentEntity.STATUS_REMOTE,
                             localUriString = null,
                             lastSyncedAt = now,
+                            serverAttachmentId = dto.id,
                         )
                     }
                     attachmentDao.upsertAll(remoteEntities)
@@ -102,12 +107,21 @@ class AttachmentRepositoryImpl
                 attachmentDao.delete(key)
                 return ApiResult.Success(Unit)
             }
-            val dir = attachmentsDirectoryFor(pageId)
-            val result = bodyService.deleteFile(
-                collectivePath = page.collectivePath,
-                filePath = combinePath(page.filePath, dir),
-                fileName = fileName,
-            )
+            // OCS-4: delete by server-assigned id (Batch 18j). Replaces the
+            // previous WebDAV DELETE by user-typed filename. If the row
+            // doesn't have a serverId cached yet (e.g. user uploaded but
+            // hasn't refreshed the attachments screen since), refresh
+            // inline to populate it before deleting.
+            var serverId = existing?.serverAttachmentId
+            if (serverId == null) {
+                val refreshed = refresh(pageId)
+                if (refreshed !is ApiResult.Success) return refreshed
+                serverId = attachmentDao.getById(key)?.serverAttachmentId
+                    ?: return ApiResult.Unexpected(
+                        IllegalStateException("Attachment $fileName not found on server"),
+                    )
+            }
+            val result = apiCall { api.deleteAttachment(page.collectiveId, pageId, serverId) }
             if (result is ApiResult.Success) {
                 attachmentDao.delete(key)
             }
