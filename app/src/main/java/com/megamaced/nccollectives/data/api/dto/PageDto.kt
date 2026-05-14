@@ -40,3 +40,13 @@ data class PageDto(
 data class PagesEnvelopeData(
     val pages: List<PageDto> = emptyList(),
 )
+
+/**
+ * Single-page envelope returned by endpoints that operate on one page —
+ * `POST /pages/{parentId}` (create), `PUT /pages/{id}` (rename/move/copy),
+ * `GET /pages/{id}` (single fetch). Spec uses key `page` (singular).
+ */
+@Serializable
+data class PageEnvelopeData(
+    val page: PageDto,
+)

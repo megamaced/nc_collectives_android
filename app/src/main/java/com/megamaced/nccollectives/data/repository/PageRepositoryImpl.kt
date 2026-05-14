@@ -19,9 +19,7 @@ import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -260,79 +258,72 @@ class PageRepositoryImpl
             if (parent.collectiveId != collectiveId) {
                 return ApiResult.Unexpected(IllegalStateException("Parent belongs to a different collective"))
             }
-            if (!parent.isFolderPage()) {
-                return ApiResult.Unexpected(
-                    UnsupportedOperationException(
-                        "Pick a folder page or the landing page — new pages can only nest under a folder",
-                    ),
-                )
-            }
             val cleaned = try {
                 sanitiseTitleForFilename(title)
             } catch (e: IllegalArgumentException) {
                 return ApiResult.Unexpected(e)
             }
-            val newFileName = "$cleaned.md"
-            // Children of a folder page live in that folder's filePath. For
-            // the landing page (parentId == 0) that's the collective root,
-            // i.e. filePath == "".
-            val childFilePath = parent.filePath
-            // Refuse to silently overwrite an existing sibling — WebDAV PUT
-            // doesn't carry an If-None-Match in our wrapper, and a clash is
-            // almost always user error rather than intent.
-            val existingSibling = pageDao.observeForCollective(collectiveId).first().firstOrNull {
-                it.parentId == parentPageId && it.title.equals(cleaned, ignoreCase = true)
+            // OCS-1: `POST /pages/{parentId}` handles indexing, naming, and
+            // folder promotion atomically on the server. Replaces the
+            // previous WebDAV PUT + refresh-poll dance — which raced under
+            // a cold cache (B-3) and refused leaf parents because we didn't
+            // know how to promote them. The server promotes a leaf parent
+            // to a folder transparently, so the previous `isFolderPage()`
+            // guard is gone.
+            val createResult = apiCall {
+                api.createPage(collectiveId, parentPageId, cleaned)
             }
-            if (existingSibling != null) {
-                return ApiResult.Unexpected(
-                    IllegalStateException("A page titled \"$cleaned\" already exists under this parent"),
-                )
+            val createdDto = when (createResult) {
+                is ApiResult.Success -> createResult.data.ocs.data.page
+                is ApiResult.NetworkError -> return createResult
+                is ApiResult.HttpError -> return createResult
+                ApiResult.Unauthorised -> return ApiResult.Unauthorised
+                ApiResult.Conflict -> return ApiResult.Conflict
+                is ApiResult.Unexpected -> return createResult
             }
-            val putResult = bodyService.uploadFile(
-                collectivePath = parent.collectivePath,
-                filePath = childFilePath,
-                fileName = newFileName,
-                body = body.toRequestBody("text/markdown; charset=utf-8".toMediaType()),
+            // Persist the created page locally. Refresh the collective so
+            // any side-effect of folder promotion (parent's `filePath` may
+            // change, parent's `subpageOrder` updates) lands too.
+            val now = System.currentTimeMillis()
+            pageDao.upsertAll(
+                listOf(
+                    createdDto.toEntity(
+                        collectiveId = collectiveId,
+                        now = now,
+                        existingBody = null,
+                        existingEtag = null,
+                        existingDraft = null,
+                    ),
+                ),
             )
-            when (putResult) {
-                is ApiResult.Success -> Unit
-                is ApiResult.NetworkError -> return putResult
-                is ApiResult.HttpError -> return putResult
-                ApiResult.Unauthorised -> return ApiResult.Unauthorised
-                ApiResult.Conflict -> return ApiResult.Conflict
-                is ApiResult.Unexpected -> return putResult
-            }
-            // Collectives indexes the new file via its filesystem watcher;
-            // the page list usually contains it after a short pause. Try
-            // immediately, then once more with a brief delay.
-            val refreshed = refresh(collectiveId)
-            when (refreshed) {
-                is ApiResult.Success -> Unit
-                is ApiResult.NetworkError -> return refreshed
-                is ApiResult.HttpError -> return refreshed
-                ApiResult.Unauthorised -> return ApiResult.Unauthorised
-                ApiResult.Conflict -> return ApiResult.Conflict
-                is ApiResult.Unexpected -> return refreshed
-            }
-            var created = findCreatedPage(collectiveId, parentPageId, cleaned)
-            if (created == null) {
-                delay(750)
-                refresh(collectiveId)
-                created = findCreatedPage(collectiveId, parentPageId, cleaned)
-            }
-            return created?.let { ApiResult.Success(it) }
-                ?: ApiResult.Unexpected(
-                    IllegalStateException("Page created but server hasn't indexed it yet"),
+            refresh(collectiveId)
+            // If the caller supplied an initial body, WebDAV PUT it to the
+            // new page's path. OCS POST creates an empty page; body content
+            // is set via the file in the user's Files area. Failure here
+            // doesn't unwind the create — the page exists and the user can
+            // edit it. We just surface the failure so they know the body
+            // didn't land.
+            if (body.isNotEmpty()) {
+                val bodyResult = bodyService.uploadFile(
+                    collectivePath = createdDto.collectivePath,
+                    filePath = createdDto.filePath,
+                    fileName = createdDto.fileName,
+                    body = body.toRequestBody("text/markdown; charset=utf-8".toMediaType()),
                 )
-        }
-
-        private suspend fun findCreatedPage(
-            collectiveId: Long,
-            parentPageId: Long,
-            title: String,
-        ): Page? {
-            val rows = pageDao.observeForCollective(collectiveId).first()
-            return rows.firstOrNull { it.parentId == parentPageId && it.title == title }?.toDomain()
+                when (bodyResult) {
+                    is ApiResult.Success -> Unit
+                    is ApiResult.NetworkError -> return bodyResult
+                    is ApiResult.HttpError -> return bodyResult
+                    ApiResult.Unauthorised -> return ApiResult.Unauthorised
+                    ApiResult.Conflict -> return ApiResult.Conflict
+                    is ApiResult.Unexpected -> return bodyResult
+                }
+            }
+            val saved = pageDao.getById(createdDto.id)
+                ?: return ApiResult.Unexpected(
+                    IllegalStateException("Page ${createdDto.id} disappeared from cache after create"),
+                )
+            return ApiResult.Success(saved.toDomain())
         }
 
         override suspend fun trashPage(pageId: Long): ApiResult<Unit> {

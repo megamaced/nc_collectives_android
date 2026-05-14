@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
+import com.megamaced.nccollectives.data.api.dto.PageEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.TagsEnvelopeData
 import retrofit2.http.DELETE
@@ -8,6 +9,7 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 
@@ -27,6 +29,34 @@ interface CollectivesApiService {
     suspend fun listPages(
         @Path("collectiveId") collectiveId: Long,
     ): Envelope<PagesEnvelopeData>
+
+    /**
+     * Single-page metadata fetch. Useful for picking up changes after a
+     * mutation that doesn't return the full object, or as a fallback when
+     * the page list hasn't re-indexed yet. Per spec gotcha #16, may 404
+     * briefly after a move while the indexer catches up.
+     */
+    @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}")
+    suspend fun getPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+    ): Envelope<PageEnvelopeData>
+
+    /**
+     * Create a new page under [parentPageId]. Pass the landing-page id to
+     * create at the root of the collective. The server handles indexing,
+     * filesystem naming, and folder promotion of the parent (a previously
+     * leaf parent is converted to a folder atomically). Body content is
+     * not part of this endpoint — set the markdown body separately via
+     * the WebDAV PUT to the new page's path.
+     */
+    @FormUrlEncoded
+    @POST("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{parentPageId}")
+    suspend fun createPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("parentPageId") parentPageId: Long,
+        @Field("title") title: String,
+    ): Envelope<PageEnvelopeData>
 
     /**
      * Replaces the user's favorite-pages list for [collectiveId]. The
