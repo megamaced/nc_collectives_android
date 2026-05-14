@@ -4,6 +4,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
@@ -12,6 +13,7 @@ import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.splitTags
+import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
@@ -174,22 +176,12 @@ class PageRepositoryImpl
             return result
         }
 
-        override suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<PageTag>> {
-            val result = apiCall {
+        override suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<PageTag>> =
+            apiCall {
                 api
                     .listTags(collectiveId)
                     .ocs.data.tags
-            }
-            return when (result) {
-                is ApiResult.Success ->
-                    ApiResult.Success(result.data.map { PageTag(id = it.id, name = it.name) })
-                is ApiResult.NetworkError -> result
-                is ApiResult.HttpError -> result
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> result
-            }
-        }
+            }.mapSuccess { tags -> tags.map { PageTag(id = it.id, name = it.name) } }
 
         override suspend fun togglePageTag(
             pageId: Long,
@@ -369,29 +361,20 @@ class PageRepositoryImpl
             return result
         }
 
-        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> {
-            val result = apiCall { api.listTrashedPages(collectiveId) }
-            return when (result) {
-                is ApiResult.Success ->
-                    ApiResult.Success(
-                        result.data.ocs.data.pages.map { dto ->
-                            dto
-                                .toEntity(
-                                    collectiveId = collectiveId,
-                                    now = System.currentTimeMillis(),
-                                    existingBody = null,
-                                    existingEtag = null,
-                                    existingDraft = null,
-                                ).toDomain()
-                        },
-                    )
-                is ApiResult.NetworkError -> result
-                is ApiResult.HttpError -> result
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> result
+        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> =
+            apiCall { api.listTrashedPages(collectiveId) }.mapSuccess { envelope ->
+                val now = System.currentTimeMillis()
+                envelope.ocs.data.pages.map { dto ->
+                    dto
+                        .toEntity(
+                            collectiveId = collectiveId,
+                            now = now,
+                            existingBody = null,
+                            existingEtag = null,
+                            existingDraft = null,
+                        ).toDomain()
+                }
             }
-        }
 
         override suspend fun restorePage(
             collectiveId: Long,
@@ -433,13 +416,6 @@ class PageRepositoryImpl
             if (cleaned.isEmpty()) return null
             return pageDao.findIdByTitleInCollective(collectiveId, cleaned)
         }
-
-        private fun String.toLongCsvList(): List<Long> =
-            if (isEmpty()) {
-                emptyList()
-            } else {
-                split(',').mapNotNull { it.trim().toLongOrNull() }
-            }
 
         override suspend fun appendToPage(
             pageId: Long,

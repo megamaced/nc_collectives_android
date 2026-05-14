@@ -17,6 +17,7 @@ class SearchRepositoryImpl
         private val api: SearchApiService,
         private val pageDao: PageDao,
     ) : SearchRepository {
+        @Suppress("UNCHECKED_CAST")
         override suspend fun search(
             term: String,
             limit: Int,
@@ -28,13 +29,12 @@ class SearchRepositoryImpl
                     .searchPages(trimmed, limit)
                     .ocs.data.entries
             }
-            return when (raw) {
-                is ApiResult.Success -> ApiResult.Success(raw.data.map { it.toHit() })
-                is ApiResult.NetworkError -> raw
-                is ApiResult.HttpError -> raw
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> raw
+            // .map { } can't be used here because toHit() is suspend; collapse
+            // every non-Success arm with a single cast.
+            return if (raw is ApiResult.Success) {
+                ApiResult.Success(raw.data.map { it.toHit() })
+            } else {
+                raw as ApiResult<List<SearchHit>>
             }
         }
 

@@ -93,7 +93,9 @@ class UserPreferences
             const val MAX_RECENT_SEARCHES = 10
 
             // U+001F (Unit Separator) — same rationale as the tag CSV in
-            // Mappers.kt: never produced by user input.
-            const val SEP = ""
+            // Mappers.kt: never produced by user input. The earlier literal
+            // was empty, which silently corrupted the recent-searches list
+            // (split("") explodes into one char per element).
+            const val SEP = ""
         }
     }

@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
-import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
@@ -252,10 +251,6 @@ class PageViewModel
                 SaveOutcome.Conflict -> "Still conflicting — try again later"
                 is SaveOutcome.Error -> outcome.message
             }
-
-        // Suppress unused — combine() in isFavorite reads Collective.
-        @Suppress("unused")
-        private fun debugCollective(): Collective? = null
 
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L

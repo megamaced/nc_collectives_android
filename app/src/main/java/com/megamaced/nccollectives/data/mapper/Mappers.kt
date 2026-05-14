@@ -6,6 +6,9 @@ import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.splitTags
+import com.megamaced.nccollectives.data.toLongCsv
+import com.megamaced.nccollectives.data.toLongCsvList
+import com.megamaced.nccollectives.data.toLongCsvSet
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
 
@@ -19,7 +22,7 @@ internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
         canShare = canShare,
         isPageShare = isPageShare,
         trashTimestamp = trashTimestamp,
-        userFavoritePagesCsv = userFavoritePages.joinToString(","),
+        userFavoritePagesCsv = userFavoritePages.toLongCsv(),
         lastSyncedAt = now,
     )
 
@@ -50,7 +53,7 @@ internal fun PageDto.toEntity(
         title = title,
         emoji = emoji,
         tagsCsv = joinTags(tags),
-        subpageOrderCsv = subpageOrder.joinToString(","),
+        subpageOrderCsv = subpageOrder.toLongCsv(),
         isFullWidth = isFullWidth,
         trashTimestamp = trashTimestamp,
         serverTimestamp = timestamp,
@@ -58,7 +61,7 @@ internal fun PageDto.toEntity(
         fileName = fileName,
         filePath = filePath,
         collectivePath = collectivePath,
-        linkedPageIdsCsv = linkedPageIds.joinToString(","),
+        linkedPageIdsCsv = linkedPageIds.toLongCsv(),
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = existingBody,
         bodyEtag = existingEtag,
@@ -87,7 +90,3 @@ internal fun PageEntity.toDomain(): Page =
         bodyMd = bodyMd,
         draftBodyMd = draftBodyMd,
     )
-
-private fun String.toLongCsvList(): List<Long> = if (isEmpty()) emptyList() else split(',').mapNotNull { it.trim().toLongOrNull() }
-
-private fun String.toLongCsvSet(): Set<Long> = toLongCsvList().toSet()

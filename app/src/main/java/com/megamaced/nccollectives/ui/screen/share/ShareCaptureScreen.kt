@@ -56,6 +56,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.canHoldChildren
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -261,7 +262,7 @@ private fun NewPageSection(
     )
     Text("Parent page", style = MaterialTheme.typography.labelMedium)
     HorizontalDivider()
-    val folderTargets = pages.filter { it.parentId == 0L || it.fileName.equals("Readme.md", ignoreCase = true) }
+    val folderTargets = pages.filter { it.canHoldChildren() }
     if (folderTargets.isEmpty()) {
         Text(
             text = "No folder pages in this collective. Promote a leaf to a folder in the web UI first.",

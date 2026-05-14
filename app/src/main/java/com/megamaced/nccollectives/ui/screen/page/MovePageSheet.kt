@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.canHoldChildren
 
 /**
  * Pick a new parent for the current page. Only folder pages (`fileName ==
@@ -38,7 +39,7 @@ fun MovePageSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val folderTargets = targets.filter { it.parentId == 0L || it.fileName.equals("Readme.md", ignoreCase = true) }
+    val folderTargets = targets.filter { it.canHoldChildren() }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(

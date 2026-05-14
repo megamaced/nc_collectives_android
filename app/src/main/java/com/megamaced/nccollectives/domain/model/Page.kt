@@ -25,3 +25,13 @@ data class Page(
     /** Local draft that lost an etag race; null when no draft exists. */
     val draftBodyMd: String?,
 )
+
+/**
+ * Folder pages in Collectives are stored as `Readme.md` inside a directory;
+ * leaf pages are stored as `<title>.md` siblings. A page can hold children
+ * iff it is a folder page (or the collective's landing page, which is the
+ * implicit folder at the collective root with `parentId == 0`).
+ */
+fun Page.isFolderPage(): Boolean = fileName.equals("Readme.md", ignoreCase = true)
+
+fun Page.canHoldChildren(): Boolean = parentId == 0L || isFolderPage()

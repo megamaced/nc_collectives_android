@@ -41,3 +41,23 @@ internal inline fun <T> apiCall(block: () -> T): ApiResult<T> =
     } catch (e: Exception) {
         ApiResult.Unexpected(e)
     }
+
+/**
+ * Transform the [ApiResult.Success] payload while preserving every error arm
+ * verbatim. Lets call sites collapse the otherwise-repetitive 6-arm `when`
+ * that just remaps the data type. Named [mapSuccess] (not just `map`) so it
+ * doesn't shadow `kotlinx.coroutines.flow.Flow.map`. The unchecked cast is
+ * safe because every non-Success branch is `ApiResult<Nothing>`.
+ */
+@Suppress("UNCHECKED_CAST")
+internal inline fun <T, R> ApiResult<T>.mapSuccess(transform: (T) -> R): ApiResult<R> =
+    when (this) {
+        is ApiResult.Success -> ApiResult.Success(transform(data))
+        else -> this as ApiResult<R>
+    }
+
+/** Side-effect on success, propagate the original result. */
+internal inline fun <T> ApiResult<T>.ifSuccess(block: (T) -> Unit): ApiResult<T> {
+    if (this is ApiResult.Success) block(data)
+    return this
+}

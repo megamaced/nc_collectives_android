@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
+import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +41,7 @@ class CollectiveRepositoryImpl
             val current = dao.getById(collectiveId) ?: return ApiResult.Unexpected(
                 IllegalStateException("Collective $collectiveId not cached"),
             )
-            val currentList = current.userFavoritePagesCsv.toLongList()
+            val currentList = current.userFavoritePagesCsv.toLongCsvList()
             val nextList = if (favorite) {
                 if (pageId in currentList) currentList else currentList + pageId
             } else {
@@ -61,6 +62,4 @@ class CollectiveRepositoryImpl
         }
 
         private fun encodeFavorites(ids: List<Long>): String = ids.joinToString(prefix = "[", postfix = "]", separator = ",")
-
-        private fun String.toLongList(): List<Long> = if (isEmpty()) emptyList() else split(',').mapNotNull { it.trim().toLongOrNull() }
     }

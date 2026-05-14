@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.canHoldChildren
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
@@ -85,7 +86,7 @@ class PageTreeViewModel
             viewModelScope.launch {
                 pagesFlow.collect { pages ->
                     val choices = pages
-                        .filter { it.parentId == 0L || it.fileName.equals("Readme.md", ignoreCase = true) }
+                        .filter { it.canHoldChildren() }
                         .sortedBy { it.title.lowercase() }
                     _uiState.update { it.copy(parentChoices = choices) }
                 }

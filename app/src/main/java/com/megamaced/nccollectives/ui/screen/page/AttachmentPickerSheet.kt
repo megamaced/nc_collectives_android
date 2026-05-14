@@ -42,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
+import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 
 /**
  * Picker the editor opens when the user taps the "Image" toolbar action.
@@ -78,7 +79,7 @@ internal fun AttachmentPickerSheet(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
             }
-            val name = pickerDisplayNameFor(context, uri) ?: "image.jpg"
+            val name = uriDisplayName(context, uri) ?: "image.jpg"
             val type = context.contentResolver.getType(uri)
             viewModel.enqueueUpload(uri, name, type)
         }
@@ -209,20 +210,4 @@ private fun AttachmentRow(
             )
         }
     }
-}
-
-private fun pickerDisplayNameFor(
-    context: android.content.Context,
-    uri: android.net.Uri,
-): String? {
-    val resolver = context.contentResolver
-    resolver
-        .query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0) return cursor.getString(idx)
-            }
-        }
-    return uri.lastPathSegment
 }

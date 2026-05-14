@@ -25,7 +25,6 @@ import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.ext.tables.TableTheme
 import io.noties.markwon.ext.tasklist.TaskListDrawable
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.image.ImagesPlugin
@@ -203,8 +202,3 @@ internal fun absolutizeImageRefs(
 internal interface MarkdownViewEntryPoint {
     fun okHttpClient(): OkHttpClient
 }
-
-// `TableTheme` is referenced via TablePlugin's builder lambda above and is
-// otherwise unused at the file level — silence the unused-import warning.
-@Suppress("unused")
-private val tableThemeReference = TableTheme::class
