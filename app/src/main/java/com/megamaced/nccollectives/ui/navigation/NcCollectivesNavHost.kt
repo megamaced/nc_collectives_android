@@ -31,21 +31,41 @@ internal fun NcCollectivesNavHost(
             CollectiveListScreen(
                 innerPadding = innerPadding,
                 onCollectiveClick = { id -> navController.navigate(Destination.PageTree.route(id)) },
+                onOpenSearch = { navController.navigate(Destination.Search.route) },
+                onOpenFavorites = { navController.navigate(Destination.Favorites.route) },
+                onOpenSettings = { navController.navigate(Destination.Settings.route) },
             )
         }
         composable(Destination.Search.route) {
             SearchScreen(
                 innerPadding = innerPadding,
-                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+                onBack = { navController.popBackStack() },
+                onOpenPage = { pageId ->
+                    navController.navigate(Destination.PageView.route(pageId)) {
+                        popUpTo(Destination.Collectives.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
             )
         }
         composable(Destination.Favorites.route) {
             FavoritesScreen(
                 innerPadding = innerPadding,
-                onOpenPage = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
+                onBack = { navController.popBackStack() },
+                onOpenPage = { pageId ->
+                    navController.navigate(Destination.PageView.route(pageId)) {
+                        popUpTo(Destination.Collectives.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
             )
         }
-        composable(Destination.Settings.route) { SettingsScreen(innerPadding) }
+        composable(Destination.Settings.route) {
+            SettingsScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(
             route = Destination.PageTree.route,
             arguments = listOf(

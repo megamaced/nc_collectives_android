@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.ui.components
 
 import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.widget.TextView
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -108,7 +109,7 @@ fun MarkdownView(
     ) {
         Markwon
             .builder(context)
-            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(LinkifyPlugin.create(Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(
                 ImagesPlugin.create { plugin ->

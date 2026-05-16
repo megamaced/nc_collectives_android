@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,16 +16,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -44,89 +52,108 @@ import com.megamaced.nccollectives.data.prefs.ThemeMode
 private const val SOURCE_URL = "https://github.com/megamaced/nc_collectives_android"
 private const val LICENCE_URL = "https://www.gnu.org/licenses/agpl-3.0.html"
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(
     innerPadding: PaddingValues,
+    onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showSignOutConfirm by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        SectionHeader("Account")
-        val account = ui.account
-        if (account != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(account.loginName, style = MaterialTheme.typography.bodyLarge)
+    Scaffold(
+        modifier = Modifier.padding(innerPadding),
+        containerColor = Color.Transparent,
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings", style = MaterialTheme.typography.titleMedium) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                windowInsets = WindowInsets(0, 0, 0, 0),
+            )
+        },
+    ) { scaffoldPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(scaffoldPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            SectionHeader("Account")
+            val account = ui.account
+            if (account != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(account.loginName, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        account.host,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
                 Text(
-                    account.host,
+                    "Not signed in.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        } else {
+
+            HorizontalDivider()
+
+            SectionHeader("Appearance")
+            ThemeModeOptions(
+                selected = ui.themeMode,
+                onSelect = viewModel::setThemeMode,
+            )
+
+            HorizontalDivider()
+
+            SectionHeader("Sync")
             Text(
-                "Not signed in.",
-                style = MaterialTheme.typography.bodyMedium,
+                "How often the app refreshes pages and metadata in the background.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
+            SyncCadenceOptions(
+                selected = ui.syncCadence,
+                onSelect = viewModel::setSyncCadence,
+            )
 
-        HorizontalDivider()
+            HorizontalDivider()
 
-        SectionHeader("Appearance")
-        ThemeModeOptions(
-            selected = ui.themeMode,
-            onSelect = viewModel::setThemeMode,
-        )
+            SectionHeader("About")
+            Text(
+                "NC Collectives ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            LinkRow(label = "Source code") {
+                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(SOURCE_URL))
+            }
+            LinkRow(label = "Licence (AGPL-3.0)") {
+                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(LICENCE_URL))
+            }
 
-        HorizontalDivider()
+            HorizontalDivider()
 
-        SectionHeader("Sync")
-        Text(
-            "How often the app refreshes pages and metadata in the background.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SyncCadenceOptions(
-            selected = ui.syncCadence,
-            onSelect = viewModel::setSyncCadence,
-        )
-
-        HorizontalDivider()
-
-        SectionHeader("About")
-        Text(
-            "NC Collectives ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        LinkRow(label = "Source code") {
-            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(SOURCE_URL))
-        }
-        LinkRow(label = "Licence (AGPL-3.0)") {
-            CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(LICENCE_URL))
-        }
-
-        HorizontalDivider()
-
-        Button(
-            onClick = { showSignOutConfirm = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-            ),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-            Box(modifier = Modifier.padding(start = 8.dp)) { Text("Sign out") }
+            Button(
+                onClick = { showSignOutConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                Box(modifier = Modifier.padding(start = 8.dp)) { Text("Sign out") }
+            }
         }
     }
 

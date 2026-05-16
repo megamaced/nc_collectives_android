@@ -6,26 +6,36 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -34,9 +44,11 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.ui.components.EmptyState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SearchScreen(
     innerPadding: PaddingValues,
+    onBack: () -> Unit,
     onOpenPage: (Long) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
@@ -52,69 +64,86 @@ internal fun SearchScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding),
-    ) {
-        OutlinedTextField(
-            value = ui.query,
-            onValueChange = viewModel::onQueryChanged,
-            label = { Text("Search pages") },
-            placeholder = { Text("Title or content") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                imeAction = ImeAction.Search,
-                capitalization = KeyboardCapitalization.None,
-            ),
+    Scaffold(
+        modifier = Modifier.padding(innerPadding),
+        containerColor = Color.Transparent,
+        topBar = {
+            TopAppBar(
+                title = { Text("Search", style = MaterialTheme.typography.titleMedium) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                windowInsets = WindowInsets(0, 0, 0, 0),
+            )
+        },
+    ) { scaffoldPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-
-        if (ui.query.isBlank() && recents.isNotEmpty()) {
-            RecentsSection(
-                recents = recents,
-                onRecentClick = viewModel::runRecent,
-                onClear = viewModel::clearRecents,
+                .fillMaxSize()
+                .padding(scaffoldPadding),
+        ) {
+            OutlinedTextField(
+                value = ui.query,
+                onValueChange = viewModel::onQueryChanged,
+                label = { Text("Search pages") },
+                placeholder = { Text("Title or content") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Search,
+                    capitalization = KeyboardCapitalization.None,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             )
-        }
 
-        if (ui.query.isNotBlank() && collectives.size > 1) {
-            CollectiveFilterRow(
-                collectives = collectives,
-                selected = ui.selectedCollectiveIds,
-                onToggle = viewModel::toggleCollectiveFilter,
-            )
-        }
-
-        when {
-            ui.isSearching -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-            ui.errorMessage != null -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = ui.errorMessage!!,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(24.dp),
+            if (ui.query.isBlank() && recents.isNotEmpty()) {
+                RecentsSection(
+                    recents = recents,
+                    onRecentClick = viewModel::runRecent,
+                    onClear = viewModel::clearRecents,
                 )
             }
-            filteredResults.isEmpty() && ui.query.isNotBlank() ->
-                EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
-            filteredResults.isNotEmpty() ->
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(filteredResults, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
-                        SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
-                        HorizontalDivider()
-                    }
+
+            if (ui.query.isNotBlank() && collectives.size > 1) {
+                CollectiveFilterRow(
+                    collectives = collectives,
+                    selected = ui.selectedCollectiveIds,
+                    onToggle = viewModel::toggleCollectiveFilter,
+                )
+            }
+
+            when {
+                ui.isSearching -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
                 }
+                ui.errorMessage != null -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = ui.errorMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+                filteredResults.isEmpty() && ui.query.isNotBlank() ->
+                    EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
+                filteredResults.isNotEmpty() ->
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(filteredResults, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
+                            SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
+                            HorizontalDivider()
+                        }
+                    }
+            }
         }
     }
 }
