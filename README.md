@@ -94,7 +94,7 @@ R8 minification is on for release builds and the output is deterministic — two
 
 ## Contributing
 
-This project is a personal AI-driven experiment. Issues are welcome for discussion, but pull requests are unlikely to be merged — the value of the experiment is in shipping a working app entirely through AI authorship.
+Issues and pull requests welcome. For larger changes, please open an issue first.
 
 ## License
 
