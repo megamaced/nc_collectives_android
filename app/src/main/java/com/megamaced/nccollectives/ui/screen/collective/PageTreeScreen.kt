@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +71,8 @@ internal fun PageTreeScreen(
     onBack: () -> Unit,
     onPageClick: (Long) -> Unit,
     onOpenTrash: (Long) -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenFavorites: () -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
@@ -105,6 +109,12 @@ internal fun PageTreeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenSearch) {
+                        Icon(Icons.Outlined.Search, contentDescription = "Search")
+                    }
+                    IconButton(onClick = onOpenFavorites) {
+                        Icon(Icons.Outlined.Bookmark, contentDescription = "Favorites")
+                    }
                     IconButton(onClick = { newPageMode = NewPageMode.PickParent }) {
                         Icon(Icons.Filled.Add, contentDescription = "New page")
                     }

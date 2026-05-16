@@ -77,6 +77,8 @@ internal fun NcCollectivesNavHost(
                 onBack = { navController.popBackStack() },
                 onPageClick = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
                 onOpenTrash = { collectiveId -> navController.navigate(Destination.Trash.route(collectiveId)) },
+                onOpenSearch = { navController.navigate(Destination.Search.route) },
+                onOpenFavorites = { navController.navigate(Destination.Favorites.route) },
             )
         }
         composable(
