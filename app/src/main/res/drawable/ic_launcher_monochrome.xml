@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed-icon (Android 13+) silhouette. The system tints this with the
+         user's chosen monochrome theme colour, so detail must live in the
+         alpha channel: filled regions read as the silhouette, transparent gaps
+         (here, the text lines and the spine) read as the page surface.
+
+         Even-odd fill: outer notebook silhouette as one closed subpath, inner
+         text-line and spine cutouts as additional subpaths, evaluated via
+         android:fillType="evenOdd" so the cutouts subtract from the body. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="
+            M27,40 L54,44 L81,40 L81,74 L54,78 L27,74 Z
+
+            M53,46 L55,46 L55,76 L53,76 Z
+
+            M33,50.4 L48,52.4 L48,53.6 L33,51.6 Z
+            M33,56.4 L48,58.4 L48,59.6 L33,57.6 Z
+            M33,62.4 L48,64.4 L48,65.6 L33,63.6 Z
+            M33,68.4 L45,69.4 L45,70.6 L33,69.6 Z
+
+            M60,52.4 L75,50.4 L75,51.6 L60,53.6 Z
+            M60,58.4 L75,56.4 L75,57.6 L60,59.6 Z
+            M60,64.4 L75,62.4 L75,63.6 L60,65.6 Z
+            M63,69.4 L75,68.4 L75,69.6 L63,70.6 Z" />
+</vector>

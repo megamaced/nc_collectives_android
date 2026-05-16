@@ -36,6 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -164,6 +167,7 @@ private fun RecentsSection(
                 text = "Recent",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { heading() },
             )
             TextButton(onClick = onClear) { Text("Clear") }
         }
@@ -209,7 +213,7 @@ private fun SearchHitRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = hit.pageId != null, onClick = onClick)
+            .clickable(enabled = hit.pageId != null, onClick = onClick, role = Role.Button)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {

@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -208,7 +209,7 @@ private fun PageTreeItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (node.hasChildren) {
-            IconButton(onClick = onToggle, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onToggle) {
                 Icon(
                     imageVector = if (isExpanded) {
                         Icons.Filled.KeyboardArrowDown
@@ -220,7 +221,7 @@ private fun PageTreeItem(
                 )
             }
         } else {
-            Spacer(modifier = Modifier.size(32.dp))
+            Spacer(modifier = Modifier.size(48.dp))
         }
         Spacer(modifier = Modifier.width(4.dp))
         Text(
@@ -241,7 +242,7 @@ private fun PageTreeItem(
                 )
             }
         }
-        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onToggleFavorite) {
             Icon(
                 imageVector = if (node.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 contentDescription = if (node.isFavorite) "Unfavorite" else "Favorite",
@@ -252,7 +253,7 @@ private fun PageTreeItem(
                 },
             )
         }
-        IconButton(onClick = onAddSubpage, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = onAddSubpage) {
             Icon(
                 imageVector = Icons.Filled.Add,
                 contentDescription = "New subpage",
@@ -295,7 +296,7 @@ private fun NewPageDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showParentSheet = true }
+                            .clickable(role = Role.Button) { showParentSheet = true }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

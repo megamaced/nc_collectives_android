@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
@@ -154,7 +155,7 @@ private fun UploadChip(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick, role = Role.Button)
             .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -171,7 +172,7 @@ private fun AttachmentRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = attachment.status == Attachment.Status.REMOTE, onClick = onClick)
+            .clickable(enabled = attachment.status == Attachment.Status.REMOTE, onClick = onClick, role = Role.Button)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

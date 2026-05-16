@@ -4,16 +4,45 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Stylized open notebook: two facing pages with a spine and a few lines. -->
+    <!-- Open notebook: two facing parchment pages with a slight perspective tilt
+         (top edges sweep outward, bottom edges sweep outward) so the V-shaped
+         spine reads as "open book" at small sizes. Stays within the 66dp
+         circular safe-zone of the adaptive-icon viewport. -->
+
+    <!-- Left page -->
     <path
         android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M30,38 L52,42 L52,76 L30,72 Z" />
+        android:pathData="M27,40 L54,44 L54,78 L27,74 Z" />
+
+    <!-- Right page -->
     <path
         android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M56,42 L78,38 L78,72 L56,76 Z" />
+        android:pathData="M54,44 L81,40 L81,74 L54,78 Z" />
+
+    <!-- Spine where the pages meet -->
+    <path
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="1.0"
+        android:strokeLineCap="round"
+        android:pathData="M54,44 L54,78" />
+
+    <!-- Text lines on the left page -->
     <path
         android:strokeColor="@color/ic_launcher_background"
         android:strokeWidth="1.6"
-        android:pathData="M34,50 L48,52 M34,56 L48,58 M34,62 L48,64
-                          M60,52 L74,50 M60,58 L74,56 M60,64 L74,62" />
+        android:strokeLineCap="round"
+        android:pathData="M33,51 L48,53
+                          M33,57 L48,59
+                          M33,63 L48,65
+                          M33,69 L45,70" />
+
+    <!-- Text lines on the right page -->
+    <path
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M60,53 L75,51
+                          M60,59 L75,57
+                          M60,65 L75,63
+                          M63,70 L75,69" />
 </vector>

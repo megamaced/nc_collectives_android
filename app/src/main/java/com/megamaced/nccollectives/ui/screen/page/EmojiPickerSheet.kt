@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 
@@ -111,7 +112,7 @@ private fun EmojiCell(
             .background(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(12.dp),
-            ).clickable(onClick = onClick),
+            ).clickable(onClick = onClick, role = Role.Button),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = emoji, style = MaterialTheme.typography.titleLarge)
