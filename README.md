@@ -8,9 +8,9 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Status
 
-**v0.2.1** — hotfix on top of v0.2.0. `PageDto.tags` is now deserialised as a list of tag IDs (the server's actual shape) and the names are resolved client-side from the per-collective tag list. Without this, opening a collective whose pages have any tags applied failed with a JSON-parse error. v0.2.0 itself shipped settings, backlinks, tag creation, folder rename/move, undo on trash, OCS migration of all page CRUD (create / rename / move / list-attachments / delete-attachment / tag creation), real Room migrations replacing the destructive fallback, and the full Batch 17 audit fix-up list. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+**v0.3.0** — navigation redesign + visual / accessibility polish on top of v0.2.x. The bottom `NavigationBar` is gone; Search, Favorites, and Settings are now icon actions on the Collectives top app bar, and tapping a search/favorite hit lands you on the page from the Collectives root rather than from a sibling tab. Markwon's Linkify mask is narrowed to web URLs + email addresses, so money figures like `5,783.87` no longer render as clickable phone-number links. Adaptive launcher icon has a refined open-notebook glyph with a dedicated monochrome layer for Android 13+ themed icons, and a splash screen now bridges launcher → app via `androidx.core:core-splashscreen`. An accessibility pass bumped under-sized `IconButton`s to 48dp touch targets and added explicit `role` + `heading()` semantics across the UI. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
 
-Releases are currently **debug builds only**: in-place upgrades from v0.1.x require an uninstall first (signing-key change). Subsequent v0.2.x debug builds upgrade in place. Signed release builds land in a later milestone.
+Releases are currently **debug builds only**: in-place upgrades from v0.1.x require an uninstall first (signing-key change). v0.2.x → v0.3.x upgrades land cleanly. Signed release builds arrive with v1.0.0.
 
 Tested only by the human reviewer against a personal Nextcloud instance. Expect rough edges; please file issues for anything that breaks.
 
