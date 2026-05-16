@@ -6,12 +6,6 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 > **Unofficial.** This project is not affiliated with, endorsed by, or supported by Nextcloud GmbH or the Nextcloud Collectives team. "Nextcloud" and "Collectives" are trademarks of their respective owners.
 
-## Status
-
-**v0.3.0** is the latest debug build, attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page. The app is feature-complete against the MVP scope: browsing collectives, rendering markdown pages, raw-markdown editing with offline queue, search, favourites, tags, emoji, rename/move, attachments + inline images, share-intent capture, trash with undo, backlinks, settings with sync cadence + theme mode, and a Batch-17 audit pass against the OCS endpoints. Tested only by the human reviewer against a personal Nextcloud instance; please file issues for anything that breaks.
-
-A signed `v1.0.0` release is the next milestone — see [`docs/SIGNING.md`](docs/SIGNING.md) for the keystore-secret setup. Until then, releases are unsigned debug builds; in-place upgrades from v0.1.x require an uninstall first (signing-key change at v0.1.0), but v0.2.x → v0.3.x upgrades land cleanly.
-
 ## Screenshots
 
 <p align="center">
@@ -50,15 +44,10 @@ A signed `v1.0.0` release is the next milestone — see [`docs/SIGNING.md`](docs
 
 ## Installing
 
-1. Download the latest `app-debug.apk` from the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+1. Download the latest `app-release.apk` from the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
 2. On the phone, allow the browser (or the file manager you opened the APK with) to install apps. Android usually prompts the first time; the toggle also lives under **Settings → Apps → Special app access → Install unknown apps**.
 3. Tap the downloaded APK to install. Android will surface the Play Protect scanning prompt — it can flag unrecognised installers but the install itself is safe to proceed with.
 4. Open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
-
-For upgrades:
-- v0.1.x → v0.2.x or later: uninstall first (signing key changed at the v0.1.0 tag).
-- v0.2.x → v0.3.x: in-place upgrade, no uninstall needed.
-- v0.3.x → v1.0.0 (when it ships): will require uninstall once, after which v1.x → v1.x upgrades land in place under the long-lived release signing key.
 
 ## Authentication
 
