@@ -8,74 +8,100 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Status
 
-**v0.3.0** — navigation redesign + visual / accessibility polish on top of v0.2.x. The bottom `NavigationBar` is gone; Search, Favorites, and Settings are now icon actions on the Collectives top app bar, and tapping a search/favorite hit lands you on the page from the Collectives root rather than from a sibling tab. Markwon's Linkify mask is narrowed to web URLs + email addresses, so money figures like `5,783.87` no longer render as clickable phone-number links. Adaptive launcher icon has a refined open-notebook glyph with a dedicated monochrome layer for Android 13+ themed icons, and a splash screen now bridges launcher → app via `androidx.core:core-splashscreen`. An accessibility pass bumped under-sized `IconButton`s to 48dp touch targets and added explicit `role` + `heading()` semantics across the UI. APK is attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+**v0.3.0** is the latest debug build, attached to the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page. The app is feature-complete against the MVP scope: browsing collectives, rendering markdown pages, raw-markdown editing with offline queue, search, favourites, tags, emoji, rename/move, attachments + inline images, share-intent capture, trash with undo, backlinks, settings with sync cadence + theme mode, and a Batch-17 audit pass against the OCS endpoints. Tested only by the human reviewer against a personal Nextcloud instance; please file issues for anything that breaks.
 
-Releases are currently **debug builds only**: in-place upgrades from v0.1.x require an uninstall first (signing-key change). v0.2.x → v0.3.x upgrades land cleanly. Signed release builds arrive with v1.0.0.
+A signed `v1.0.0` release is the next milestone — see [`docs/SIGNING.md`](docs/SIGNING.md) for the keystore-secret setup. Until then, releases are unsigned debug builds; in-place upgrades from v0.1.x require an uninstall first (signing-key change at v0.1.0), but v0.2.x → v0.3.x upgrades land cleanly.
 
-Tested only by the human reviewer against a personal Nextcloud instance. Expect rough edges; please file issues for anything that breaks.
+## Screenshots
 
-## Goals
+<p align="center">
+  <img src="docs/screenshots/01-collective-list.png" alt="Collectives list with search, favourites, and settings actions" width="260" />
+  <img src="docs/screenshots/02-field-guide-tree.png" alt="Page tree inside a collective with favourite + new-subpage actions per row" width="260" />
+  <img src="docs/screenshots/03-seasonal-calendar.png" alt="Page view rendering a markdown table" width="260" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/04-edit-mode.png" alt="Raw markdown editor with formatting toolbar" width="260" />
+  <img src="docs/screenshots/05-grid-references.png" alt="Page view rendering a fenced code block and bullet list" width="260" />
+</p>
 
-A focused, mobile-first companion to the Collectives web app:
-
-- **Read** your collectives and pages comfortably on a phone, online or offline.
-- **Quick capture** via Android's share sheet — send a URL, snippet, or image to a new or existing page.
-- **Light editing** with a raw markdown editor and live preview toggle. No realtime collaborative editing, no rich WYSIWYG.
-
-Explicitly **not** a clone of the web experience. If you need full editor parity, use the browser.
-
-## Planned features
+## Features
 
 - Browse collectives and nested page trees
-- Render markdown pages (with images, links, task lists, tables)
-- View-first by default; per-page edit toggle into a raw markdown editor
-- Offline read cache and offline edit queue (last-write-wins on conflict; local edits preserved as drafts)
-- Full-text search via Nextcloud unified search
-- Favorites, recent pages, tags, emoji, rename, move
-- Attachments: view embedded images; upload from camera or gallery
-- Trash & restore
-- Share-intent quick capture (text, URLs, images)
-- Material 3 / Material You theming with dynamic colour on Android 12+
+- Render markdown pages, including images, links, task lists, tables, and fenced code blocks
+- View-first by default with a per-page edit toggle into a raw markdown editor + live preview swap and a formatting toolbar
+- Offline read cache and offline edit queue (last-write-wins on conflict; local edits preserved as drafts attached to the page)
+- Full-text search via the Nextcloud unified-search provider
+- Favourites and recent searches, persisted across sessions
+- Per-page tags, emoji, rename, and move (folder pages supported)
+- Attachments: view inline images, upload from camera or gallery
+- Trash + restore, with pre-commit undo on a snackbar
+- Share-intent quick capture from any app (text, URLs, single or multiple images)
+- Backlinks: collapsible "linked from" row under every page that shows which other pages reference it
+- Wikilink support: `[[Page Name]]` and relative `.md` links resolve in-app
+- Light, Dark, or System theme; Material 3 styling
+- Configurable background sync cadence (Off, 1h, 6h, 12h, daily)
+- Adaptive launcher icon with a monochrome layer for Android 13+ themed icons
+- Splash screen via `androidx.core:core-splashscreen`
 
-## Requirements (planned)
+## Requirements
 
 - Android 10 (API 29) or newer
-- A Nextcloud instance with the [Collectives app](https://apps.nextcloud.com/apps/collectives) installed and accessible to your account
+- A Nextcloud instance with the [Collectives app](https://apps.nextcloud.com/apps/collectives) installed and accessible to your account, served over HTTPS
+
+## Installing
+
+1. Download the latest `app-debug.apk` from the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
+2. On the phone, allow the browser (or the file manager you opened the APK with) to install apps. Android usually prompts the first time; the toggle also lives under **Settings → Apps → Special app access → Install unknown apps**.
+3. Tap the downloaded APK to install. Android will surface the Play Protect scanning prompt — it can flag unrecognised installers but the install itself is safe to proceed with.
+4. Open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
+
+For upgrades:
+- v0.1.x → v0.2.x or later: uninstall first (signing key changed at the v0.1.0 tag).
+- v0.2.x → v0.3.x: in-place upgrade, no uninstall needed.
+- v0.3.x → v1.0.0 (when it ships): will require uninstall once, after which v1.x → v1.x upgrades land in place under the long-lived release signing key.
 
 ## Authentication
 
-Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2). You provide your server URL and authorise the app from your browser. The app stores only the device-scoped app password returned by your server — your account password is never seen, transmitted, or stored.
+Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2). You provide your server URL and authorise the app from your browser. The app stores only the device-scoped app password returned by your server — your account password is never seen, transmitted, or stored. You can revoke the device at any time from your Nextcloud security settings.
 
 ## Privacy & security
 
-- The app talks **only** to the Nextcloud server you configure. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home.
+- The app talks **only** to the Nextcloud server you configure. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
 - No Google Play Services dependencies; no Firebase; no advertising IDs.
-- The device-scoped app password is stored in encrypted shared preferences.
-- The app password is revocable from your Nextcloud security settings at any time.
-- Network requests trust the system certificate store. There is no certificate pinning — if your Nextcloud server is behind a self-signed CA you'll need to install that CA on your device.
+- Plaintext (`http://`) Nextcloud server URLs are refused at login; the app ships with `cleartextTrafficPermitted="false"` in the network-security config.
+- The device-scoped app password is stored in `EncryptedSharedPreferences` (Tink-backed). Sign-out wipes the keystore entry along with every Room table and DataStore value.
+- Network requests trust the system certificate store. There is no certificate pinning yet — if your Nextcloud server uses a self-signed CA you'll need to install that CA on your device.
 
-## Distribution
+## Tech stack
 
-F-Droid + sideload only. The build intentionally avoids any Google Play Services dependencies so it can be published through F-Droid and installed on de-Googled devices.
-
-## Tech stack (planned)
-
-- Kotlin 2.x + Jetpack Compose + Material 3
+- Kotlin 2.x + Jetpack Compose + Material 3 (single-Activity, type-safe Compose Navigation)
 - Hilt for dependency injection
-- Retrofit 2 + OkHttp 5 + kotlinx.serialization
-- Room 2.7 for offline cache and edit queue
-- Coil 3 for image loading (sharing the authenticated OkHttp client)
-- CameraX for in-app photo capture
-- WorkManager for background sync and queued-edit flush
-- Tink for encrypted credential storage
+- Retrofit 3 + OkHttp 5 + kotlinx.serialization (OCS REST + WebDAV against one shared authenticated OkHttp client)
+- Room 2.8 for the offline cache, edit queue, and attachment upload queue
+- WorkManager for background sync and queued-edit / attachment-upload flush
+- Coil 3 for image loading (reuses the authenticated OkHttp client via a `SingletonImageLoader.Factory`)
+- Markwon for markdown rendering — themed directly against the M3 colour scheme via `AndroidView`
+- Tink (`androidx.security:security-crypto`) for the encrypted credential store
+- `androidx.core:core-splashscreen` for the launcher splash
+- The system camera intent (via a scoped FileProvider) for in-app photo capture — no CAMERA permission
 
 ## Building
 
-```
+```bash
 ./gradlew assembleDebug
 ```
 
-Debug APK will be written to `app/build/outputs/apk/debug/` once the project is scaffolded.
+Debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
+
+For a release build:
+
+```bash
+./gradlew assembleRelease
+```
+
+Without signing env vars set, this produces an *unsigned* APK at `app/build/outputs/apk/release/app-release-unsigned.apk`. The signing setup (keystore generation, GitHub Actions secret names, local env vars) is documented in [`docs/SIGNING.md`](docs/SIGNING.md).
+
+R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). Release builds are around 4.4 MB; debug builds, which include the full debug tooling, are around 73 MB.
 
 ## Contributing
 

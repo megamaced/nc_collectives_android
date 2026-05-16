@@ -15,6 +15,22 @@ kotlin {
     }
 }
 
+// Release-signing config is sourced from environment variables so the keystore
+// never lands on disk in the repo. CI decodes ANDROID_RELEASE_KEYSTORE_BASE64
+// into a file and exports ANDROID_RELEASE_KEYSTORE_FILE for this script; local
+// signed builds export the same four vars from a shell-rc file. If any are
+// absent the release build still works but produces an unsigned APK.
+val releaseKeystoreFile: String? = System.getenv("ANDROID_RELEASE_KEYSTORE_FILE")
+val releaseStorePassword: String? = System.getenv("ANDROID_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("ANDROID_RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("ANDROID_RELEASE_KEY_PASSWORD")
+val hasReleaseSigningConfig =
+    releaseKeystoreFile != null &&
+        releaseStorePassword != null &&
+        releaseKeyAlias != null &&
+        releaseKeyPassword != null &&
+        file(releaseKeystoreFile).exists()
+
 android {
     namespace = "com.megamaced.nccollectives"
     compileSdk = 36
@@ -30,6 +46,17 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        if (hasReleaseSigningConfig) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -42,6 +69,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
