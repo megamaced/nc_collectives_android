@@ -102,6 +102,12 @@ interface PageDao {
         keepIds: List<Long>,
     )
 
+    @Query("SELECT id FROM pages WHERE collectiveId = :collectiveId")
+    suspend fun idsForCollective(collectiveId: Long): List<Long>
+
+    @Query("DELETE FROM pages WHERE collectiveId = :collectiveId")
+    suspend fun deleteForCollective(collectiveId: Long)
+
     @Query("DELETE FROM pages WHERE id = :id")
     suspend fun deleteById(id: Long)
 

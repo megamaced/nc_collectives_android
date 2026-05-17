@@ -20,8 +20,20 @@ interface CollectiveDao {
         csv: String,
     )
 
+    @Query("UPDATE collectives SET emoji = :emoji WHERE id = :id")
+    suspend fun updateEmoji(
+        id: Long,
+        emoji: String?,
+    )
+
+    @Upsert
+    suspend fun upsert(collective: CollectiveEntity)
+
     @Upsert
     suspend fun upsertAll(collectives: List<CollectiveEntity>)
+
+    @Query("DELETE FROM collectives WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     @Query("DELETE FROM collectives WHERE id NOT IN (:keepIds)")
     suspend fun deleteMissing(keepIds: List<Long>)

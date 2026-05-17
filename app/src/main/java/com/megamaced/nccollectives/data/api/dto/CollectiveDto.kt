@@ -28,3 +28,12 @@ data class CollectiveDto(
 data class CollectivesEnvelopeData(
     val collectives: List<CollectiveDto> = emptyList(),
 )
+
+/**
+ * Single-collective wrapper returned by the create / update / delete
+ * endpoints under `{ ocs: { data: { collective: { ... } } } }`.
+ */
+@Serializable
+data class CollectiveEnvelopeData(
+    val collective: CollectiveDto,
+)

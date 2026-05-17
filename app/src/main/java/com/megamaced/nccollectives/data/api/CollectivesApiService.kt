@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.api.dto.AttachmentsEnvelopeData
+import com.megamaced.nccollectives.data.api.dto.CollectiveEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PageEnvelopeData
 import com.megamaced.nccollectives.data.api.dto.PagesEnvelopeData
@@ -15,6 +16,7 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * Retrofit interface for the Collectives OCS REST API. All paths are relative
@@ -27,6 +29,73 @@ import retrofit2.http.Path
 interface CollectivesApiService {
     @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives")
     suspend fun listCollectives(): Envelope<CollectivesEnvelopeData>
+
+    /**
+     * Create a new collective (Batch 22). The server atomically creates the
+     * underlying Nextcloud Team (Circle) and the `.Collectives/<name>/`
+     * folder. Emoji is optional and the only metadata that can be set at
+     * creation time besides the name — and the name is then fixed forever
+     * (the server has no rename endpoint).
+     */
+    @FormUrlEncoded
+    @POST("ocs/v2.php/apps/collectives/api/v1.0/collectives")
+    suspend fun createCollective(
+        @Field("name") name: String,
+        @Field("emoji") emoji: String?,
+    ): Envelope<CollectiveEnvelopeData>
+
+    /**
+     * Set the collective's emoji. **The Collectives API has no name-change
+     * endpoint** — `PUT /collectives/{id}` accepts `{emoji}` only
+     * (`ENDPOINTS.md` gotcha #3, verified against Collectives 4.4.0).
+     * Permission-level controls live on `/editLevel` and `/shareLevel`
+     * sub-paths and are out of scope for Batch 22.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}")
+    suspend fun setCollectiveEmoji(
+        @Path("collectiveId") collectiveId: Long,
+        @Field("emoji") emoji: String,
+    ): Envelope<CollectiveEnvelopeData>
+
+    /**
+     * Soft-delete a collective. Moves it to the collectives trash; the
+     * collective remains restorable via [restoreTrashedCollective] until
+     * [permanentlyDeleteCollective] is called. Mirrors the page-trash
+     * model — same two-step flow.
+     */
+    @DELETE("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}")
+    suspend fun trashCollective(
+        @Path("collectiveId") collectiveId: Long,
+    ): Envelope<CollectiveEnvelopeData>
+
+    @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/trash")
+    suspend fun listTrashedCollectives(): Envelope<CollectivesEnvelopeData>
+
+    /**
+     * Restore a trashed collective. Method is `PATCH` per the live-tested
+     * `ENDPOINTS.md` reference, matching the page-trash restore endpoint
+     * (`restoreTrashedPage`).
+     */
+    @PATCH("ocs/v2.php/apps/collectives/api/v1.0/collectives/trash/{collectiveId}")
+    suspend fun restoreTrashedCollective(
+        @Path("collectiveId") collectiveId: Long,
+    ): Envelope<CollectiveEnvelopeData>
+
+    /**
+     * Permanently delete a trashed collective. Irreversible.
+     *
+     * `?circle=true` also tears down the underlying Nextcloud Team — the
+     * Android UI always passes `true` because we don't expose the
+     * Team-as-separate-entity concept anywhere; leaving the Team behind
+     * with no collective attached would leak membership state that the
+     * user can no longer manage from inside this app.
+     */
+    @DELETE("ocs/v2.php/apps/collectives/api/v1.0/collectives/trash/{collectiveId}")
+    suspend fun permanentlyDeleteCollective(
+        @Path("collectiveId") collectiveId: Long,
+        @Query("circle") circle: Boolean = true,
+    ): Envelope<CollectiveEnvelopeData>
 
     @GET("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages")
     suspend fun listPages(

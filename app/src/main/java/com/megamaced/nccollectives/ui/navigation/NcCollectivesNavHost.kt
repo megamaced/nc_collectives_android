@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
 import com.megamaced.nccollectives.ui.screen.settings.SettingsScreen
 import com.megamaced.nccollectives.ui.screen.share.ShareCaptureScreen
+import com.megamaced.nccollectives.ui.screen.trash.CollectiveTrashScreen
 import com.megamaced.nccollectives.ui.screen.trash.TrashScreen
 
 @Composable
@@ -34,6 +35,7 @@ internal fun NcCollectivesNavHost(
                 onOpenSearch = { navController.navigate(Destination.Search.route) },
                 onOpenFavorites = { navController.navigate(Destination.Favorites.route) },
                 onOpenSettings = { navController.navigate(Destination.Settings.route) },
+                onOpenTrash = { navController.navigate(Destination.CollectiveTrash.route) },
             )
         }
         composable(Destination.Search.route) {
@@ -141,6 +143,12 @@ internal fun NcCollectivesNavHost(
             ),
         ) {
             TrashScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Destination.CollectiveTrash.route) {
+            CollectiveTrashScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
             )

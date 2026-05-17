@@ -19,6 +19,14 @@ import javax.inject.Inject
 data class CollectiveListUiState(
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
+    val statusMessage: String? = null,
+    val isCreating: Boolean = false,
+    /**
+     * Set to the new collective id after a successful create so the UI
+     * can navigate straight into the page tree. Cleared by the caller
+     * via [acknowledgeCreated].
+     */
+    val createdCollectiveId: Long? = null,
 )
 
 @HiltViewModel
@@ -57,6 +65,66 @@ class CollectiveListViewModel
 
         fun dismissError() {
             _uiState.update { it.copy(errorMessage = null) }
+        }
+
+        fun dismissStatus() {
+            _uiState.update { it.copy(statusMessage = null) }
+        }
+
+        fun acknowledgeCreated() {
+            _uiState.update { it.copy(createdCollectiveId = null) }
+        }
+
+        fun createCollective(
+            name: String,
+            emoji: String?,
+        ) {
+            if (_uiState.value.isCreating) return
+            _uiState.update { it.copy(isCreating = true) }
+            viewModelScope.launch {
+                val result = repository.createCollective(name, emoji)
+                _uiState.update {
+                    when (result) {
+                        is ApiResult.Success ->
+                            it.copy(
+                                isCreating = false,
+                                createdCollectiveId = result.data.id,
+                                statusMessage = "Collective created",
+                            )
+                        else ->
+                            it.copy(
+                                isCreating = false,
+                                statusMessage = result.userMessage(),
+                            )
+                    }
+                }
+            }
+        }
+
+        fun setEmoji(
+            collectiveId: Long,
+            emoji: String,
+        ) {
+            viewModelScope.launch {
+                val result = repository.setCollectiveEmoji(collectiveId, emoji)
+                if (result !is ApiResult.Success) {
+                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                }
+            }
+        }
+
+        fun trash(collectiveId: Long) {
+            viewModelScope.launch {
+                val result = repository.trashCollective(collectiveId)
+                _uiState.update {
+                    when (result) {
+                        is ApiResult.Success ->
+                            it.copy(statusMessage = "Moved to trash")
+                        else ->
+                            it.copy(statusMessage = result.userMessage())
+                    }
+                }
+            }
         }
 
         private companion object {

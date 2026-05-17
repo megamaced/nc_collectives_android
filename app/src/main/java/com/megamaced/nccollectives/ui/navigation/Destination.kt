@@ -43,4 +43,7 @@ internal sealed class Destination(
 
         fun route(collectiveId: Long) = "collective/$collectiveId/trash"
     }
+
+    /** App-wide collectives trash (Batch 22). Distinct from per-collective page trash. */
+    object CollectiveTrash : Destination("collectives/trash")
 }
