@@ -29,6 +29,10 @@ coil = "3.4.0"
 # Markdown rendering (Markwon — themed directly so dark mode looks right)
 markwon = "4.6.2"
 
+# Prism4j for syntax-highlighted code blocks (Batch 24). Bundler is a Java
+# annotation processor → needs kapt; coexists fine with KSP elsewhere.
+prism4j = "2.0.0"
+
 # Drag-to-reorder for Compose LazyColumn (Batch 23)
 reorderable = "2.5.1"
 
@@ -104,6 +108,10 @@ markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version
 markwon-ext-tasklist = { group = "io.noties.markwon", name = "ext-tasklist", version.ref = "markwon" }
 markwon-ext-strikethrough = { group = "io.noties.markwon", name = "ext-strikethrough", version.ref = "markwon" }
 markwon-image = { group = "io.noties.markwon", name = "image", version.ref = "markwon" }
+markwon-html = { group = "io.noties.markwon", name = "html", version.ref = "markwon" }
+markwon-syntax-highlight = { group = "io.noties.markwon", name = "syntax-highlight", version.ref = "markwon" }
+prism4j = { group = "io.noties", name = "prism4j", version.ref = "prism4j" }
+prism4j-bundler = { group = "io.noties", name = "prism4j-bundler", version.ref = "prism4j" }
 
 # Drag-to-reorder
 reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }

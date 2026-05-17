@@ -28,9 +28,13 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListDrawable
 import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.image.network.OkHttpNetworkSchemeHandler
 import io.noties.markwon.linkify.LinkifyPlugin
+import io.noties.markwon.syntax.Prism4jThemeM3
+import io.noties.markwon.syntax.SyntaxHighlightPlugin
+import io.noties.prism4j.Prism4j
 import okhttp3.OkHttpClient
 
 /**
@@ -90,6 +94,12 @@ fun MarkdownView(
     val tableEvenRow = colorScheme.surfaceContainer.toArgb()
     val taskBoxChecked = colorScheme.primary.toArgb()
     val taskBoxUnchecked = colorScheme.onSurfaceVariant.toArgb()
+    val prismKeyword = colorScheme.primary.toArgb()
+    val prismString = colorScheme.tertiary.toArgb()
+    val prismLiteral = colorScheme.secondary.toArgb()
+    val prismComment = colorScheme.outline.toArgb()
+    val prismFunction = colorScheme.primary.toArgb()
+    val prismOperator = colorScheme.onSurfaceVariant.toArgb()
 
     val bodyTextSizeSp = MaterialTheme.typography.bodyLarge.fontSize
         .takeIf { it.type == TextUnitType.Sp }
@@ -106,11 +116,37 @@ fun MarkdownView(
         tableEvenRow,
         taskBoxChecked,
         taskBoxUnchecked,
+        prismKeyword,
+        prismString,
+        prismLiteral,
+        prismComment,
+        prismFunction,
+        prismOperator,
     ) {
+        val prism4j = Prism4j(
+            com.megamaced.nccollectives.util
+                .CollectivesGrammarLocator(),
+        )
+        val prismTheme = Prism4jThemeM3(
+            codeBg,
+            codeFg,
+            prismKeyword,
+            prismString,
+            prismComment,
+            prismLiteral,
+            prismFunction,
+            prismOperator,
+        )
         Markwon
             .builder(context)
             .usePlugin(LinkifyPlugin.create(Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES))
             .usePlugin(StrikethroughPlugin.create())
+            // HtmlPlugin (Batch 24) renders `<br>`, `<sub>`, `<sup>`,
+            // `<a>`, `<img>`, alignment and other inline HTML that
+            // Markdown leaves through to the rendered Spannable. Note:
+            // `<details>`/`<summary>` aren't interactive — Markwon
+            // doesn't ship a collapsible widget, so they render inline.
+            .usePlugin(HtmlPlugin.create())
             .usePlugin(
                 ImagesPlugin.create { plugin ->
                     plugin.addSchemeHandler(OkHttpNetworkSchemeHandler.create(okHttpClient))
@@ -132,7 +168,8 @@ fun MarkdownView(
                         bodyColor,
                     ),
                 ),
-            ).usePlugin(
+            ).usePlugin(SyntaxHighlightPlugin.create(prism4j, prismTheme))
+            .usePlugin(
                 object : AbstractMarkwonPlugin() {
                     override fun configureTheme(builder: MarkwonTheme.Builder) {
                         builder

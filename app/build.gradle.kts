@@ -6,6 +6,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    // kapt is here for one consumer only: Prism4j's grammar bundler
+    // (Batch 24). The rest of the project uses KSP. Applied without
+    // version because the Kotlin Gradle plugin already provides it.
+    kotlin("kapt")
     alias(libs.plugins.hilt)
 }
 
@@ -92,6 +96,14 @@ android {
     }
 }
 
+// Prism4j (Batch 24) drags in the legacy `annotations-java5` artifact;
+// the modern `annotations` (transitive from Kotlin stdlib) ships the
+// same FQCNs, so the two collide at the dex step. Exclude globally so
+// every configuration (compile, runtime, kapt classpath) drops it.
+configurations.all {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
+}
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
@@ -155,6 +167,15 @@ dependencies {
     implementation(libs.markwon.ext.tasklist)
     implementation(libs.markwon.ext.strikethrough)
     implementation(libs.markwon.image)
+    implementation(libs.markwon.html)
+    implementation(libs.markwon.syntax.highlight)
+    implementation(libs.prism4j) {
+        // Prism4j's pom declares a dep on its own bundler annotation
+        // processor. Pull it in via kapt below instead — otherwise the
+        // annotation-processor classes ship in the runtime classpath.
+        exclude(group = "io.noties", module = "prism4j-bundler")
+    }
+    kapt(libs.prism4j.bundler)
 
     // Drag-to-reorder (Batch 23)
     implementation(libs.reorderable)
