@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Bookmark
@@ -64,6 +66,8 @@ import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,6 +165,7 @@ internal fun PageTreeScreen(
                     onPageClick = onPageClick,
                     onToggleFavorite = viewModel::toggleFavorite,
                     onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
+                    onReorder = viewModel::onReorderDrop,
                 )
             }
         }
@@ -203,8 +208,32 @@ private fun PageTreeList(
     onPageClick: (Long) -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onAddSubpage: (Long) -> Unit,
+    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    // Local mirror of the upstream tree so the drag animation can swap
+    // rows continuously while the drag is in flight (Batch 23). The
+    // upstream `nodes` re-emits once the server confirms the new
+    // `subpageOrder` (or rolls back on failure) — the `remember(nodes)`
+    // key re-seeds the local copy each time that happens.
+    var localNodes by remember(nodes) { mutableStateOf(nodes) }
+
+    val lazyListState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        // Library passes `LazyListItemInfo`s. Headers carry String keys
+        // ("header-recent", …); tree rows carry the page id as Long. We
+        // only react when both endpoints are tree rows.
+        val fromKey = from.key as? Long ?: return@rememberReorderableLazyListState
+        val toKey = to.key as? Long ?: return@rememberReorderableLazyListState
+        val fromIdx = localNodes.indexOfFirst { it.page.id == fromKey }
+        val toIdx = localNodes.indexOfFirst { it.page.id == toKey }
+        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return@rememberReorderableLazyListState
+        localNodes = localNodes.toMutableList().apply { add(toIdx, removeAt(fromIdx)) }
+    }
+
+    LazyColumn(
+        state = lazyListState,
+        modifier = Modifier.fillMaxSize(),
+    ) {
         if (recentPages.isNotEmpty()) {
             item(key = "header-recent") {
                 RecentPagesStrip(pages = recentPages, onPageClick = onPageClick)
@@ -223,15 +252,26 @@ private fun PageTreeList(
         if (recentPages.isNotEmpty() || (showLandingCard && landingPage != null)) {
             item(key = "header-divider") { HorizontalDivider() }
         }
-        items(nodes, key = { it.page.id }) { node ->
-            PageTreeItem(
-                node = node,
-                isExpanded = node.page.id in expanded,
-                onToggle = { onToggle(node.page.id) },
-                onOpen = { onPageClick(node.page.id) },
-                onToggleFavorite = { onToggleFavorite(node.page.id, node.isFavorite) },
-                onAddSubpage = { onAddSubpage(node.page.id) },
-            )
+        items(localNodes, key = { it.page.id }) { node ->
+            ReorderableItem(reorderState, key = node.page.id) { _ ->
+                PageTreeItem(
+                    node = node,
+                    isExpanded = node.page.id in expanded,
+                    onToggle = { onToggle(node.page.id) },
+                    onOpen = { onPageClick(node.page.id) },
+                    onToggleFavorite = { onToggleFavorite(node.page.id, node.isFavorite) },
+                    onAddSubpage = { onAddSubpage(node.page.id) },
+                    dragHandleModifier = Modifier.longPressDraggableHandle(
+                        onDragStopped = {
+                            val newIdx = localNodes.indexOfFirst { it.page.id == node.page.id }
+                            val oldIdx = nodes.indexOfFirst { it.page.id == node.page.id }
+                            if (newIdx >= 0 && oldIdx >= 0 && newIdx != oldIdx) {
+                                onReorder(oldIdx, newIdx)
+                            }
+                        },
+                    ),
+                )
+            }
             HorizontalDivider()
         }
     }
@@ -245,6 +285,7 @@ private fun PageTreeItem(
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
     onAddSubpage: () -> Unit,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     // No indentation regardless of depth — the tree relationship is shown by
     // the chevron on folder rows, not by horizontal offset.
@@ -255,6 +296,18 @@ private fun PageTreeItem(
             .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Long-press-to-drag handle (Batch 23). Long-press rather than
+        // touch-drag so casual scrolls past the icon don't grab a page.
+        IconButton(
+            onClick = {},
+            modifier = dragHandleModifier,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.DragHandle,
+                contentDescription = "Reorder",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (node.hasChildren) {
             IconButton(onClick = onToggle) {
                 Icon(

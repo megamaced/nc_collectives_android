@@ -162,6 +162,36 @@ interface CollectivesApiService {
         @Field("favoritePages") favoritePagesJson: String,
     )
 
+    /**
+     * Duplicate a page (Batch 23). Same update endpoint as [updatePage] —
+     * `{copy: true}` server-side triggers the duplicate codepath. Supports
+     * leaf and folder pages. An optional `title` overrides the copy's
+     * title (defaults to "<original> (copy)" server-side). Returns the
+     * newly-created page.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}")
+    suspend fun copyPage(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("pageId") pageId: Long,
+        @Field("copy") copy: Boolean = true,
+    ): Envelope<PageEnvelopeData>
+
+    /**
+     * Set the explicit child-page ordering for [parentPageId] (Batch 23).
+     * Body field `subpageOrder` is a **JSON-stringified array of subpage
+     * IDs** (`"[12,34,56]"`), mirroring the favorites endpoint's
+     * JSON-string-in-form-field convention. Verified against the OpenAPI
+     * spec's `page-set-subpage-order` operation.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{parentPageId}/subpageOrder")
+    suspend fun setSubpageOrder(
+        @Path("collectiveId") collectiveId: Long,
+        @Path("parentPageId") parentPageId: Long,
+        @Field("subpageOrder") subpageOrderJson: String,
+    ): Envelope<PageEnvelopeData>
+
     @FormUrlEncoded
     @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/pages/{pageId}/emoji")
     suspend fun setPageEmoji(

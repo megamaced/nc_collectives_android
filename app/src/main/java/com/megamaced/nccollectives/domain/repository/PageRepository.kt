@@ -148,6 +148,29 @@ interface PageRepository {
     ): ApiResult<Unit>
 
     /**
+     * Duplicate [pageId] in [collectiveId] via `PUT /pages/{id}` with
+     * `copy=true` (Batch 23). Returns the newly-created page; the
+     * collective is also refreshed so the copy appears in the tree.
+     */
+    suspend fun copyPage(
+        collectiveId: Long,
+        pageId: Long,
+    ): ApiResult<Page>
+
+    /**
+     * Persist a new child ordering for [parentPageId] (Batch 23). The
+     * caller passes the desired sibling-id order; we optimistically
+     * write the new CSV to the cached parent row so the tree reflects
+     * the order immediately, then PUT to the server and roll back on
+     * failure.
+     */
+    suspend fun setSubpageOrder(
+        collectiveId: Long,
+        parentPageId: Long,
+        subpageOrderIds: List<Long>,
+    ): ApiResult<Unit>
+
+    /**
      * Pages whose `linkedPageIds` contain [pageId]. Backlinks live in the
      * same collective by design — Collectives' indexer only tracks
      * intra-collective references.

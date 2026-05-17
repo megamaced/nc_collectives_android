@@ -96,6 +96,12 @@ interface PageDao {
         filePath: String,
     )
 
+    @Query("UPDATE pages SET subpageOrderCsv = :csv WHERE id = :id")
+    suspend fun updateSubpageOrderCsv(
+        id: Long,
+        csv: String,
+    )
+
     @Query("DELETE FROM pages WHERE collectiveId = :collectiveId AND id NOT IN (:keepIds)")
     suspend fun deleteMissingForCollective(
         collectiveId: Long,

@@ -156,6 +156,9 @@ dependencies {
     implementation(libs.markwon.ext.strikethrough)
     implementation(libs.markwon.image)
 
+    // Drag-to-reorder (Batch 23)
+    implementation(libs.reorderable)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

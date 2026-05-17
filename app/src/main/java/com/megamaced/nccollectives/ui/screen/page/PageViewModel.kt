@@ -36,6 +36,12 @@ data class PageViewUiState(
     val isLoadingTags: Boolean = false,
     /** Pages in the same collective, used as targets for the move sheet. */
     val movableTargets: List<Page> = emptyList(),
+    /**
+     * Set to the new page id after a successful duplicate (Batch 23). The
+     * UI shows a "Copied — Open?" snackbar and clears this via
+     * [acknowledgeCopied] once it's been surfaced.
+     */
+    val copiedPageId: Long? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -217,6 +223,25 @@ class PageViewModel
                 val result = pageRepository.movePage(pageId, newParentPageId)
                 _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, "moved")) }
             }
+        }
+
+        fun duplicatePage() {
+            val current = page.value ?: return
+            viewModelScope.launch {
+                val result = pageRepository.copyPage(current.collectiveId, current.id)
+                _uiState.update {
+                    when (result) {
+                        is ApiResult.Success ->
+                            it.copy(copiedPageId = result.data.id)
+                        else ->
+                            it.copy(statusMessage = result.userMessage())
+                    }
+                }
+            }
+        }
+
+        fun acknowledgeCopied() {
+            _uiState.update { it.copy(copiedPageId = null) }
         }
 
         fun trashPage(onTrashed: () -> Unit) {

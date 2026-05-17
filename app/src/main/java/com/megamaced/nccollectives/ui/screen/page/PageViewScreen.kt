@@ -89,6 +89,19 @@ internal fun PageViewScreen(
         }
     }
 
+    LaunchedEffect(ui.copiedPageId) {
+        val target = ui.copiedPageId ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "Page duplicated",
+            actionLabel = "Open",
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.acknowledgeCopied()
+        if (result == SnackbarResult.ActionPerformed) {
+            onOpenPage(target)
+        }
+    }
+
     LaunchedEffect(pendingTrash) {
         if (!pendingTrash) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
@@ -175,6 +188,13 @@ internal fun PageViewScreen(
                                         menuExpanded = false
                                         viewModel.loadMoveTargets()
                                         showMoveSheet = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Duplicate") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.duplicatePage()
                                     },
                                 )
                                 DropdownMenuItem(

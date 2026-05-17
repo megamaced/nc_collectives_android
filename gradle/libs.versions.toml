@@ -29,6 +29,9 @@ coil = "3.4.0"
 # Markdown rendering (Markwon — themed directly so dark mode looks right)
 markwon = "4.6.2"
 
+# Drag-to-reorder for Compose LazyColumn (Batch 23)
+reorderable = "2.5.1"
+
 # DI
 # Pinned below 2.59 — Hilt 2.59 requires AGP 9. Bump together with AGP 9.
 hilt = "2.58"
@@ -101,6 +104,9 @@ markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version
 markwon-ext-tasklist = { group = "io.noties.markwon", name = "ext-tasklist", version.ref = "markwon" }
 markwon-ext-strikethrough = { group = "io.noties.markwon", name = "ext-strikethrough", version.ref = "markwon" }
 markwon-image = { group = "io.noties.markwon", name = "image", version.ref = "markwon" }
+
+# Drag-to-reorder
+reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

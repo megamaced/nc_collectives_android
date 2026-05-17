@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.splitTags
+import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
@@ -507,6 +508,57 @@ class PageRepositoryImpl
             }
             if (result is ApiResult.Success) {
                 refresh(entity.collectiveId)
+            }
+            return result.mapSuccess { }
+        }
+
+        override suspend fun copyPage(
+            collectiveId: Long,
+            pageId: Long,
+        ): ApiResult<Page> {
+            val now = System.currentTimeMillis()
+            val result = apiCall { api.copyPage(collectiveId, pageId, copy = true) }
+            return result.mapSuccess { envelope ->
+                val createdDto = envelope.ocs.data.page
+                val entity = createdDto.toEntity(
+                    collectiveId = collectiveId,
+                    now = now,
+                    existingBody = null,
+                    existingEtag = null,
+                    existingDraft = null,
+                )
+                pageDao.upsertAll(listOf(entity))
+                // Refresh the collective so the parent's `subpageOrder` and
+                // any other side-effects of duplication (folder promotion if
+                // the source was a folder) land too.
+                refresh(collectiveId)
+                entity.toDomain()
+            }
+        }
+
+        override suspend fun setSubpageOrder(
+            collectiveId: Long,
+            parentPageId: Long,
+            subpageOrderIds: List<Long>,
+        ): ApiResult<Unit> {
+            val parent = pageDao.getById(parentPageId)
+                ?: return ApiResult.Unexpected(
+                    IllegalStateException("Parent page $parentPageId not cached"),
+                )
+            val previousCsv = parent.subpageOrderCsv
+            val nextCsv = subpageOrderIds.toLongCsv()
+            if (nextCsv == previousCsv) return ApiResult.Success(Unit)
+
+            // Optimistic local write — the tree's order is driven by the
+            // parent's `subpageOrderCsv` (Batch 23), so the row reshuffles
+            // before the network call returns.
+            pageDao.updateSubpageOrderCsv(parentPageId, nextCsv)
+            val subpageOrderJson = subpageOrderIds.joinToString(prefix = "[", postfix = "]", separator = ",")
+            val result = apiCall {
+                api.setSubpageOrder(collectiveId, parentPageId, subpageOrderJson)
+            }
+            if (result !is ApiResult.Success) {
+                pageDao.updateSubpageOrderCsv(parentPageId, previousCsv)
             }
             return result.mapSuccess { }
         }
