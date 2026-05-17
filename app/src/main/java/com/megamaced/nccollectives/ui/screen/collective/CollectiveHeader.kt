@@ -172,12 +172,13 @@ internal fun LandingPageCard(
 private fun relativeTime(serverTimestampSeconds: Long): String {
     if (serverTimestampSeconds <= 0L) return ""
     val millis = serverTimestampSeconds * 1_000L
-    return DateUtils.getRelativeTimeSpanString(
+    val span = DateUtils.getRelativeTimeSpanString(
         millis,
         System.currentTimeMillis(),
         DateUtils.MINUTE_IN_MILLIS,
         DateUtils.FORMAT_ABBREV_RELATIVE,
-    ).toString()
+    )
+    return span.toString()
 }
 
 /**

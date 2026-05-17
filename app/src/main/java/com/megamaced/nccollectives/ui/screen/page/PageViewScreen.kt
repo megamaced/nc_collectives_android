@@ -324,12 +324,13 @@ private fun PageViewContent(
             )
         }
         val editedRelative = if (page.serverTimestamp > 0) {
-            android.text.format.DateUtils.getRelativeTimeSpanString(
+            val span = android.text.format.DateUtils.getRelativeTimeSpanString(
                 page.serverTimestamp * 1000L,
                 System.currentTimeMillis(),
                 android.text.format.DateUtils.MINUTE_IN_MILLIS,
                 android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
-            ).toString()
+            )
+            span.toString()
         } else {
             null
         }
