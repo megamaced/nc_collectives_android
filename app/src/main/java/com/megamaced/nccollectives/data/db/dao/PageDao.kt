@@ -38,6 +38,15 @@ interface PageDao {
     )
     fun observeRecent(limit: Int): Flow<List<PageEntity>>
 
+    @Query(
+        "SELECT * FROM pages WHERE collectiveId = :collectiveId AND trashTimestamp IS NULL " +
+            "AND parentId != 0 ORDER BY serverTimestamp DESC LIMIT :limit",
+    )
+    fun observeRecentInCollective(
+        collectiveId: Long,
+        limit: Int,
+    ): Flow<List<PageEntity>>
+
     @Query("SELECT * FROM pages WHERE id IN (:ids) AND trashTimestamp IS NULL")
     fun observeByIds(ids: List<Long>): Flow<List<PageEntity>>
 

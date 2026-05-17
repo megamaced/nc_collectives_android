@@ -55,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,14 @@ internal fun PageTreeScreen(
         }
     }
 
+    // Prime the landing-page body once we know which page it is, so the
+    // landing-card snippet can show a preview without the user opening it.
+    LaunchedEffect(ui.landingPage?.id) {
+        viewModel.primeLandingBody()
+    }
+
+    val isCompactWidth = LocalConfiguration.current.screenWidthDp < 600
+
     Scaffold(
         modifier = Modifier.padding(innerPadding),
         containerColor = Color.Transparent,
@@ -115,11 +124,11 @@ internal fun PageTreeScreen(
                     IconButton(onClick = onOpenFavorites) {
                         Icon(Icons.Outlined.Bookmark, contentDescription = "Favorites")
                     }
-                    IconButton(onClick = { newPageMode = NewPageMode.PickParent }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New page")
-                    }
                     IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Trash")
+                    }
+                    IconButton(onClick = { newPageMode = NewPageMode.PickParent }) {
+                        Icon(Icons.Filled.Add, contentDescription = "New page")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -132,10 +141,10 @@ internal fun PageTreeScreen(
     ) { scaffoldPadding ->
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
             when {
-                ui.isRefreshing && nodes.isEmpty() -> LoadingState()
-                ui.errorMessage != null && nodes.isEmpty() ->
+                ui.isRefreshing && nodes.isEmpty() && ui.landingPage == null -> LoadingState()
+                ui.errorMessage != null && nodes.isEmpty() && ui.landingPage == null ->
                     ErrorState(message = ui.errorMessage!!, onRetry = viewModel::refresh)
-                nodes.isEmpty() ->
+                nodes.isEmpty() && ui.landingPage == null ->
                     EmptyState(
                         title = "No pages",
                         message = "This collective doesn't have any pages yet.",
@@ -143,6 +152,11 @@ internal fun PageTreeScreen(
                 else -> PageTreeList(
                     nodes = nodes,
                     expanded = ui.expanded,
+                    landingPage = ui.landingPage,
+                    collectiveName = ui.collectiveName,
+                    collectiveEmoji = ui.collectiveEmoji,
+                    recentPages = ui.recentPages,
+                    showLandingCard = isCompactWidth,
                     onToggle = viewModel::toggleExpanded,
                     onPageClick = onPageClick,
                     onToggleFavorite = viewModel::toggleFavorite,
@@ -180,12 +194,35 @@ private sealed interface NewPageMode {
 private fun PageTreeList(
     nodes: List<PageNode>,
     expanded: Set<Long>,
+    landingPage: com.megamaced.nccollectives.domain.model.Page?,
+    collectiveName: String,
+    collectiveEmoji: String?,
+    recentPages: List<com.megamaced.nccollectives.domain.model.Page>,
+    showLandingCard: Boolean,
     onToggle: (Long) -> Unit,
     onPageClick: (Long) -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onAddSubpage: (Long) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
+        if (recentPages.isNotEmpty()) {
+            item(key = "header-recent") {
+                RecentPagesStrip(pages = recentPages, onPageClick = onPageClick)
+            }
+        }
+        if (showLandingCard && landingPage != null) {
+            item(key = "header-landing") {
+                LandingPageCard(
+                    landing = landingPage,
+                    collectiveName = collectiveName,
+                    collectiveEmoji = collectiveEmoji,
+                    onClick = { onPageClick(landingPage.id) },
+                )
+            }
+        }
+        if (recentPages.isNotEmpty() || (showLandingCard && landingPage != null)) {
+            item(key = "header-divider") { HorizontalDivider() }
+        }
         items(nodes, key = { it.page.id }) { node ->
             PageTreeItem(
                 node = node,

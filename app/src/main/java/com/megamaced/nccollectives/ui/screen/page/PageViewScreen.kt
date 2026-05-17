@@ -52,8 +52,6 @@ import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
-import java.text.DateFormat
-import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -325,19 +323,24 @@ private fun PageViewContent(
                 style = MaterialTheme.typography.headlineSmall,
             )
         }
-        val edited = if (page.serverTimestamp > 0) {
-            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(page.serverTimestamp * 1000L))
+        val editedRelative = if (page.serverTimestamp > 0) {
+            android.text.format.DateUtils.getRelativeTimeSpanString(
+                page.serverTimestamp * 1000L,
+                System.currentTimeMillis(),
+                android.text.format.DateUtils.MINUTE_IN_MILLIS,
+                android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
+            ).toString()
         } else {
             null
         }
         val subtitle = listOfNotNull(
-            page.lastUserDisplayName.takeIf { it.isNotEmpty() }?.let { "Edited by $it" },
-            edited?.let { "on $it" },
+            page.lastUserDisplayName.takeIf { it.isNotEmpty() }?.let { "Last changed by $it" },
+            editedRelative?.let { "· $it" },
         ).joinToString(" ")
         if (subtitle.isNotEmpty()) {
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

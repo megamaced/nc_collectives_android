@@ -8,6 +8,16 @@ import kotlinx.coroutines.flow.Flow
 interface PageRepository {
     fun observePages(collectiveId: Long): Flow<List<Page>>
 
+    /**
+     * Most-recently-edited non-trashed pages in [collectiveId], excluding
+     * the landing page. Backs the "Recent pages" strip on the page-tree
+     * screen.
+     */
+    fun observeRecentPages(
+        collectiveId: Long,
+        limit: Int,
+    ): Flow<List<Page>>
+
     fun observePage(pageId: Long): Flow<Page?>
 
     suspend fun refresh(collectiveId: Long): ApiResult<Unit>

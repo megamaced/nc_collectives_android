@@ -39,6 +39,14 @@ class PageRepositoryImpl
         override fun observePages(collectiveId: Long): Flow<List<Page>> =
             pageDao.observeForCollective(collectiveId).map { rows -> rows.map { it.toDomain() } }
 
+        override fun observeRecentPages(
+            collectiveId: Long,
+            limit: Int,
+        ): Flow<List<Page>> =
+            pageDao
+                .observeRecentInCollective(collectiveId, limit)
+                .map { rows -> rows.map { it.toDomain() } }
+
         override fun observePage(pageId: Long): Flow<Page?> = pageDao.observeById(pageId).map { it?.toDomain() }
 
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =

@@ -35,10 +35,15 @@ data class PageTreeUiState(
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
     val collectiveName: String = "",
+    val collectiveEmoji: String? = null,
     val expanded: Set<Long> = emptySet(),
     val statusMessage: String? = null,
     /** Pages eligible as the parent for a new top-level "Add page" — folder pages and the landing page. */
     val parentChoices: List<Page> = emptyList(),
+    /** The collective's landing page (parentId == 0). Null until pages load. */
+    val landingPage: Page? = null,
+    /** Most-recently-edited pages in this collective for the recent-pages strip. */
+    val recentPages: List<Page> = emptyList(),
 )
 
 @HiltViewModel
@@ -78,7 +83,7 @@ class PageTreeViewModel
             viewModelScope.launch {
                 collectiveRepository.observeCollectives().collect { collectives ->
                     collectives.firstOrNull { it.id == collectiveId }?.let { c ->
-                        _uiState.update { it.copy(collectiveName = c.name) }
+                        _uiState.update { it.copy(collectiveName = c.name, collectiveEmoji = c.emoji) }
                     }
                 }
             }
@@ -88,10 +93,27 @@ class PageTreeViewModel
                     // leaf parent to a folder when it gains a child (Batch
                     // 18h / 18i OCS migration).
                     val choices = pages.sortedBy { it.title.lowercase() }
-                    _uiState.update { it.copy(parentChoices = choices) }
+                    val landing = pages.firstOrNull { it.parentId == 0L }
+                    _uiState.update { it.copy(parentChoices = choices, landingPage = landing) }
+                }
+            }
+            viewModelScope.launch {
+                pageRepository.observeRecentPages(collectiveId, RECENT_LIMIT).collect { recent ->
+                    _uiState.update { it.copy(recentPages = recent) }
                 }
             }
             refresh()
+        }
+
+        /**
+         * Fire-and-forget fetch of the landing page's body so the snippet
+         * card can show a preview. No-ops if the body is already cached or
+         * the network is unavailable.
+         */
+        fun primeLandingBody() {
+            val landing = _uiState.value.landingPage ?: return
+            if (!landing.bodyMd.isNullOrBlank()) return
+            viewModelScope.launch { pageRepository.fetchBody(landing.id) }
         }
 
         fun refresh() {
@@ -181,11 +203,16 @@ class PageTreeViewModel
                     if (hasChildren && child.id in expanded) walk(child.id)
                 }
             }
-            walk(parent = 0L)
+            // The collective's landing page (parentId == 0) is represented by
+            // the landing-card above the tree (Batch 21); skip it here and
+            // render its children as the tree's top level.
+            val landingPageId = byParent[0L]?.firstOrNull()?.id
+            if (landingPageId != null) walk(parent = landingPageId)
             return out
         }
 
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L
+            const val RECENT_LIMIT = 8
         }
     }
