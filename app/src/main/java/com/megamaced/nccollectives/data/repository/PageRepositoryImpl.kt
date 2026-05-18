@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.repository
 
+import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
@@ -437,6 +438,25 @@ class PageRepositoryImpl
                     .map { it.toDomain() }
                     .toList()
             }
+
+        override fun observePagesWithTagInCollective(
+            collectiveId: Long,
+            tagName: String,
+        ): Flow<List<Page>> {
+            // SQLite LIKE: `%` / `_` in a tag name would behave as wildcards.
+            // Rare in practice, but the post-fetch split+exact-match filter
+            // below absorbs both false positives and the (unlikely) case
+            // where a tag was reordered into a different CSV slot between
+            // the LIKE eval and the row read.
+            val likePattern = "%$TAG_SEP_STRING$tagName$TAG_SEP_STRING%"
+            return pageDao
+                .observePagesWithTagInCollective(collectiveId, TAG_SEP_STRING, likePattern)
+                .map { rows ->
+                    rows
+                        .filter { tagName in splitTags(it.tagsCsv) }
+                        .map { it.toDomain() }
+                }
+        }
 
         override suspend fun resolvePageByTitle(
             collectiveId: Long,

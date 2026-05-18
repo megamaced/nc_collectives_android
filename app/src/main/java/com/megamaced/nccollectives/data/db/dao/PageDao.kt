@@ -50,6 +50,25 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id IN (:ids) AND trashTimestamp IS NULL")
     fun observeByIds(ids: List<Long>): Flow<List<PageEntity>>
 
+    /**
+     * Pages in [collectiveId] whose `tagsCsv` contains [tagName] (Batch 25).
+     * `tagsCsv` stores tag *names* separated by U+001F; wrapping the column
+     * with the separator on both sides lets a single LIKE pattern match
+     * regardless of whether the tag sits first/middle/last/alone. The
+     * pattern + sep wrapping are passed in from the repository so the SQL
+     * stays opaque to the choice of separator character.
+     */
+    @Query(
+        "SELECT * FROM pages WHERE collectiveId = :collectiveId AND trashTimestamp IS NULL " +
+            "AND (:sep || tagsCsv || :sep) LIKE :likePattern " +
+            "ORDER BY title COLLATE NOCASE ASC",
+    )
+    fun observePagesWithTagInCollective(
+        collectiveId: Long,
+        sep: String,
+        likePattern: String,
+    ): Flow<List<PageEntity>>
+
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 

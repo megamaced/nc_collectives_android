@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
 import com.megamaced.nccollectives.ui.screen.settings.SettingsScreen
 import com.megamaced.nccollectives.ui.screen.share.ShareCaptureScreen
+import com.megamaced.nccollectives.ui.screen.tag.TagBrowseScreen
 import com.megamaced.nccollectives.ui.screen.trash.CollectiveTrashScreen
 import com.megamaced.nccollectives.ui.screen.trash.TrashScreen
 
@@ -100,6 +101,9 @@ internal fun NcCollectivesNavHost(
                 onOpenPage = { target ->
                     if (target != pageId) navController.navigate(Destination.PageView.route(target))
                 },
+                onBrowseTag = { collectiveId, tagName ->
+                    navController.navigate(Destination.TagBrowse.route(collectiveId, tagName))
+                },
             )
         }
         composable(
@@ -151,6 +155,21 @@ internal fun NcCollectivesNavHost(
             CollectiveTrashScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Destination.TagBrowse.route,
+            arguments = listOf(
+                navArgument(Destination.TagBrowse.ARG_COLLECTIVE_ID) { type = NavType.LongType },
+                navArgument(Destination.TagBrowse.ARG_TAG_NAME) { type = NavType.StringType },
+            ),
+        ) {
+            TagBrowseScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+                onOpenPage = { pageId ->
+                    navController.navigate(Destination.PageView.route(pageId))
+                },
             )
         }
     }

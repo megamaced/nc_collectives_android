@@ -181,6 +181,18 @@ interface PageRepository {
     ): Flow<List<Page>>
 
     /**
+     * Pages in [collectiveId] carrying [tagName] (Batch 25). Backs the
+     * Browse-by-tag screen reached by tapping a tag chip on PageView or
+     * TagPickerSheet. `tagsCsv` stores tag *names* not ids, so we query
+     * by name; the [TagBrowse][com.megamaced.nccollectives.ui.navigation.Destination.TagBrowse]
+     * route also carries the name for the same reason.
+     */
+    fun observePagesWithTagInCollective(
+        collectiveId: Long,
+        tagName: String,
+    ): Flow<List<Page>>
+
+    /**
      * Resolve a wikilink target (`[[Page Name]]`, `./Page%20Name`, etc.) to a
      * cached page id within [collectiveId]. Matches title case-insensitively
      * and strips a trailing `.md` extension.

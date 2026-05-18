@@ -61,6 +61,7 @@ internal fun PageViewScreen(
     onEdit: () -> Unit,
     onAttachments: () -> Unit,
     onOpenPage: (Long) -> Unit,
+    onBrowseTag: (collectiveId: Long, tagName: String) -> Unit,
     viewModel: PageViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
@@ -232,6 +233,7 @@ internal fun PageViewScreen(
                     onDiscardDraft = viewModel::discardDraft,
                     onOpenPage = onOpenPage,
                     onWikiLink = { target -> viewModel.resolveWikilink(target, onOpenPage) },
+                    onBrowseTag = { tagName -> onBrowseTag(currentPage.collectiveId, tagName) },
                 )
             }
         }
@@ -254,6 +256,11 @@ internal fun PageViewScreen(
             isLoading = ui.isLoadingTags,
             onToggle = viewModel::togglePageTag,
             onCreate = viewModel::createTag,
+            onBrowse = { tag ->
+                val collectiveId = page?.collectiveId ?: return@TagPickerSheet
+                showTagPicker = false
+                onBrowseTag(collectiveId, tag.name)
+            },
             onDismiss = { showTagPicker = false },
         )
     }
@@ -318,6 +325,7 @@ private fun PageViewContent(
     onDiscardDraft: () -> Unit,
     onOpenPage: (Long) -> Unit,
     onWikiLink: (String) -> Unit,
+    onBrowseTag: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -369,7 +377,7 @@ private fun PageViewContent(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 page.tags.forEach { tag ->
                     AssistChip(
-                        onClick = {},
+                        onClick = { onBrowseTag(tag) },
                         label = { Text(tag) },
                         colors = AssistChipDefaults.assistChipColors(),
                     )

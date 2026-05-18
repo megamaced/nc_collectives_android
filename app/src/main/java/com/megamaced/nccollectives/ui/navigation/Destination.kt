@@ -46,4 +46,24 @@ internal sealed class Destination(
 
     /** App-wide collectives trash (Batch 22). Distinct from per-collective page trash. */
     object CollectiveTrash : Destination("collectives/trash")
+
+    /**
+     * Browse pages by tag (Batch 25). Carries the tag *name* rather than
+     * the tag id because the local cache (`PageEntity.tagsCsv`) stores
+     * names, and the app can't rename tags so the name is stable as a
+     * route arg. Tag names can contain `/` or spaces, so callers must
+     * URL-encode via [route].
+     */
+    object TagBrowse : Destination("collective/{collectiveId}/tag/{tagName}") {
+        const val ARG_COLLECTIVE_ID = "collectiveId"
+        const val ARG_TAG_NAME = "tagName"
+
+        fun route(
+            collectiveId: Long,
+            tagName: String,
+        ): String {
+            val encoded = java.net.URLEncoder.encode(tagName, "UTF-8")
+            return "collective/$collectiveId/tag/$encoded"
+        }
+    }
 }

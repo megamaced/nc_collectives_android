@@ -2,13 +2,14 @@ package com.megamaced.nccollectives.ui.screen.page
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +46,7 @@ fun TagPickerSheet(
     isLoading: Boolean,
     onToggle: (PageTag, Boolean) -> Unit,
     onCreate: (String) -> Unit,
+    onBrowse: (PageTag) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -68,14 +70,32 @@ fun TagPickerSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // One row per tag: FilterChip toggles membership on the
+                    // current page (existing behaviour); the trailing
+                    // arrow opens the Browse-by-tag screen (Batch 25).
+                    // Both share the row but each owns its own click target
+                    // so toggle and browse don't conflict.
                     available.forEach { tag ->
                         val selected = tag.name in selectedTagNames
-                        FilterChip(
-                            selected = selected,
-                            onClick = { onToggle(tag, !selected) },
-                            label = { Text(tag.name) },
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilterChip(
+                                selected = selected,
+                                onClick = { onToggle(tag, !selected) },
+                                label = { Text(tag.name) },
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { onBrowse(tag) }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Browse pages tagged \"${tag.name}\"",
+                                )
+                            }
+                        }
                     }
                 }
             }
