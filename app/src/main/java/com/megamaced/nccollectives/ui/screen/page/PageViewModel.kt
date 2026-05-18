@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
@@ -19,9 +20,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -66,6 +69,19 @@ class PageViewModel
 
         private val _imageBaseUrl = MutableStateFlow<String?>(null)
         val imageBaseUrl: StateFlow<String?> = _imageBaseUrl.asStateFlow()
+
+        /**
+         * Count of attachments on this page that have successfully uploaded
+         * (status = `REMOTE`). Bumps whenever a queued upload completes —
+         * the page screen keys the markdown view on this so Markwon
+         * re-fetches images that previously 404'd while their upload was
+         * still in flight (B-56).
+         */
+        val remoteAttachmentCount: StateFlow<Int> = attachmentRepository
+            .observeForPage(pageId)
+            .map { list -> list.count { it.status == Attachment.Status.REMOTE } }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), 0)
 
         val isFavorite: StateFlow<Boolean> = combine(
             page,
@@ -212,8 +228,27 @@ class PageViewModel
                 // `.collect { … return@collect }` left a Room observer running
                 // for the screen's lifetime (B-7).
                 val list = pageRepository.observePages(current.collectiveId).first()
+                // B-39: drop the moved page and its descendants — a cycle
+                // (move A under one of A's own children) bricks the page
+                // tree on the server. Walk parents toward the root, stop
+                // at a malformed chain (parentId → missing row).
+                val byId = list.associateBy { it.id }
+                val descendantIds = buildSet {
+                    for (candidate in list) {
+                        var cursor: Page? = byId[candidate.parentId]
+                        while (cursor != null) {
+                            if (cursor.id == pageId) {
+                                add(candidate.id)
+                                break
+                            }
+                            cursor = byId[cursor.parentId]
+                        }
+                    }
+                }
                 _uiState.update {
-                    it.copy(movableTargets = list.filter { p -> p.id != pageId })
+                    it.copy(
+                        movableTargets = list.filter { p -> p.id != pageId && p.id !in descendantIds },
+                    )
                 }
             }
         }

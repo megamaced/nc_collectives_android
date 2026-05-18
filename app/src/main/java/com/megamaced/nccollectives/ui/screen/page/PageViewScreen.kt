@@ -38,8 +38,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +71,7 @@ internal fun PageViewScreen(
     val isFavorite by viewModel.isFavorite.collectAsState()
     val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
     val backlinks by viewModel.backlinks.collectAsState()
+    val remoteAttachmentCount by viewModel.remoteAttachmentCount.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -80,7 +83,14 @@ internal fun PageViewScreen(
     // Pre-commit undo for trash (Batch 18m). When the user confirms the
     // dialog this flips true; the LaunchedEffect below shows the snackbar
     // and either fires the server delete or quietly cancels.
-    var pendingTrash by remember { mutableStateOf(false) }
+    //
+    // B-37: `rememberSaveable` so a configuration change (rotation, locale,
+    // theme) doesn't drop the pending-trash state on the floor. Without
+    // this the LaunchedEffect coroutine is cancelled on recomposition and
+    // `pendingTrash` resets to false — both the trash and the undo are
+    // silently swallowed. With it, the snackbar re-appears after rotation
+    // and either commits or undoes as before.
+    var pendingTrash by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
         val msg = ui.statusMessage ?: ui.errorMessage
@@ -229,6 +239,7 @@ internal fun PageViewScreen(
                     body = currentPage.bodyMd.orEmpty(),
                     imageBaseUrl = imageBaseUrl,
                     backlinks = backlinks,
+                    remoteAttachmentCount = remoteAttachmentCount,
                     onReplaceWithDraft = viewModel::replaceWithDraft,
                     onDiscardDraft = viewModel::discardDraft,
                     onOpenPage = onOpenPage,
@@ -321,6 +332,7 @@ private fun PageViewContent(
     body: String,
     imageBaseUrl: String?,
     backlinks: List<Page>,
+    remoteAttachmentCount: Int,
     onReplaceWithDraft: () -> Unit,
     onDiscardDraft: () -> Unit,
     onOpenPage: (Long) -> Unit,
@@ -384,11 +396,19 @@ private fun PageViewContent(
                 }
             }
         }
-        MarkdownView(
-            markdown = body,
-            imageBaseUrl = imageBaseUrl,
-            onWikiLink = onWikiLink,
-        )
+        // B-56: `key(remoteAttachmentCount)` rebuilds the MarkdownView (and
+        // its underlying TextView + Markwon Spannable) whenever a queued
+        // upload promotes to REMOTE. Without this, an image referenced in
+        // the body before its upload completes 404s once and the broken
+        // slot stays broken — Markwon doesn't retry until setMarkdown is
+        // called on a fresh view.
+        key(remoteAttachmentCount) {
+            MarkdownView(
+                markdown = body,
+                imageBaseUrl = imageBaseUrl,
+                onWikiLink = onWikiLink,
+            )
+        }
         BacklinkChipRow(pages = backlinks, onOpenPage = onOpenPage)
     }
 }

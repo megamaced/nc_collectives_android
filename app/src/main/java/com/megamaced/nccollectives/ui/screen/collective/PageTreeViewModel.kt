@@ -182,96 +182,49 @@ class PageTreeViewModel
         }
 
         /**
-         * Commit a drag-to-reorder (Batch 23). [fromVisibleIndex] /
-         * [toVisibleIndex] are indices into the latest [nodes] snapshot.
-         * Reordering is scoped to siblings — if the user dropped the row
-         * next to a non-sibling, we re-base the move within the moved
-         * page's parent group, so the visible drop position still maps
-         * onto a sane sibling-only ordering.
+         * Commit a drag-to-reorder (Batch 23). [movedPageId] is the page the
+         * user dragged; [newVisibleOrder] is the page-id sequence of the
+         * tree in its post-drag visible order. Sibling ordering is derived
+         * by filtering [newVisibleOrder] to entries sharing the moved
+         * page's parent — so dragging across an unrelated subtree still
+         * produces a defensible sibling-only reorder.
+         *
+         * B-35: the previous signature took `fromVisibleIndex` from the
+         * upstream `nodes` flow and `toVisibleIndex` from the post-drag
+         * `localNodes` mirror — two different coordinate spaces. Passing
+         * the new visible order directly removes the mismatch.
          */
         fun onReorderDrop(
-            fromVisibleIndex: Int,
-            toVisibleIndex: Int,
+            movedPageId: Long,
+            newVisibleOrder: List<Long>,
         ) {
             val snapshot = nodes.value
-            if (fromVisibleIndex !in snapshot.indices || toVisibleIndex !in snapshot.indices) return
-            if (fromVisibleIndex == toVisibleIndex) return
-
-            val moved = snapshot[fromVisibleIndex].page
+            val moved = snapshot.firstOrNull { it.page.id == movedPageId }?.page ?: return
             val parentId = moved.parentId
-            // The siblings currently visible in the tree, in the order
-            // the user sees them. (A sibling whose subtree is collapsed
-            // still has one visible row — itself.)
-            val visibleSiblings = snapshot
+
+            val byId = snapshot.associateBy { it.page.id }
+            val newSiblingIds = newVisibleOrder
+                .mapNotNull { byId[it]?.page }
+                .filter { it.parentId == parentId }
+                .map { it.id }
+            if (newSiblingIds.size <= 1) return
+
+            val oldSiblingIds = snapshot
                 .map { it.page }
                 .filter { it.parentId == parentId }
-            if (visibleSiblings.size <= 1) return
-
-            val fromSiblingIndex = visibleSiblings.indexOfFirst { it.id == moved.id }
-            if (fromSiblingIndex < 0) return
-
-            // Snap the drop position onto the sibling list. We walk
-            // outward from [toVisibleIndex] to find the nearest visible
-            // sibling and slot in next to it. This means dragging across
-            // an unrelated subtree still produces a defensible
-            // sibling-only reorder.
-            val toSiblingIndex = nearestSiblingIndex(snapshot, parentId, toVisibleIndex, fromVisibleIndex)
-                ?: return
-
-            val newSiblings = visibleSiblings.toMutableList().apply {
-                add(toSiblingIndex, removeAt(fromSiblingIndex))
-            }
-            val newIds = newSiblings.map { it.id }
-            if (newIds == visibleSiblings.map { it.id }) return
+                .map { it.id }
+            if (newSiblingIds == oldSiblingIds) return
 
             viewModelScope.launch {
                 val result = pageRepository.setSubpageOrder(
                     collectiveId = collectiveId,
                     parentPageId = parentId,
-                    subpageOrderIds = newIds,
+                    subpageOrderIds = newSiblingIds,
                 )
                 if (result !is ApiResult.Success) {
                     _uiState.update { it.copy(statusMessage = result.userMessage()) }
                 }
             }
-        }
-
-        /**
-         * Walk outward from [centerIndex] looking for the nearest visible
-         * page that shares [parentId] (skipping [skipIndex], which is the
-         * row being dragged). Returns the sibling-list index where the
-         * moved row should land, or null if no peer is visible.
-         */
-        private fun nearestSiblingIndex(
-            snapshot: List<PageNode>,
-            parentId: Long,
-            centerIndex: Int,
-            skipIndex: Int,
-        ): Int? {
-            for (offset in 0..snapshot.size) {
-                listOf(centerIndex + offset, centerIndex - offset).forEach { probe ->
-                    if (probe == skipIndex) return@forEach
-                    if (probe !in snapshot.indices) return@forEach
-                    val candidate = snapshot[probe].page
-                    if (candidate.parentId == parentId) {
-                        // Map back to the sibling-only list. After
-                        // removing the dragged row, the candidate's
-                        // position becomes the drop slot.
-                        val siblingsWithoutMoved = snapshot
-                            .map { it.page }
-                            .filter { it.parentId == parentId && it.id != snapshot[skipIndex].page.id }
-                        val siblingIndex = siblingsWithoutMoved.indexOfFirst { it.id == candidate.id }
-                        if (siblingIndex < 0) return null
-                        // Decide before or after: a probe greater than the
-                        // skipIndex means the user dragged downward past
-                        // this sibling — slot after it. Lower probe → slot
-                        // before.
-                        return if (probe > skipIndex) siblingIndex + 1 else siblingIndex
-                    }
-                }
-                if (centerIndex + offset > snapshot.size && centerIndex - offset < 0) break
-            }
-            return null
         }
 
         private fun buildVisibleNodes(

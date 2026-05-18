@@ -208,7 +208,7 @@ private fun PageTreeList(
     onPageClick: (Long) -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onAddSubpage: (Long) -> Unit,
-    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    onReorder: (movedPageId: Long, newVisibleOrder: List<Long>) -> Unit,
 ) {
     // Local mirror of the upstream tree so the drag animation can swap
     // rows continuously while the drag is in flight (Batch 23). The
@@ -263,10 +263,14 @@ private fun PageTreeList(
                     onAddSubpage = { onAddSubpage(node.page.id) },
                     dragHandleModifier = Modifier.longPressDraggableHandle(
                         onDragStopped = {
-                            val newIdx = localNodes.indexOfFirst { it.page.id == node.page.id }
-                            val oldIdx = nodes.indexOfFirst { it.page.id == node.page.id }
-                            if (newIdx >= 0 && oldIdx >= 0 && newIdx != oldIdx) {
-                                onReorder(oldIdx, newIdx)
+                            // B-35: pass the moved id + the full post-drag
+                            // visible order so the VM works in a single
+                            // coordinate space (the new list). The previous
+                            // (oldIdx, newIdx) pair mixed pre-drag and
+                            // post-drag indices.
+                            val newOrder = localNodes.map { it.page.id }
+                            if (newOrder != nodes.map { it.page.id }) {
+                                onReorder(node.page.id, newOrder)
                             }
                         },
                     ),

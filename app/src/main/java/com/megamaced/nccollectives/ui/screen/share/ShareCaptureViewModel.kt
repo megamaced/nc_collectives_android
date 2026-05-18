@@ -77,6 +77,13 @@ class ShareCaptureViewModel
         private var pagesJob: Job? = null
 
         fun selectCollective(id: Long) {
+            // B-55: dedupe by id. The auto-pick `LaunchedEffect(collectives)`
+            // in the share screen keys on the list reference, so any
+            // re-emission of the collectives flow (background sync, Room
+            // notifying observers) re-fires `selectCollective(id)` for the
+            // already-selected collective and triggers a redundant
+            // refresh + observer churn.
+            if (_uiState.value.selectedCollectiveId == id) return
             _uiState.update {
                 it.copy(
                     selectedCollectiveId = id,
