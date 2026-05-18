@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.repository
 
+import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import com.megamaced.nccollectives.data.api.ApiResult
@@ -12,8 +13,13 @@ import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import timber.log.Timber
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,6 +27,7 @@ import javax.inject.Singleton
 class AttachmentRepositoryImpl
     @Inject
     constructor(
+        @ApplicationContext private val context: Context,
         private val api: CollectivesApiService,
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
@@ -73,25 +80,59 @@ class AttachmentRepositoryImpl
             sourceUri: Uri,
             suggestedFileName: String,
             contentType: String?,
-        ): String {
+        ): String? {
             val resolvedName = resolveCollisionFreeName(pageId, suggestedFileName)
             val resolvedType = contentType ?: guessMimeType(resolvedName)
+            // B-29: copy the picked/shared bytes into our own cache before
+            // returning. Photo-picker URIs aren't persistable, the sender
+            // may revoke FLAG_GRANT_READ_URI_PERMISSION at any time, and
+            // the OS may evict the photo-picker cache before the worker
+            // runs — copying here is the only way to guarantee the worker
+            // can still read the bytes on the other side of process death.
+            val stagedFile = copyToStaging(pageId, resolvedName, sourceUri)
+                ?: return null
             val entity = AttachmentEntity(
                 id = AttachmentEntity.key(pageId, resolvedName),
                 pageId = pageId,
                 fileName = resolvedName,
                 contentType = resolvedType,
-                size = 0,
+                size = stagedFile.length(),
                 lastModifiedMs = System.currentTimeMillis(),
                 etag = null,
                 status = AttachmentEntity.STATUS_PENDING,
-                localUriString = sourceUri.toString(),
+                localUriString = Uri.fromFile(stagedFile).toString(),
                 lastSyncedAt = System.currentTimeMillis(),
             )
             attachmentDao.upsert(entity)
             syncScheduler.flushAttachmentUploadsWhenOnline()
-            return entity.id
+            return resolvedName
         }
+
+        private suspend fun copyToStaging(
+            pageId: Long,
+            resolvedName: String,
+            sourceUri: Uri,
+        ): File? =
+            withContext(Dispatchers.IO) {
+                val dir = File(context.cacheDir, "attachments-pending").apply { mkdirs() }
+                // Encode the file with the same key the DB row uses so the
+                // worker can find/delete it without an extra Room read.
+                val staged = File(dir, AttachmentEntity.key(pageId, resolvedName).replace('/', '_'))
+                try {
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        staged.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return@withContext null
+                    staged
+                } catch (e: SecurityException) {
+                    Timber.w(e, "Source URI %s not readable for staging", sourceUri)
+                    staged.delete()
+                    null
+                } catch (e: java.io.IOException) {
+                    Timber.w(e, "Failed to stage %s", sourceUri)
+                    staged.delete()
+                    null
+                }
+            }
 
         override suspend fun delete(
             pageId: Long,
@@ -222,7 +263,43 @@ class AttachmentRepositoryImpl
                 child: String,
             ): String = if (base.isEmpty()) child else "$base/$child"
 
-            private val INVALID_FILENAME_CHARS = setOf('/', '\\', ':', '*', '?', '"', '<', '>', '|')
+            /**
+             * Internal cache file backing a staged upload (B-29). Worker
+             * deletes this when the row reaches REMOTE / FAILED.
+             */
+            fun stagedFileFor(
+                context: Context,
+                attachmentId: String,
+            ): File =
+                File(
+                    File(context.cacheDir, "attachments-pending"),
+                    attachmentId.replace('/', '_'),
+                )
+
+            // S-13: filenames flow into markdown image refs `![…](…)` on the
+            // share paths. The on-disk-illegal set is the base; the extra
+            // markdown-meaningful punctuation prevents a hostile sharer
+            // crafting a filename like `x)![pwn](https://…)` from injecting
+            // markdown that server-side viewers would render.
+            private val INVALID_FILENAME_CHARS = setOf(
+                '/',
+                '\\',
+                ':',
+                '*',
+                '?',
+                '"',
+                '<',
+                '>',
+                '|',
+                '(',
+                ')',
+                '[',
+                ']',
+                '!',
+                '`',
+                '\n',
+                '\r',
+            )
         }
     }
 

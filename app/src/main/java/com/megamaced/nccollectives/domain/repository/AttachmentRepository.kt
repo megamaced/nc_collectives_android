@@ -12,16 +12,24 @@ interface AttachmentRepository {
     suspend fun refresh(pageId: Long): ApiResult<Unit>
 
     /**
-     * Enqueue an attachment upload from [sourceUri]. The actual byte transfer
-     * happens in `AttachmentUploadWorker`. Returns the resolved attachment id
-     * the UI can reference (e.g. to insert into markdown after upload).
+     * Enqueue an attachment upload from [sourceUri]. Bytes are copied into
+     * the app's internal cache before this returns (B-29) so the WorkManager
+     * upload survives the source URI's permission grant being revoked, the
+     * sender uninstalling, or the photo-picker cache being evicted. The
+     * actual byte transfer happens in `AttachmentUploadWorker`.
+     *
+     * Returns the *resolved* filename — `enqueueUpload` runs the suggested
+     * name through `sanitiseFileName` + a collision-resolver, so the caller
+     * should use the returned string (not [suggestedFileName]) when emitting
+     * markdown references that will resolve against the server-side file.
+     * Returns null if the source URI couldn't be read.
      */
     suspend fun enqueueUpload(
         pageId: Long,
         sourceUri: Uri,
         suggestedFileName: String,
         contentType: String?,
-    ): String
+    ): String?
 
     suspend fun delete(
         pageId: Long,

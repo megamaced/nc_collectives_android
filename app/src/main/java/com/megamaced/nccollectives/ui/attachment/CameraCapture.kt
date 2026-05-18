@@ -5,8 +5,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import java.io.File
@@ -29,16 +32,23 @@ import java.util.Locale
 @Composable
 fun rememberCameraCapture(onCaptured: (Uri, String) -> Unit): CameraCapture {
     val context = LocalContext.current
-    val pendingUri = remember { mutableStateOf<Uri?>(null) }
-    val pendingName = remember { mutableStateOf<String?>(null) }
+    // B-31: camera apps are memory-hungry, so the system frequently kills
+    // our process while ACTION_IMAGE_CAPTURE is foregrounded. `remember`
+    // would lose `pendingUri`/`pendingName` across the restart and the
+    // ActivityResult callback would silently drop the just-captured photo.
+    // `rememberSaveable` persists them in the host destination's saved
+    // state so the JPEG actually reaches the upload pipeline. Uri has a
+    // built-in Parcelable saver; String is a defaultable type.
+    var pendingUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var pendingName by rememberSaveable { mutableStateOf<String?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
     ) { success ->
-        val uri = pendingUri.value
-        val name = pendingName.value
-        pendingUri.value = null
-        pendingName.value = null
+        val uri = pendingUri
+        val name = pendingName
+        pendingUri = null
+        pendingName = null
         if (success && uri != null && name != null) {
             onCaptured(uri, name)
         }
@@ -47,8 +57,8 @@ fun rememberCameraCapture(onCaptured: (Uri, String) -> Unit): CameraCapture {
     return remember(context) {
         CameraCapture {
             val (uri, fileName) = newCaptureFile(context)
-            pendingUri.value = uri
-            pendingName.value = fileName
+            pendingUri = uri
+            pendingName = fileName
             launcher.launch(uri)
         }
     }

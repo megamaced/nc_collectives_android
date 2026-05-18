@@ -52,15 +52,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!--
+                S-11: image share filters restrict to content:// URIs so
+                the OS only routes senders that hand off a real content
+                provider URI. SharePayload.fromIntent does a second-line
+                filter that drops anything that slipped past (e.g. an app
+                bypassing the system share sheet to target the Activity
+                directly).
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
+                <data android:scheme="content" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
+                <data android:scheme="content" />
             </intent-filter>
         </activity>
 

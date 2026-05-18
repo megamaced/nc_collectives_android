@@ -7,4 +7,12 @@
         single image back into our process via a content:// URI.
     -->
     <cache-path name="captures" path="attachments/" />
+    <!--
+        Staged uploads from share intents / gallery picks (B-29). We copy
+        picked bytes into this directory in `AttachmentRepositoryImpl.enqueueUpload`
+        so the WorkManager upload survives the source URI's permission grant
+        being revoked or the photo-picker cache being evicted between the
+        UI hand-off and the worker run.
+    -->
+    <cache-path name="pending-uploads" path="attachments-pending/" />
 </paths>

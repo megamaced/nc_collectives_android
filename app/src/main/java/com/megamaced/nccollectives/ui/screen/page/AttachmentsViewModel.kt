@@ -68,8 +68,16 @@ class AttachmentsViewModel
             contentType: String?,
         ) {
             viewModelScope.launch {
-                repository.enqueueUpload(pageId, uri, suggestedName, contentType)
-                _uiState.update { it.copy(statusMessage = "Uploading $suggestedName…") }
+                val resolved = repository.enqueueUpload(pageId, uri, suggestedName, contentType)
+                _uiState.update {
+                    it.copy(
+                        statusMessage = if (resolved != null) {
+                            "Uploading $resolved…"
+                        } else {
+                            "Couldn't read $suggestedName"
+                        },
+                    )
+                }
             }
         }
 

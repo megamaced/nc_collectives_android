@@ -114,6 +114,9 @@ class AttachmentUploadWorker
                                 lastSyncedAt = System.currentTimeMillis(),
                             ),
                         )
+                        // B-29: bytes are safely on the server now; drop the
+                        // staging copy.
+                        gcStaged(row.id)
                     }
                     is ApiResult.NetworkError -> {
                         attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
@@ -126,14 +129,17 @@ class AttachmentUploadWorker
                     is ApiResult.HttpError -> {
                         Timber.w("Upload HTTP %d for %s: %s", put.code, row.id, put.message)
                         attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                        gcStaged(row.id)
                     }
                     is ApiResult.Unexpected -> {
                         Timber.w(put.cause, "Upload unexpected error for %s", row.id)
                         attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                        gcStaged(row.id)
                     }
                     ApiResult.Conflict -> {
                         Timber.w("Upload conflict for %s", row.id)
                         attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                        gcStaged(row.id)
                     }
                 }
             }
@@ -172,6 +178,13 @@ class AttachmentUploadWorker
             val resolver: ContentResolver = appContext.contentResolver
             return resolver.openAssetFileDescriptor(uri, "r").use { afd ->
                 afd?.length ?: -1L
+            }
+        }
+
+        private fun gcStaged(attachmentId: String) {
+            val staged = AttachmentRepositoryImpl.stagedFileFor(appContext, attachmentId)
+            if (staged.exists() && !staged.delete()) {
+                Timber.w("Couldn't delete staged upload %s", staged.absolutePath)
             }
         }
     }

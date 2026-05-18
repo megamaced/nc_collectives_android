@@ -48,7 +48,15 @@ data class SharePayload(
             // Some senders pack extras into ClipData (e.g. Chrome). Honour
             // those if EXTRA_STREAM is empty.
             val clipImages = if (images.isEmpty()) intent.clipData?.imageUris().orEmpty() else emptyList()
-            val combined = images + clipImages
+            // S-11: only accept `content://` URIs. A `file://` URI would
+            // bypass ContentResolver permission checks and let a malicious
+            // co-installed app target this exported Activity with any path
+            // readable by our UID (the wider Files area, internal-storage
+            // databases, etc.) and exfiltrate it into the user's Nextcloud
+            // via the upload pipeline. The OS-level intent-filter scheme
+            // restriction in AndroidManifest.xml is the first line of
+            // defence; this is the second.
+            val combined = (images + clipImages).filter { it.scheme == "content" }
             val payload = SharePayload(subject = subject, text = text, images = combined)
             return payload.takeUnless { it.isEmpty }
         }

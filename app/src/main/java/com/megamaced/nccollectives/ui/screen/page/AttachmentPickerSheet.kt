@@ -1,6 +1,5 @@
 package com.megamaced.nccollectives.ui.screen.page
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -74,12 +73,9 @@ internal fun AttachmentPickerSheet(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
+            // B-29: no `takePersistableUriPermission` — photo-picker URIs
+            // aren't persistable and we copy the bytes into our own cache
+            // in AttachmentRepositoryImpl.enqueueUpload anyway.
             val name = uriDisplayName(context, uri) ?: "image.jpg"
             val type = context.contentResolver.getType(uri)
             viewModel.enqueueUpload(uri, name, type)
