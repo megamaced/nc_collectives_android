@@ -16,8 +16,16 @@ enum class ThemeMode { System, Light, Dark }
 /**
  * Period for the periodic metadata sync. `Off` cancels the WorkManager
  * job entirely so the user only sees one-shot foreground refreshes.
+ *
+ * R-38 was triaged for a sealed-class rewrite to replace the
+ * `hours: Long?` + `null = Off` sentinel. Investigation: enum gives
+ * exhaustive `when`, `.entries` iteration for the Settings list, and a
+ * trivial DataStore round-trip via `.name` / `.valueOf`. The sealed-class
+ * shape would force a companion-object `all` list and case-by-case
+ * persistence with no safety improvement. Keeping the enum.
  */
 enum class SyncCadence(
+    /** Period in hours, or `null` to mean the worker shouldn't run at all. */
     val hours: Long?,
 ) {
     Off(null),
