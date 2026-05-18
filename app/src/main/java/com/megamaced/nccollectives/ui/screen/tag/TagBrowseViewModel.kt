@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
+import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,9 +56,7 @@ class TagBrowseViewModel
         val rows: StateFlow<List<TagBrowseRow>> =
             combine(
                 pageRepository.observePagesWithTagInCollective(collectiveId, tagName),
-                collectiveRepository
-                    .observeCollectives()
-                    .map { list -> list.firstOrNull { it.id == collectiveId }?.favoritePageIds.orEmpty() },
+                collectiveRepository.observeFavoritePageIds(collectiveId),
             ) { pages, favoriteIds ->
                 pages.map { TagBrowseRow(page = it, isFavorite = it.id in favoriteIds) }
             }.stateIn(

@@ -17,6 +17,7 @@ import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.splitTags
+import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
@@ -637,9 +638,8 @@ class PageRepositoryImpl
             // parent's `subpageOrderCsv` (Batch 23), so the row reshuffles
             // before the network call returns.
             pageDao.updateSubpageOrderCsv(parentPageId, nextCsv)
-            val subpageOrderJson = subpageOrderIds.joinToString(prefix = "[", postfix = "]", separator = ",")
             val result = apiCall {
-                api.setSubpageOrder(collectiveId, parentPageId, subpageOrderJson)
+                api.setSubpageOrder(collectiveId, parentPageId, subpageOrderIds.toJsonLongArray())
             }
             if (result !is ApiResult.Success) {
                 pageDao.updateSubpageOrderCsv(parentPageId, previousCsv)

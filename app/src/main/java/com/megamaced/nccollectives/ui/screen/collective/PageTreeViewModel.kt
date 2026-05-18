@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
+import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,9 +60,7 @@ class PageTreeViewModel
         )
 
         private val pagesFlow = pageRepository.observePages(collectiveId)
-        private val favoritesFlow = collectiveRepository
-            .observeCollectives()
-            .map { list -> list.firstOrNull { it.id == collectiveId }?.favoritePageIds.orEmpty() }
+        private val favoritesFlow = collectiveRepository.observeFavoritePageIds(collectiveId)
 
         private val _uiState = MutableStateFlow(PageTreeUiState())
         val uiState: StateFlow<PageTreeUiState> = _uiState.asStateFlow()

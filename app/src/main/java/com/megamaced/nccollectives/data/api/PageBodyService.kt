@@ -40,35 +40,19 @@ class PageBodyService
             collectivePath: String,
             filePath: String,
             fileName: String,
-        ): ApiResult<PageBody> =
-            withContext(Dispatchers.IO) {
-                try {
-                    val url = buildWebDavUrl(collectivePath, filePath, fileName)
-                    val request = Request
-                        .Builder()
-                        .url(url)
-                        .get()
-                        .build()
-                    client.newCall(request).execute().use { response ->
-                        when (response.code) {
-                            in 200..299 ->
-                                ApiResult.Success(
-                                    PageBody(
-                                        markdown = response.body?.string().orEmpty(),
-                                        etag = normaliseEtag(response.header("ETag")),
-                                    ),
-                                )
-                            401 -> ApiResult.Unauthorised
-                            412 -> ApiResult.Conflict
-                            else -> ApiResult.HttpError(response.code, response.message)
-                        }
-                    }
-                } catch (e: java.io.IOException) {
-                    ApiResult.NetworkError(e)
-                } catch (e: Exception) {
-                    ApiResult.Unexpected(e)
-                }
+        ): ApiResult<PageBody> {
+            val request = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .get()
+                .build()
+            return webDavCall(request) { response ->
+                PageBody(
+                    markdown = response.body?.string().orEmpty(),
+                    etag = normaliseEtag(response.header("ETag")),
+                )
             }
+        }
 
         /**
          * Writes [body] to the page's WebDAV path. If [baseEtag] is non-null
@@ -81,31 +65,16 @@ class PageBodyService
             fileName: String,
             body: String,
             baseEtag: String?,
-        ): ApiResult<String?> =
-            withContext(Dispatchers.IO) {
-                try {
-                    val url = buildWebDavUrl(collectivePath, filePath, fileName)
-                    val requestBuilder = Request
-                        .Builder()
-                        .url(url)
-                        .put(body.toRequestBody(MARKDOWN.toMediaType()))
-                    if (baseEtag != null) {
-                        requestBuilder.header("If-Match", "\"$baseEtag\"")
-                    }
-                    client.newCall(requestBuilder.build()).execute().use { response ->
-                        when (response.code) {
-                            in 200..299 -> ApiResult.Success(normaliseEtag(response.header("ETag")))
-                            401 -> ApiResult.Unauthorised
-                            412 -> ApiResult.Conflict
-                            else -> ApiResult.HttpError(response.code, response.message)
-                        }
-                    }
-                } catch (e: java.io.IOException) {
-                    ApiResult.NetworkError(e)
-                } catch (e: Exception) {
-                    ApiResult.Unexpected(e)
-                }
+        ): ApiResult<String?> {
+            val builder = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .put(body.toRequestBody(MARKDOWN.toMediaType()))
+            if (baseEtag != null) {
+                builder.header("If-Match", "\"$baseEtag\"")
             }
+            return webDavCall(builder.build()) { response -> normaliseEtag(response.header("ETag")) }
+        }
 
         /**
          * Creates a WebDAV collection (directory). Returns success if the
@@ -116,28 +85,14 @@ class PageBodyService
             collectivePath: String,
             filePath: String,
             directoryName: String,
-        ): ApiResult<Unit> =
-            withContext(Dispatchers.IO) {
-                try {
-                    val url = buildWebDavUrl(collectivePath, filePath, directoryName, asCollection = true)
-                    val request = Request
-                        .Builder()
-                        .url(url)
-                        .method("MKCOL", null)
-                        .build()
-                    client.newCall(request).execute().use { response ->
-                        when (response.code) {
-                            in 200..299, 405 -> ApiResult.Success(Unit)
-                            401 -> ApiResult.Unauthorised
-                            else -> ApiResult.HttpError(response.code, response.message)
-                        }
-                    }
-                } catch (e: java.io.IOException) {
-                    ApiResult.NetworkError(e)
-                } catch (e: Exception) {
-                    ApiResult.Unexpected(e)
-                }
-            }
+        ): ApiResult<Unit> {
+            val request = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, directoryName, asCollection = true))
+                .method("MKCOL", null)
+                .build()
+            return webDavCall(request, extraSuccessCodes = setOf(405)) { }
+        }
 
         /**
          * Uploads a binary file at `(collectivePath, filePath, fileName)`.
@@ -149,19 +104,38 @@ class PageBodyService
             filePath: String,
             fileName: String,
             body: RequestBody,
-        ): ApiResult<String?> =
+        ): ApiResult<String?> {
+            val request = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .put(body)
+                .build()
+            return webDavCall(request) { response -> normaliseEtag(response.header("ETag")) }
+        }
+
+        /**
+         * R-20: shared WebDAV call boilerplate. Dispatches the call on the
+         * IO pool, maps response codes into [ApiResult] (200..299 + any
+         * [extraSuccessCodes] → Success via [onSuccess]; 401 → Unauthorised;
+         * 412 → Conflict; rest → HttpError) and routes IOException →
+         * NetworkError + anything else → Unexpected. Eliminates four
+         * identical try/withContext/use blocks that previously diverged
+         * subtly (e.g. ensureCollection accepted 405; only some sites
+         * normalised the ETag).
+         */
+        private suspend fun <T> webDavCall(
+            request: Request,
+            extraSuccessCodes: Set<Int> = emptySet(),
+            onSuccess: (okhttp3.Response) -> T,
+        ): ApiResult<T> =
             withContext(Dispatchers.IO) {
                 try {
-                    val url = buildWebDavUrl(collectivePath, filePath, fileName)
-                    val request = Request
-                        .Builder()
-                        .url(url)
-                        .put(body)
-                        .build()
                     client.newCall(request).execute().use { response ->
-                        when (response.code) {
-                            in 200..299 -> ApiResult.Success(normaliseEtag(response.header("ETag")))
-                            401 -> ApiResult.Unauthorised
+                        when {
+                            response.code in 200..299 || response.code in extraSuccessCodes ->
+                                ApiResult.Success(onSuccess(response))
+                            response.code == 401 -> ApiResult.Unauthorised
+                            response.code == 412 -> ApiResult.Conflict
                             else -> ApiResult.HttpError(response.code, response.message)
                         }
                     }

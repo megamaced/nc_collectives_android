@@ -3,6 +3,8 @@ package com.megamaced.nccollectives.domain.repository
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Collective
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 interface CollectiveRepository {
     /** Emits the cached list immediately, then updates as the cache changes. */
@@ -69,3 +71,15 @@ interface CollectiveRepository {
      */
     suspend fun permanentlyDeleteCollective(collectiveId: Long): ApiResult<Unit>
 }
+
+/**
+ * R-36: shared shape for "emit the favorite-page-ids of one collective".
+ * The page-tree, page-view, tag-browse and favorites screens were each
+ * re-implementing the same `observeCollectives().map { … favoritePageIds }`
+ * snippet. Centralising it keeps the empty-set fallback (collective got
+ * trashed mid-screen) and the `distinctUntilChanged` consistent.
+ */
+fun CollectiveRepository.observeFavoritePageIds(collectiveId: Long): Flow<Set<Long>> =
+    observeCollectives()
+        .map { list -> list.firstOrNull { it.id == collectiveId }?.favoritePageIds.orEmpty() }
+        .distinctUntilChanged()

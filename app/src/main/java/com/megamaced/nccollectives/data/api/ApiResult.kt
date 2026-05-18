@@ -74,3 +74,18 @@ internal inline fun <T> ApiResult<T>.ifSuccess(block: (T) -> Unit): ApiResult<T>
     if (this is ApiResult.Success) block(data)
     return this
 }
+
+/**
+ * R-21: chain a second [ApiResult]-returning call only on success of this
+ * one. Error arms (`HttpError`, `NetworkError`, `Unauthorised`, `Conflict`,
+ * `Unexpected`) short-circuit, so the call sites no longer need to spell
+ * out a 6-arm `when` that returns each arm verbatim just to fan out one
+ * downstream call. The unchecked cast is safe because every non-Success
+ * branch is `ApiResult<Nothing>`.
+ */
+@Suppress("UNCHECKED_CAST")
+internal inline fun <T, R> ApiResult<T>.flatMapSuccess(transform: (T) -> ApiResult<R>): ApiResult<R> =
+    when (this) {
+        is ApiResult.Success -> transform(data)
+        else -> this as ApiResult<R>
+    }

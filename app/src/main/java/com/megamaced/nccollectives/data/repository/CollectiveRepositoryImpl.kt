@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
+import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -73,15 +74,13 @@ class CollectiveRepositoryImpl
             // immediately. Roll back on failure.
             dao.updateFavoritePagesCsv(collectiveId, nextList.joinToString(","))
             val result = apiCall {
-                api.setFavoritePages(collectiveId, encodeFavorites(nextList))
+                api.setFavoritePages(collectiveId, nextList.toJsonLongArray())
             }
             if (result !is ApiResult.Success) {
                 dao.updateFavoritePagesCsv(collectiveId, current.userFavoritePagesCsv)
             }
             return result
         }
-
-        private fun encodeFavorites(ids: List<Long>): String = ids.joinToString(prefix = "[", postfix = "]", separator = ",")
 
         override suspend fun createCollective(
             name: String,

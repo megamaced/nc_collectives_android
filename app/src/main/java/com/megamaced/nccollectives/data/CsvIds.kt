@@ -11,3 +11,13 @@ internal fun String.toLongCsvList(): List<Long> = if (isEmpty()) emptyList() els
 internal fun String.toLongCsvSet(): Set<Long> = toLongCsvList().toSet()
 
 internal fun Iterable<Long>.toLongCsv(): String = joinToString(",")
+
+/**
+ * R-22: encode an `Iterable<Long>` as a JSON-array string (`[1,2,3]`). Both
+ * the favorites endpoint (`PUT …/favoritePages`) and the subpage-order
+ * endpoint (`PUT …/subpageOrder`) accept a JSON-stringified-in-form-field
+ * value with this exact shape — same handful of repos were spelling out
+ * the `joinToString(prefix="[", postfix="]", separator=",")` invocation
+ * inline. Centralising lets a future round-trip test live alongside it.
+ */
+internal fun Iterable<Long>.toJsonLongArray(): String = joinToString(prefix = "[", postfix = "]", separator = ",")
