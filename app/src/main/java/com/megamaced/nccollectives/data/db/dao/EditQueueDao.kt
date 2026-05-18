@@ -16,14 +16,11 @@ interface EditQueueDao {
     @Query("SELECT * FROM edit_queue WHERE pageId = :pageId LIMIT 1")
     suspend fun forPage(pageId: Long): EditQueueEntity?
 
-    @Query("UPDATE edit_queue SET status = :status WHERE id = :id")
+    @Query("UPDATE edit_queue SET status = :status WHERE pageId = :pageId")
     suspend fun setStatus(
-        id: Long,
+        pageId: Long,
         status: String,
     )
-
-    @Query("DELETE FROM edit_queue WHERE id = :id")
-    suspend fun delete(id: Long)
 
     @Query("DELETE FROM edit_queue WHERE pageId = :pageId")
     suspend fun deleteForPage(pageId: Long)

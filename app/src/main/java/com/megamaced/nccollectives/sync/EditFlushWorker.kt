@@ -40,51 +40,58 @@ class EditFlushWorker
 
             var retry = false
             for (entry in entries) {
-                editQueueDao.setStatus(entry.id, "IN_FLIGHT")
+                editQueueDao.setStatus(entry.pageId, "IN_FLIGHT")
                 val page = pageDao.getById(entry.pageId)
                 if (page == null) {
                     // The page disappeared locally (collective removed?). Drop
                     // the queue row — nothing to flush.
-                    editQueueDao.delete(entry.id)
+                    editQueueDao.deleteForPage(entry.pageId)
                     continue
                 }
 
-                val currentServer = bodyService.fetchBody(
-                    collectivePath = page.collectivePath,
-                    filePath = page.filePath,
-                    fileName = page.fileName,
-                )
-                val currentEtag = when (currentServer) {
-                    is ApiResult.Success -> currentServer.data.etag
-                    is ApiResult.NetworkError -> {
-                        editQueueDao.setStatus(entry.id, "PENDING")
-                        retry = true
-                        continue
-                    }
-                    ApiResult.Unauthorised -> {
-                        editQueueDao.setStatus(entry.id, "PENDING")
-                        return Result.success() // SessionManager surfaces re-auth
-                    }
-                    else -> {
-                        editQueueDao.setStatus(entry.id, "PENDING")
-                        retry = true
-                        continue
-                    }
-                }
-
-                if (entry.baseEtag != null && currentEtag != entry.baseEtag) {
-                    // Server moved on. Server wins; keep the user's body as a
-                    // draft and flag the row.
-                    pageDao.updateBody(
-                        entry.pageId,
-                        (currentServer as ApiResult.Success).data.markdown,
-                        currentEtag,
-                        System.currentTimeMillis(),
+                // B-46: force-write entries (replaceWithDraft path) skip the
+                // etag preflight entirely. The user explicitly chose to
+                // clobber the server with their draft; refetching just to
+                // re-check the etag they've already overridden is wasted IO
+                // and risks the worker silently turning their override into
+                // a conflict.
+                if (!entry.forceWrite) {
+                    val currentServer = bodyService.fetchBody(
+                        collectivePath = page.collectivePath,
+                        filePath = page.filePath,
+                        fileName = page.fileName,
                     )
-                    pageDao.updateDraft(entry.pageId, entry.newBodyMd)
-                    editQueueDao.setStatus(entry.id, "CONFLICTED")
-                    Timber.i("Edit on page %d conflicted; kept local draft", entry.pageId)
-                    continue
+                    val currentEtag = when (currentServer) {
+                        is ApiResult.Success -> currentServer.data.etag
+                        is ApiResult.NetworkError -> {
+                            editQueueDao.setStatus(entry.pageId, "PENDING")
+                            retry = true
+                            continue
+                        }
+                        ApiResult.Unauthorised -> {
+                            editQueueDao.setStatus(entry.pageId, "PENDING")
+                            return Result.success() // SessionManager surfaces re-auth
+                        }
+                        else -> {
+                            editQueueDao.setStatus(entry.pageId, "PENDING")
+                            retry = true
+                            continue
+                        }
+                    }
+                    if (entry.baseEtag != null && currentEtag != entry.baseEtag) {
+                        // Server moved on. Server wins; keep the user's
+                        // body as a draft and flag the row.
+                        pageDao.updateBody(
+                            entry.pageId,
+                            currentServer.data.markdown,
+                            currentEtag,
+                            System.currentTimeMillis(),
+                        )
+                        pageDao.updateDraft(entry.pageId, entry.newBodyMd)
+                        editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+                        Timber.i("Edit on page %d conflicted; kept local draft", entry.pageId)
+                        continue
+                    }
                 }
 
                 val putResult = bodyService.saveBody(
@@ -92,7 +99,10 @@ class EditFlushWorker
                     filePath = page.filePath,
                     fileName = page.fileName,
                     body = entry.newBodyMd,
-                    baseEtag = entry.baseEtag,
+                    // B-46: force-write entries bypass `If-Match`. The
+                    // saveBody implementation already treats null as "skip
+                    // the precondition header".
+                    baseEtag = if (entry.forceWrite) null else entry.baseEtag,
                 )
                 when (putResult) {
                     is ApiResult.Success -> {
@@ -103,28 +113,35 @@ class EditFlushWorker
                             System.currentTimeMillis(),
                         )
                         pageDao.updateDraft(entry.pageId, null)
-                        editQueueDao.delete(entry.id)
+                        editQueueDao.deleteForPage(entry.pageId)
                     }
                     ApiResult.Conflict -> {
-                        pageDao.updateDraft(entry.pageId, entry.newBodyMd)
-                        editQueueDao.setStatus(entry.id, "CONFLICTED")
+                        // B-46: even a force-write can race against another
+                        // writer; rather than overwriting the user's draft
+                        // (which `replaceWithDraft` may have just refreshed),
+                        // surface the conflict. The user resolves via the
+                        // banner; the queue row is left as CONFLICTED.
+                        if (!entry.forceWrite) {
+                            pageDao.updateDraft(entry.pageId, entry.newBodyMd)
+                        }
+                        editQueueDao.setStatus(entry.pageId, "CONFLICTED")
                     }
                     is ApiResult.NetworkError -> {
-                        editQueueDao.setStatus(entry.id, "PENDING")
+                        editQueueDao.setStatus(entry.pageId, "PENDING")
                         retry = true
                     }
                     ApiResult.Unauthorised -> {
-                        editQueueDao.setStatus(entry.id, "PENDING")
+                        editQueueDao.setStatus(entry.pageId, "PENDING")
                         return Result.success()
                     }
                     is ApiResult.HttpError -> {
                         Timber.w("Flush HTTP %d for page %d: %s", putResult.code, entry.pageId, putResult.message)
-                        editQueueDao.setStatus(entry.id, "PENDING")
+                        editQueueDao.setStatus(entry.pageId, "PENDING")
                         retry = true
                     }
                     is ApiResult.Unexpected -> {
                         Timber.w(putResult.cause, "Flush unexpected error for page %d", entry.pageId)
-                        editQueueDao.setStatus(entry.id, "PENDING")
+                        editQueueDao.setStatus(entry.pageId, "PENDING")
                         retry = true
                     }
                 }

@@ -40,8 +40,17 @@ class CollectiveRepositoryImpl
                 val response = api.listCollectives()
                 val entities = response.ocs.data.collectives
                     .map { it.toEntity(now) }
-                dao.upsertAll(entities)
-                dao.deleteMissing(entities.map { it.id })
+                // B-43: one transaction. B-42: short-circuit the empty-list
+                // case to `clear()` to avoid `WHERE id NOT IN ()` SQL.
+                database.withTransaction {
+                    dao.upsertAll(entities)
+                    val keepIds = entities.map { it.id }
+                    if (keepIds.isEmpty()) {
+                        dao.clear()
+                    } else {
+                        dao.deleteMissing(keepIds)
+                    }
+                }
             }
 
         override suspend fun toggleFavorite(

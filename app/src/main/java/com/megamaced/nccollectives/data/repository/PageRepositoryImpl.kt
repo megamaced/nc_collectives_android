@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.repository
 
+import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
@@ -7,6 +8,7 @@ import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
@@ -37,6 +39,7 @@ class PageRepositoryImpl
         private val pageDao: PageDao,
         private val editQueueDao: EditQueueDao,
         private val syncScheduler: SyncScheduler,
+        private val database: NcCollectivesDatabase,
     ) : PageRepository {
         override fun observePages(collectiveId: Long): Flow<List<Page>> =
             pageDao.observeForCollective(collectiveId).map { rows -> rows.map { it.toDomain() } }
@@ -67,8 +70,22 @@ class PageRepositoryImpl
                         tagNamesById = tagNames,
                     )
                 }
-                pageDao.upsertAll(entities)
-                pageDao.deleteMissingForCollective(collectiveId, entities.map { it.id })
+                // B-43: upsert + reconcile in one transaction. A parallel
+                // refresh (e.g. SyncWorker overlapping the foreground caller)
+                // can otherwise observe the intermediate "upserted but not
+                // yet reconciled" state, causing flicker or — worse — wipe
+                // rows the parallel run just inserted. B-42: avoid the
+                // `WHERE id NOT IN ()` SQL syntax error by short-circuiting
+                // on an empty keep-list to `deleteForCollective`.
+                database.withTransaction {
+                    pageDao.upsertAll(entities)
+                    val keepIds = entities.map { it.id }
+                    if (keepIds.isEmpty()) {
+                        pageDao.deleteForCollective(collectiveId)
+                    } else {
+                        pageDao.deleteMissingForCollective(collectiveId, keepIds)
+                    }
+                }
             }
 
         /**
@@ -189,7 +206,26 @@ class PageRepositoryImpl
                     editQueueDao.deleteForPage(pageId)
                     SaveOutcome.Saved
                 }
-                is ApiResult.NetworkError -> SaveOutcome.Queued
+                is ApiResult.NetworkError -> {
+                    // B-38: the previous "return Queued without queuing"
+                    // path left the draft sitting on the page row indefinitely.
+                    // Mirror saveBody's offline branch but mark the entry as
+                    // a force-write so the flush worker doesn't second-guess
+                    // the user's explicit "Replace with my draft" intent on
+                    // a 412 (B-46).
+                    editQueueDao.upsert(
+                        EditQueueEntity(
+                            pageId = pageId,
+                            baseEtag = null,
+                            newBodyMd = newBody,
+                            queuedAt = System.currentTimeMillis(),
+                            status = "PENDING",
+                            forceWrite = true,
+                        ),
+                    )
+                    syncScheduler.flushEditsWhenOnline()
+                    SaveOutcome.Queued
+                }
                 ApiResult.Conflict -> SaveOutcome.Conflict
                 ApiResult.Unauthorised -> SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
                 is ApiResult.HttpError -> SaveOutcome.Error(result.userMessage() ?: "Server error")

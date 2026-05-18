@@ -40,7 +40,7 @@ class NcCollectivesApplication :
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
-        syncScheduler.ensurePeriodicSync()
+        syncScheduler.start()
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {

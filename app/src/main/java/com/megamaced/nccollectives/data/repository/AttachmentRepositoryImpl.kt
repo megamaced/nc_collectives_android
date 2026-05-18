@@ -3,10 +3,12 @@ package com.megamaced.nccollectives.data.repository
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
@@ -33,6 +35,7 @@ class AttachmentRepositoryImpl
         private val attachmentDao: AttachmentDao,
         private val bodyService: PageBodyService,
         private val syncScheduler: SyncScheduler,
+        private val database: NcCollectivesDatabase,
     ) : AttachmentRepository {
         override fun observeForPage(pageId: Long): Flow<List<Attachment>> =
             attachmentDao.observeForPage(pageId).map { rows ->
@@ -49,26 +52,64 @@ class AttachmentRepositoryImpl
             return when (result) {
                 is ApiResult.Success -> {
                     val now = System.currentTimeMillis()
-                    val remoteEntities = result.data.ocs.data.attachments.map { dto ->
-                        AttachmentEntity(
-                            id = AttachmentEntity.key(pageId, dto.name),
-                            pageId = pageId,
-                            fileName = dto.name,
-                            contentType = dto.mimetype,
-                            size = dto.filesize,
-                            // OCS returns seconds since epoch; Room/UI use millis.
-                            lastModifiedMs = dto.timestamp * 1000L,
-                            // OCS doesn't return an ETag; attachments don't use
-                            // If-Match anywhere so null is fine.
-                            etag = null,
-                            status = AttachmentEntity.STATUS_REMOTE,
-                            localUriString = null,
-                            lastSyncedAt = now,
-                            serverAttachmentId = dto.id,
-                        )
+                    // B-43: upsert + reconcile under one transaction so
+                    // observers don't see an intermediate union. B-36:
+                    // protect in-flight PENDING/UPLOADING rows from being
+                    // clobbered by a server-side row with the same key —
+                    // if the user just queued an upload, the worker still
+                    // owns that row; replacing it with status=REMOTE +
+                    // localUriString=null would orphan the staged bytes.
+                    database.withTransaction {
+                        val existing = attachmentDao
+                            .listForPage(pageId)
+                            .associateBy { it.id }
+                        val remoteEntities = result.data.ocs.data.attachments.map { dto ->
+                            val key = AttachmentEntity.key(pageId, dto.name)
+                            val current = existing[key]
+                            if (current != null &&
+                                (
+                                    current.status == AttachmentEntity.STATUS_PENDING ||
+                                        current.status == AttachmentEntity.STATUS_UPLOADING
+                                )
+                            ) {
+                                // B-36: preserve pending row, but catch up the
+                                // server-id so a subsequent OCS-4 delete can
+                                // target it correctly.
+                                current.copy(serverAttachmentId = dto.id)
+                            } else {
+                                AttachmentEntity(
+                                    id = key,
+                                    pageId = pageId,
+                                    fileName = dto.name,
+                                    contentType = dto.mimetype,
+                                    size = dto.filesize,
+                                    // OCS returns seconds since epoch; Room/UI use millis.
+                                    lastModifiedMs = dto.timestamp * 1000L,
+                                    // OCS doesn't return an ETag; attachments don't use
+                                    // If-Match anywhere so null is fine.
+                                    etag = null,
+                                    status = AttachmentEntity.STATUS_REMOTE,
+                                    localUriString = null,
+                                    lastSyncedAt = now,
+                                    serverAttachmentId = dto.id,
+                                )
+                            }
+                        }
+                        attachmentDao.upsertAll(remoteEntities)
+                        // B-42: short-circuit on empty keep-list. The
+                        // `deleteMissingRemoteForPage` query already filters
+                        // to `status = 'REMOTE'`, so pending/uploading rows
+                        // are preserved either way — but `WHERE id NOT IN ()`
+                        // is a SQLite syntax error on an empty list, so
+                        // route through `deleteRemoteForPage` when there's
+                        // nothing to keep.
+                        val keepIds = remoteEntities.map { it.id }
+                        if (keepIds.isEmpty()) {
+                            attachmentDao.deleteRemoteForPage(pageId)
+                        } else {
+                            attachmentDao.deleteMissingRemoteForPage(pageId, keepIds)
+                        }
                     }
-                    attachmentDao.upsertAll(remoteEntities)
-                    attachmentDao.deleteMissingRemoteForPage(pageId, remoteEntities.map { it.id })
                     ApiResult.Success(Unit)
                 }
                 else -> mapNonSuccess(result)

@@ -87,10 +87,43 @@ internal val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/**
+ * B-41 + B-46 + R-28 (Batch 26e): rebuild `edit_queue` with `pageId` as
+ * the primary key (drops the `id` autoincrement column), add the
+ * `forceWrite` column for the "Replace with my draft" force-write path,
+ * and replace the unique `pageId` index with a composite
+ * `(status, queuedAt)` index covering the `pendingEntries` query.
+ */
+internal val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `edit_queue_new` (" +
+                "`pageId` INTEGER NOT NULL, " +
+                "`baseEtag` TEXT, " +
+                "`newBodyMd` TEXT NOT NULL, " +
+                "`queuedAt` INTEGER NOT NULL, " +
+                "`status` TEXT NOT NULL, " +
+                "`forceWrite` INTEGER NOT NULL DEFAULT 0, " +
+                "PRIMARY KEY(`pageId`))",
+        )
+        db.execSQL(
+            "INSERT INTO `edit_queue_new` (`pageId`, `baseEtag`, `newBodyMd`, `queuedAt`, `status`, `forceWrite`) " +
+                "SELECT `pageId`, `baseEtag`, `newBodyMd`, `queuedAt`, `status`, 0 FROM `edit_queue`",
+        )
+        db.execSQL("DROP TABLE `edit_queue`")
+        db.execSQL("ALTER TABLE `edit_queue_new` RENAME TO `edit_queue`")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_edit_queue_status_queuedAt` " +
+                "ON `edit_queue` (`status`, `queuedAt`)",
+        )
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
     MIGRATION_3_4,
     MIGRATION_4_5,
     MIGRATION_5_6,
+    MIGRATION_6_7,
 )

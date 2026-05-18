@@ -14,7 +14,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -38,32 +38,24 @@ class SyncScheduler
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        init {
-            // Reschedule the periodic job whenever the user *changes* their
-            // cadence preference. `drop(1)` skips the initial replay
-            // emission from DataStore (B-15) — bootstrap is handled by the
-            // explicit `ensurePeriodicSync()` call at process start. Without
-            // the drop, every cold start would re-emit the same cadence and
-            // re-schedule with `UPDATE`, resetting the next-run timer.
-            scope.launch {
-                userPreferences.flow
-                    .distinctUntilChangedBy { it.syncCadence }
-                    .drop(1)
-                    .collect { prefs ->
-                        applyCadence(prefs.syncCadence, replaceExisting = true)
-                    }
-            }
-        }
-
         /**
-         * Schedules the recurring metadata sync at the user's preferred cadence.
-         * Idempotent — the cadence flow above keeps it in sync after the user
-         * changes the preference.
+         * Bootstrap the periodic-sync schedule. Call once from
+         * `Application.onCreate`. Replaces the previous split between
+         * `init { … drop(1) collect }` and `ensurePeriodicSync()` which
+         * raced on cold start (B-52): DataStore can emit twice
+         * (empty-state → loaded-state) and `drop(1)` could skip the wrong
+         * emission, after which the next emit re-ran `applyCadence` with
+         * `UPDATE` and reset the timer that `ensurePeriodicSync` had just
+         * set with `KEEP`. This sequenced version reads the current
+         * cadence once with `KEEP`, then collects subsequent *distinct*
+         * changes with `UPDATE`.
          */
-        fun ensurePeriodicSync() {
+        fun start() {
             scope.launch {
-                val cadence = currentCadence()
-                applyCadence(cadence, replaceExisting = false)
+                val cadenceFlow = userPreferences.flow.map { it.syncCadence }.distinctUntilChanged()
+                val initial = cadenceFlow.first()
+                applyCadence(initial, replaceExisting = false)
+                cadenceFlow.drop(1).collect { applyCadence(it, replaceExisting = true) }
             }
         }
 
@@ -102,8 +94,6 @@ class SyncScheduler
             workManager.cancelUniqueWork(EDIT_FLUSH)
             workManager.cancelUniqueWork(ATTACHMENT_FLUSH)
         }
-
-        private suspend fun currentCadence(): SyncCadence = userPreferences.flow.map { it.syncCadence }.first()
 
         private fun applyCadence(
             cadence: SyncCadence,
