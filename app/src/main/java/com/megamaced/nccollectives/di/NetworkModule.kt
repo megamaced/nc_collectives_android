@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.di
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.api.AuthInterceptor
 import com.megamaced.nccollectives.data.api.CollectivesApiService
+import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.SearchApiService
 import dagger.Module
@@ -91,4 +92,26 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideSearchApi(retrofit: Retrofit): SearchApiService = retrofit.create(SearchApiService::class.java)
+
+    /**
+     * Separate OkHttp / Retrofit pair for the GitHub Releases API used by
+     * the in-app update check. Crucially **not** routed through the shared
+     * `OkHttpClient` because that pipeline carries [HostInterceptor] (which
+     * rewrites the request URL to the user's Nextcloud host) and
+     * [AuthInterceptor] (which attaches Basic-auth credentials) — neither
+     * of which is appropriate for a third-party API request.
+     */
+    @Provides
+    @Singleton
+    fun provideGitHubReleaseService(json: Json): GitHubReleaseService {
+        val client = OkHttpClient.Builder().build()
+        val contentType = "application/json".toMediaType()
+        return Retrofit
+            .Builder()
+            .baseUrl("https://api.github.com/")
+            .client(client)
+            .addConverterFactory(json.asConverterFactory(contentType))
+            .build()
+            .create(GitHubReleaseService::class.java)
+    }
 }

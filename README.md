@@ -36,6 +36,7 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 - Configurable background sync cadence (Off, 1h, 6h, 12h, daily)
 - Adaptive launcher icon with a monochrome layer for Android 13+ themed icons
 - Splash screen via `androidx.core:core-splashscreen`
+- In-app update check: on startup, polls the GitHub Releases API at most once per 24 hours and posts a notification when a newer version is published. Tapping the notification opens the release page in your browser. Distribution is sideload-only, so this is how you hear about updates.
 
 ## Requirements
 
@@ -49,13 +50,17 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 3. Tap the downloaded APK to install. Android will surface the Play Protect scanning prompt — it can flag unrecognised installers but the install itself is safe to proceed with.
 4. Open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
 
+### Updates
+
+The app checks `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at most once every 24 hours on launch and posts a notification when a newer non-pre-release tag is available. Tap the notification to open the release page in your browser and download the new APK; install it over the existing app (same signing key from `v1.0.0` onwards, so it's an in-place upgrade). No notification is shown if the request fails, if you're already on the latest version, or if you've already been notified about that tag. On Android 13+ the notification needs `POST_NOTIFICATIONS` granted to your app under **Settings → Apps → NC Collectives → Notifications**.
+
 ## Authentication
 
 Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2). You provide your server URL and authorise the app from your browser. The app stores only the device-scoped app password returned by your server — your account password is never seen, transmitted, or stored. You can revoke the device at any time from your Nextcloud security settings.
 
 ## Privacy & security
 
-- The app talks **only** to the Nextcloud server you configure. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
+- The app talks **only** to the Nextcloud server you configure, plus one third-party request to `api.github.com` on launch (at most once per 24 hours) for the in-app update check. The GitHub call uses a separate OkHttp client so it never carries your Nextcloud credentials. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
 - No Google Play Services dependencies; no Firebase; no advertising IDs.
 - Plaintext (`http://`) Nextcloud server URLs are refused at login; the app ships with `cleartextTrafficPermitted="false"` in the network-security config.
 - The device-scoped app password is stored in `EncryptedSharedPreferences` (Tink-backed). Sign-out wipes the keystore entry along with every Room table and DataStore value.

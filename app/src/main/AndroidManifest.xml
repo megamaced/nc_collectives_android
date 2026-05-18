@@ -4,6 +4,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        POST_NOTIFICATIONS is the runtime-prompt permission for Android 13+;
+        below 13 it's auto-granted. UpdateChecker.postNotification() guards
+        the actual `notify` call with a checkSelfPermission() on Tiramisu+
+        so the app never prompts the user — they grant it (or don't) from
+        the system settings. Declaring it here lets lint know the call site
+        is intentional and silences MissingPermission / NotificationPermission.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
         CAMERA isn't strictly required: we launch the system camera via

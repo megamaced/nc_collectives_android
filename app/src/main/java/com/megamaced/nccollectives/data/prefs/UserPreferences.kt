@@ -3,10 +3,12 @@ package com.megamaced.nccollectives.data.prefs
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,6 +41,16 @@ data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
+)
+
+/**
+ * State for the on-startup GitHub update check (see [UpdateChecker]).
+ * Persisted in DataStore so the network call only runs once per 24h and
+ * each release tag is surfaced at most once.
+ */
+data class UpdateCheckState(
+    val lastCheckedAt: Long,
+    val lastNotifiedVersion: String?,
 )
 
 private val Context.dataStore by preferencesDataStore(name = "user_prefs")
@@ -79,6 +91,22 @@ class UserPreferences
             context.dataStore.edit { it.clear() }
         }
 
+        suspend fun getUpdateState(): UpdateCheckState {
+            val prefs = context.dataStore.data.first()
+            return UpdateCheckState(
+                lastCheckedAt = prefs[KEY_UPDATE_LAST_CHECKED_AT] ?: 0L,
+                lastNotifiedVersion = prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION],
+            )
+        }
+
+        suspend fun setUpdateLastCheckedAt(epochMillis: Long) {
+            context.dataStore.edit { it[KEY_UPDATE_LAST_CHECKED_AT] = epochMillis }
+        }
+
+        suspend fun setUpdateLastNotifiedVersion(version: String) {
+            context.dataStore.edit { it[KEY_UPDATE_LAST_NOTIFIED_VERSION] = version }
+        }
+
         private fun Preferences.toModel(): UserPrefs {
             val mode = this[KEY_THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.System
@@ -97,6 +125,8 @@ class UserPreferences
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
+            val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
+            val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
 
             const val MAX_RECENT_SEARCHES = 10
 
