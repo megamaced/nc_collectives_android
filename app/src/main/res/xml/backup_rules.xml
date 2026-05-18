@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    S-12: backups are disabled at the AndroidManifest level
+    (`android:allowBackup="false"`). This file is therefore ignored at
+    runtime — the explicit `<exclude>` rules are belt-and-braces in
+    case backups are accidentally re-enabled later. The app holds
+    arbitrary user wiki content (cached page bodies, drafts, queued
+    edits) so we treat any auto-backup as a data-at-rest exfil channel
+    and refuse it.
+-->
 <full-backup-content>
-    <!-- Exclude the encrypted credential store from auto-backup once it lands in Batch 3. -->
-    <exclude domain="sharedpref" path="nc_collectives_secure_prefs.xml" />
+    <exclude domain="root" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
 </full-backup-content>

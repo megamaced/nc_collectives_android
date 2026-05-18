@@ -105,7 +105,27 @@ class AttachmentRepositoryImpl
             )
             attachmentDao.upsert(entity)
             syncScheduler.flushAttachmentUploadsWhenOnline()
+            // S-15: camera captures and any other own-FileProvider sources
+            // are now redundant — the bytes live in the staged copy and
+            // the worker reads from there. Drop the original so the
+            // capture cache doesn't accumulate over the install lifetime.
+            deleteIfOwnFileProvider(sourceUri)
             return resolvedName
+        }
+
+        private fun deleteIfOwnFileProvider(sourceUri: Uri) {
+            if (sourceUri.scheme != "content") return
+            if (sourceUri.authority != "${context.packageName}.fileprovider") return
+            // Map back to the underlying file. The FileProvider authority's
+            // `<cache-path name="captures" path="attachments/" />` exposes
+            // `cacheDir/attachments/<name>` as `content://…/captures/<name>`.
+            val segments = sourceUri.pathSegments
+            if (segments.size < 2 || segments[0] != "captures") return
+            val name = segments.drop(1).joinToString("/")
+            val file = File(File(context.cacheDir, "attachments"), name)
+            if (file.exists() && !file.delete()) {
+                Timber.w("Couldn't delete capture source %s", file.absolutePath)
+            }
         }
 
         private suspend fun copyToStaging(

@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    S-12: backups are disabled at the AndroidManifest level
+    (`android:allowBackup="false"`). This file is therefore ignored at
+    runtime on Android 12+ — the explicit `<exclude>` rules are
+    belt-and-braces in case backups are accidentally re-enabled later.
+    Device-transfer is harder to opt out of universally but the
+    `<exclude domain="root"/>` covers the same surface.
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="sharedpref" path="nc_collectives_secure_prefs.xml" />
+        <exclude domain="root" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="sharedpref" path="nc_collectives_secure_prefs.xml" />
+        <exclude domain="root" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>
