@@ -54,7 +54,7 @@ class PageBodyService
                                 ApiResult.Success(
                                     PageBody(
                                         markdown = response.body?.string().orEmpty(),
-                                        etag = response.header("ETag")?.trim('"'),
+                                        etag = normaliseEtag(response.header("ETag")),
                                     ),
                                 )
                             401 -> ApiResult.Unauthorised
@@ -93,7 +93,7 @@ class PageBodyService
                     }
                     client.newCall(requestBuilder.build()).execute().use { response ->
                         when (response.code) {
-                            in 200..299 -> ApiResult.Success(response.header("ETag")?.trim('"'))
+                            in 200..299 -> ApiResult.Success(normaliseEtag(response.header("ETag")))
                             401 -> ApiResult.Unauthorised
                             412 -> ApiResult.Conflict
                             else -> ApiResult.HttpError(response.code, response.message)
@@ -202,7 +202,7 @@ class PageBodyService
                         .build()
                     client.newCall(request).execute().use { response ->
                         when (response.code) {
-                            in 200..299 -> ApiResult.Success(response.header("ETag")?.trim('"'))
+                            in 200..299 -> ApiResult.Success(normaliseEtag(response.header("ETag")))
                             401 -> ApiResult.Unauthorised
                             else -> ApiResult.HttpError(response.code, response.message)
                         }
@@ -261,6 +261,15 @@ class PageBodyService
             // never returns a 301 redirect to the canonical form.
             return if (asCollection && !result.endsWith('/')) "$result/" else result
         }
+
+        /**
+         * B-40: strip RFC 7232 weak-validator prefix and surrounding quotes
+         * so a server emitting weak ETags (`W/"abc"`) round-trips through
+         * `If-Match` against the same value's strong form (`"abc"`) without
+         * a phantom 412. Nextcloud's behind a mix of Apache configs in the
+         * wild — some emit weak, some strong, sometimes for the same file.
+         */
+        private fun normaliseEtag(raw: String?): String? = raw?.removePrefix("W/")?.trim('"')
 
         private companion object {
             const val MARKDOWN = "text/markdown; charset=utf-8"

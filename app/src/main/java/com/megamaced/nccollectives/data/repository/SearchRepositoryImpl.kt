@@ -57,12 +57,12 @@ class SearchRepositoryImpl
         }
 
         private fun extractFileIdFromQuery(url: String): Long? {
-            val q = url.substringAfter('?', "")
-            if (q.isEmpty()) return null
-            return q
-                .split('&')
-                .firstOrNull { it.startsWith("fileId=") }
-                ?.removePrefix("fileId=")
-                ?.toLongOrNull()
+            // B-47: route the parse through `Uri.parse` so query lookup
+            // handles fragments (`#anchor`) and percent-encoding correctly.
+            // The previous `substringAfter('?') + split('&')` produced
+            // `"42#anchor"` for `?fileId=42#anchor` and `toLongOrNull()`
+            // returned null — the search hit became untappable.
+            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return null
+            return uri.getQueryParameter("fileId")?.toLongOrNull()
         }
     }

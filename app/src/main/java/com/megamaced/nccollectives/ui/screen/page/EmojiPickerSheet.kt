@@ -79,7 +79,15 @@ fun EmojiPickerSheet(
 
             OutlinedTextField(
                 value = custom,
-                onValueChange = { custom = it.take(8) }, // emojis are 1–6 chars after composition
+                // B-48: previously `it.take(8)` truncated by UTF-16 code
+                // unit, splitting compound emoji (e.g. 👨‍👩‍👧‍👦 is 11 code
+                // units) into invalid surrogate halves and rendering as
+                // tofu. The field is single-line and the picker only
+                // ever uses the first character anyway — drop the cap
+                // entirely. Worst case the user pastes a paragraph; the
+                // page header would still render the leading emoji and
+                // the rest is silently ignored.
+                onValueChange = { custom = it },
                 label = { Text("Custom emoji") },
                 placeholder = { Text("Paste or type any emoji") },
                 singleLine = true,

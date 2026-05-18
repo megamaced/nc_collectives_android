@@ -60,7 +60,7 @@ interface PageDao {
      */
     @Query(
         "SELECT * FROM pages WHERE collectiveId = :collectiveId AND trashTimestamp IS NULL " +
-            "AND (:sep || tagsCsv || :sep) LIKE :likePattern " +
+            "AND (:sep || tagsCsv || :sep) LIKE :likePattern ESCAPE '\\' " +
             "ORDER BY title COLLATE NOCASE ASC",
     )
     fun observePagesWithTagInCollective(

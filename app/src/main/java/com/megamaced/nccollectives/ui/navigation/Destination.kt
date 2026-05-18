@@ -62,7 +62,14 @@ internal sealed class Destination(
             collectiveId: Long,
             tagName: String,
         ): String {
-            val encoded = java.net.URLEncoder.encode(tagName, "UTF-8")
+            // B-33: `URLEncoder.encode` produces form-encoded output where
+            // a space becomes `+`; Compose Navigation reads `+` literally
+            // out of a path argument, so a tag named `to read` would
+            // round-trip as `to+read` and the Browse screen would show
+            // zero results. `android.net.Uri.encode` is the path-encoding
+            // variant — spaces become `%20`. The NavType.StringType
+            // decoder un-escapes percent encoding for us.
+            val encoded = android.net.Uri.encode(tagName)
             return "collective/$collectiveId/tag/$encoded"
         }
     }

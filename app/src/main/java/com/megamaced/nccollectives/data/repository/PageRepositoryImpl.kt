@@ -479,15 +479,23 @@ class PageRepositoryImpl
             collectiveId: Long,
             tagName: String,
         ): Flow<List<Page>> {
-            // SQLite LIKE: `%` / `_` in a tag name would behave as wildcards.
-            // Rare in practice, but the post-fetch split+exact-match filter
-            // below absorbs both false positives and the (unlikely) case
-            // where a tag was reordered into a different CSV slot between
-            // the LIKE eval and the row read.
-            val likePattern = "%$TAG_SEP_STRING$tagName$TAG_SEP_STRING%"
+            // B-53: escape `%`/`_`/`\\` in the tag name so they don't act
+            // as LIKE wildcards. Worst case before this fix was
+            // `tagName = "%"` matching every tagged row and loading the
+            // whole collective into the post-filter. The DAO query carries
+            // `ESCAPE '\\'` to pair with this escaper.
+            val escapedTag = tagName
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            val likePattern = "%$TAG_SEP_STRING$escapedTag$TAG_SEP_STRING%"
             return pageDao
                 .observePagesWithTagInCollective(collectiveId, TAG_SEP_STRING, likePattern)
                 .map { rows ->
+                    // Defence in depth: exact-match filter against the
+                    // unescaped name absorbs any LIKE corner case we
+                    // missed and the (rare) case where a tag was
+                    // reordered into a different CSV slot mid-query.
                     rows
                         .filter { tagName in splitTags(it.tagsCsv) }
                         .map { it.toDomain() }
@@ -498,11 +506,15 @@ class PageRepositoryImpl
             collectiveId: Long,
             title: String,
         ): Long? {
-            val cleaned = title
-                .trim()
-                .removeSuffix(".md")
-                .removeSuffix(".MD")
-                .trim()
+            // R-32: case-insensitive `.md` strip (previous double
+            // `removeSuffix` only caught `.md` and `.MD`, slipping `.Md`).
+            val trimmed = title.trim()
+            val withoutMd = if (trimmed.endsWith(".md", ignoreCase = true)) {
+                trimmed.dropLast(3)
+            } else {
+                trimmed
+            }
+            val cleaned = withoutMd.trim()
             if (cleaned.isEmpty()) return null
             return pageDao.findIdByTitleInCollective(collectiveId, cleaned)
         }

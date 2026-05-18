@@ -90,4 +90,24 @@ class MarkdownLinkResolverTest {
         assertEquals("Target", decodeWikiTarget("Target?ref=foo"))
         assertEquals("Target", decodeWikiTarget("Target#section"))
     }
+
+    @Test
+    fun decodeWikiTarget_preservesLiteralPlus() {
+        // B-34: a wikilink target of `C++` previously decoded to "C  "
+        // because URLDecoder.decode treats `+` as space. The resolver
+        // pre-escapes `+` to `%2B` so the literal survives.
+        assertEquals("C++", decodeWikiTarget("C++"))
+        assertEquals("a+b", decodeWikiTarget("a+b"))
+        // Encoded space still round-trips.
+        assertEquals("Two Words", decodeWikiTarget("Two%20Words"))
+    }
+
+    @Test
+    fun decodeWikiTarget_stripsMixedCaseMdSuffix() {
+        // R-32: case-insensitive `.md` strip.
+        assertEquals("Page", decodeWikiTarget("Page.Md"))
+        assertEquals("Page", decodeWikiTarget("Page.mD"))
+        assertEquals("Page", decodeWikiTarget("Page.md"))
+        assertEquals("Page", decodeWikiTarget("Page.MD"))
+    }
 }

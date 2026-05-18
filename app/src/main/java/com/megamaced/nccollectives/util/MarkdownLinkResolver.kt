@@ -35,15 +35,29 @@ fun handleMarkdownLink(
 }
 
 internal fun decodeWikiTarget(raw: String): String {
-    val decoded = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrElse { raw }
-    return decoded
+    // B-34: `URLDecoder.decode` is form-decoding — it treats `+` as
+    // space. [expandWikilinks] only percent-encodes spaces and leaves
+    // literal `+` alone, so a wikilink target of `C++` previously
+    // decoded back to `"C  "` (two spaces) and the resolver failed.
+    // Pre-escape literal `+` to `%2B` so URLDecoder leaves it
+    // verbatim. We keep URLDecoder over `Uri.decode` because the
+    // tests run on the JVM (no Android framework on the test
+    // classpath) and `Uri.decode` would throw `Method not mocked`.
+    val preEscaped = raw.replace("+", "%2B")
+    val decoded = runCatching { URLDecoder.decode(preEscaped, "UTF-8") }.getOrElse { raw }
+    val withoutQueryAndFragment = decoded
         .removePrefix("./")
         .removePrefix("/")
         .substringBefore('#')
         .substringBefore('?')
-        .removeSuffix(".md")
-        .removeSuffix(".MD")
-        .trim()
+    // R-32: case-insensitive `.md` strip. Previous double `removeSuffix`
+    // only matched `.md` / `.MD` so `.Md` / `.mD` slipped through.
+    val withoutMd = if (withoutQueryAndFragment.endsWith(".md", ignoreCase = true)) {
+        withoutQueryAndFragment.dropLast(3)
+    } else {
+        withoutQueryAndFragment
+    }
+    return withoutMd.trim()
 }
 
 // Combined pattern for [expandWikilinks]. Alternation order matters:
