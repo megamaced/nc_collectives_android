@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Bookmark
@@ -254,6 +253,11 @@ private fun PageTreeList(
         }
         items(localNodes, key = { it.page.id }) { node ->
             ReorderableItem(reorderState, key = node.page.id) { _ ->
+                // Long-press anywhere on the row to drag — no dedicated
+                // handle icon. The dragHandleModifier slot remains on
+                // PageTreeItem because that's where the long-press gesture
+                // is most natural (the whole row), but we no longer waste
+                // a 48dp leading icon on every row to advertise it.
                 PageTreeItem(
                     node = node,
                     isExpanded = node.page.id in expanded,
@@ -293,25 +297,21 @@ private fun PageTreeItem(
 ) {
     // No indentation regardless of depth — the tree relationship is shown by
     // the chevron on folder rows, not by horizontal offset.
+    //
+    // Long-press anywhere on the row to drag-reorder (Batch 23 used a
+    // dedicated DragHandle IconButton; dropped because it cost 48dp on every
+    // row to advertise a long-press affordance). The library uses long-press
+    // rather than touch-drag specifically so casual scroll doesn't grab a
+    // page, so the tap-to-open `.clickable` and the long-press drag gesture
+    // coexist on the same Row without competing.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(dragHandleModifier)
             .clickable(onClick = onOpen)
             .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Long-press-to-drag handle (Batch 23). Long-press rather than
-        // touch-drag so casual scrolls past the icon don't grab a page.
-        IconButton(
-            onClick = {},
-            modifier = dragHandleModifier,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.DragHandle,
-                contentDescription = "Reorder",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         if (node.hasChildren) {
             IconButton(onClick = onToggle) {
                 Icon(
