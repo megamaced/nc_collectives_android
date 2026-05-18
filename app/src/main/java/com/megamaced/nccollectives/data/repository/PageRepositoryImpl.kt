@@ -61,8 +61,14 @@ class PageRepositoryImpl
                 val now = System.currentTimeMillis()
                 val tagNames = fetchTagNamesById(collectiveId)
                 val response = api.listPages(collectiveId)
+                // R-27: bulk-load existing rows for the collective in one
+                // query, then look up locally in the map. The previous
+                // `pageDao.getById(dto.id)` per DTO was a Room round-trip
+                // per page — for a 200-page collective that's 200 queries
+                // on every refresh.
+                val existingById = pageDao.listForCollective(collectiveId).associateBy { it.id }
                 val entities = response.ocs.data.pages.map { dto ->
-                    val existing = pageDao.getById(dto.id)
+                    val existing = existingById[dto.id]
                     dto.toEntity(
                         collectiveId = collectiveId,
                         now = now,

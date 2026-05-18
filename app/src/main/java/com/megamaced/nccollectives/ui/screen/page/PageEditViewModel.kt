@@ -46,24 +46,30 @@ class PageEditViewModel
 
         init {
             viewModelScope.launch {
+                // R-37: keep the spinner up across both getPage AND fetchBody,
+                // and stage `initialBody` exactly once at the end. The
+                // previous shape staged a null body first (no spinner up
+                // yet) and then overwrote it when fetchBody returned — a
+                // user typing in that brief gap would see their text vanish
+                // when the body arrived.
+                _uiState.update { it.copy(isLoadingBody = true) }
                 val page = repository.getPage(pageId)
+                val needsFetch = page != null && page.bodyMd == null
+                val fetched = if (needsFetch) repository.fetchBody(pageId) else null
+                _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
                 _uiState.update {
                     it.copy(
                         title = page?.title.orEmpty(),
-                        initialBody = page?.bodyMd,
+                        initialBody = when {
+                            page == null -> null
+                            fetched is ApiResult.Success -> fetched.data
+                            else -> page.bodyMd
+                        },
+                        isLoadingBody = false,
+                        saveError = fetched
+                            ?.takeIf { it !is ApiResult.Success<*> }
+                            ?.userMessage(),
                     )
-                }
-                _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
-                if (page != null && page.bodyMd == null) {
-                    _uiState.update { it.copy(isLoadingBody = true) }
-                    val result = repository.fetchBody(pageId)
-                    _uiState.update {
-                        it.copy(
-                            isLoadingBody = false,
-                            initialBody = if (result is ApiResult.Success) result.data else it.initialBody,
-                            saveError = if (result is ApiResult.Success) null else result.userMessage(),
-                        )
-                    }
                 }
             }
         }

@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -67,10 +67,14 @@ class TagBrowseViewModel
 
         init {
             viewModelScope.launch {
-                collectiveRepository.observeCollectives().collect { collectives ->
-                    collectives.firstOrNull { it.id == collectiveId }?.let { c ->
-                        _uiState.update { it.copy(collectiveName = c.name) }
-                    }
+                // R-35: snapshot via `.first()` — the collective name can't
+                // change at runtime (the server has no rename endpoint;
+                // Batch 22's `CreateCollectiveSheet` says so) so holding a
+                // long-running Room observer for a value that's stable for
+                // the screen's lifetime is wasted machinery.
+                val snapshot = collectiveRepository.observeCollectives().first()
+                snapshot.firstOrNull { it.id == collectiveId }?.let { c ->
+                    _uiState.update { it.copy(collectiveName = c.name) }
                 }
             }
         }

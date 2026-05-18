@@ -106,23 +106,12 @@ fun MarkdownView(
         ?.value
         ?: 16f
 
-    val markwon = remember(
-        codeBg,
-        codeFg,
-        linkColor,
-        outline,
-        tableHeaderRow,
-        tableOddRow,
-        tableEvenRow,
-        taskBoxChecked,
-        taskBoxUnchecked,
-        prismKeyword,
-        prismString,
-        prismLiteral,
-        prismComment,
-        prismFunction,
-        prismOperator,
-    ) {
+    // R-25: every colour derives from `colorScheme`; a single ColorScheme
+    // reference change (theme switch) is the only event that needs to
+    // rebuild Markwon. Spelling out 14+ individual ARGB ints as remember
+    // keys forced Compose to compare them all each recomposition, with
+    // no behavioural difference from keying on the `colorScheme` itself.
+    val markwon = remember(colorScheme) {
         val prism4j = Prism4j(
             com.megamaced.nccollectives.util
                 .CollectivesGrammarLocator(),

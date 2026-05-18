@@ -9,7 +9,6 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.flow.first
 import timber.log.Timber
 
 /**
@@ -41,7 +40,10 @@ class SyncWorker
                 return Result.success()
             }
 
-            val collectives = collectiveRepository.observeCollectives().first()
+            // R-30: snapshot read, not a Flow subscription. The previous
+            // `.observeCollectives().first()` started a collection just
+            // to fetch one value and unsubscribe.
+            val collectives = collectiveRepository.cachedCollectives()
             var hadRetryableFailure = false
             for (collective in collectives) {
                 when (val pages = pageRepository.refresh(collective.id)) {

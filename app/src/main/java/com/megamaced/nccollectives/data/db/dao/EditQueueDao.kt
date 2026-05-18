@@ -10,8 +10,15 @@ interface EditQueueDao {
     @Upsert
     suspend fun upsert(entry: EditQueueEntity)
 
-    @Query("SELECT * FROM edit_queue WHERE status != 'CONFLICTED' ORDER BY queuedAt ASC")
-    suspend fun pendingEntries(): List<EditQueueEntity>
+    /**
+     * R-26: hard-cap the worker's drain at [limit] rows so an unexpectedly
+     * huge offline backlog (extended airplane mode, share-spam against a
+     * dropped network) doesn't pull the entire queue into memory + hold a
+     * single transaction open for the whole run. Subsequent worker runs
+     * pick up the next batch.
+     */
+    @Query("SELECT * FROM edit_queue WHERE status != 'CONFLICTED' ORDER BY queuedAt ASC LIMIT :limit")
+    suspend fun pendingEntries(limit: Int = 100): List<EditQueueEntity>
 
     @Query("SELECT * FROM edit_queue WHERE pageId = :pageId LIMIT 1")
     suspend fun forPage(pageId: Long): EditQueueEntity?

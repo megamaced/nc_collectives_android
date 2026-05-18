@@ -10,6 +10,13 @@ interface CollectiveRepository {
     /** Emits the cached list immediately, then updates as the cache changes. */
     fun observeCollectives(): Flow<List<Collective>>
 
+    /**
+     * One-shot read of the cached list. Use this in workers and other
+     * non-reactive callers — avoids starting a Flow subscription just to
+     * pull a snapshot (R-30).
+     */
+    suspend fun cachedCollectives(): List<Collective>
+
     /** Force a network refresh; the resulting list lands in the Flow above. */
     suspend fun refresh(): ApiResult<Unit>
 

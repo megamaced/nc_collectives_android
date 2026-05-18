@@ -35,6 +35,8 @@ class CollectiveRepositoryImpl
     ) : CollectiveRepository {
         override fun observeCollectives(): Flow<List<Collective>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
 
+        override suspend fun cachedCollectives(): List<Collective> = dao.list().map { it.toDomain() }
+
         override suspend fun refresh(): ApiResult<Unit> =
             apiCall {
                 val now = System.currentTimeMillis()

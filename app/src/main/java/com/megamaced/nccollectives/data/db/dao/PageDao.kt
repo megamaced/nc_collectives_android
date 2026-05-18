@@ -17,6 +17,14 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id = :id")
     suspend fun getById(id: Long): PageEntity?
 
+    /**
+     * R-27: bulk read of every cached row for a collective. Used by
+     * `refresh()` to look up existing body / etag / draft in one query
+     * instead of `getById(dto.id)` N times.
+     */
+    @Query("SELECT * FROM pages WHERE collectiveId = :collectiveId")
+    suspend fun listForCollective(collectiveId: Long): List<PageEntity>
+
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observeById(id: Long): Flow<PageEntity?>
 

@@ -10,9 +10,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,23 +32,35 @@ class FavoritesViewModel
         private val collectiveRepository: CollectiveRepository,
         private val pageRepository: PageRepository,
     ) : ViewModel() {
+        // R-24: gate the per-collective observe-pages fan-out on the
+        // *set of collective ids*, not on the whole collective list.
+        // The previous flatMapLatest rebuilt the N-way combine on every
+        // collective-row update — including each favorite toggle, which
+        // writes back to `userFavoritePagesCsv`. Now membership changes
+        // (rare) tear down + rebuild; favorite toggles cause the inner
+        // observeCollectives() flow to re-emit but the pages flows stay
+        // subscribed to Room and re-deliver from the cache.
         val favorites: StateFlow<List<FavoriteEntry>> = collectiveRepository
             .observeCollectives()
-            .flatMapLatest { collectives ->
-                if (collectives.isEmpty()) {
+            .map { list -> list.map { it.id } }
+            .distinctUntilChanged()
+            .flatMapLatest { collectiveIds ->
+                if (collectiveIds.isEmpty()) {
                     flowOf(emptyList())
                 } else {
-                    val perCollective = collectives.map { c ->
-                        pageRepository.observePages(c.id).let { flow ->
-                            combine(flow, flowOf(c)) { pages, collective ->
-                                pages
+                    val pagesFlows = collectiveIds.map { id -> pageRepository.observePages(id) }
+                    combine(
+                        combine(pagesFlows) { it.toList() },
+                        collectiveRepository.observeCollectives(),
+                    ) { pagesPerCollective, collectives ->
+                        val byId = collectives.associateBy { it.id }
+                        collectiveIds
+                            .flatMapIndexed { idx, collectiveId ->
+                                val collective = byId[collectiveId] ?: return@flatMapIndexed emptyList()
+                                pagesPerCollective[idx]
                                     .filter { it.id in collective.favoritePageIds }
                                     .map { FavoriteEntry(it, collective.name) }
-                            }
-                        }
-                    }
-                    combine(perCollective) { arrays ->
-                        arrays.toList().flatten().sortedBy { it.page.title.lowercase() }
+                            }.sortedBy { it.page.title.lowercase() }
                     }
                 }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())

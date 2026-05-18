@@ -11,6 +11,10 @@ interface CollectiveDao {
     @Query("SELECT * FROM collectives WHERE trashTimestamp IS NULL ORDER BY name COLLATE NOCASE ASC")
     fun observeAll(): Flow<List<CollectiveEntity>>
 
+    /** R-30: one-shot snapshot for workers and other non-reactive callers. */
+    @Query("SELECT * FROM collectives WHERE trashTimestamp IS NULL ORDER BY name COLLATE NOCASE ASC")
+    suspend fun list(): List<CollectiveEntity>
+
     @Query("SELECT * FROM collectives WHERE id = :id")
     suspend fun getById(id: Long): CollectiveEntity?
 
