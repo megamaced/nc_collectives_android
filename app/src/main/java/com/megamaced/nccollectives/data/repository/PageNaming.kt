@@ -1,14 +1,5 @@
 package com.megamaced.nccollectives.data.repository
 
-import com.megamaced.nccollectives.data.db.entity.PageEntity
-
-/**
- * Folder pages in Collectives are stored as `Readme.md` inside a directory
- * named after the page title; leaf pages are stored as `<title>.md`. A page
- * is a folder iff its filename is exactly `Readme.md`.
- */
-internal fun PageEntity.isFolderPage(): Boolean = fileName.equals("Readme.md", ignoreCase = true)
-
 /**
  * Normalise a user-entered title to something safe to use as a filename.
  * Strips filesystem path separators and ASCII control codes, collapses

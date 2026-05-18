@@ -108,49 +108,6 @@ class PageBodyService
             }
 
         /**
-         * Moves the page file at `(collectivePath, filePath, fileName)` to a
-         * new location. The destination is built from `(destCollectivePath,
-         * destFilePath, destFileName)`. Used by Batch 11 for rename / move.
-         *
-         * Leaf pages only. Folder pages (the file is `Readme.md` inside a
-         * directory that holds children) require moving the whole directory
-         * and aren't supported here yet.
-         */
-        suspend fun moveFile(
-            collectivePath: String,
-            filePath: String,
-            fileName: String,
-            destCollectivePath: String,
-            destFilePath: String,
-            destFileName: String,
-        ): ApiResult<Unit> =
-            withContext(Dispatchers.IO) {
-                try {
-                    val sourceUrl = buildWebDavUrl(collectivePath, filePath, fileName)
-                    val destUrl = buildWebDavUrl(destCollectivePath, destFilePath, destFileName)
-                    val request = Request
-                        .Builder()
-                        .url(sourceUrl)
-                        .method("MOVE", null)
-                        .header("Destination", destUrl)
-                        .header("Overwrite", "F")
-                        .build()
-                    client.newCall(request).execute().use { response ->
-                        when (response.code) {
-                            in 200..299 -> ApiResult.Success(Unit)
-                            401 -> ApiResult.Unauthorised
-                            412 -> ApiResult.Conflict
-                            else -> ApiResult.HttpError(response.code, response.message)
-                        }
-                    }
-                } catch (e: java.io.IOException) {
-                    ApiResult.NetworkError(e)
-                } catch (e: Exception) {
-                    ApiResult.Unexpected(e)
-                }
-            }
-
-        /**
          * Creates a WebDAV collection (directory). Returns success if the
          * directory was created (`201`) or already exists (`405`). Used to
          * lazily materialise `.attachments.<pageId>` before the first upload.

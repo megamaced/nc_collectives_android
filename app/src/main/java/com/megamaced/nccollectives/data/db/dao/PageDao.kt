@@ -20,9 +20,6 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observeById(id: Long): Flow<PageEntity?>
 
-    @Query("SELECT id FROM pages WHERE title = :title LIMIT 1")
-    suspend fun findIdByTitle(title: String): Long?
-
     @Query(
         "SELECT id FROM pages WHERE collectiveId = :collectiveId " +
             "AND title = :title COLLATE NOCASE AND trashTimestamp IS NULL LIMIT 1",
@@ -33,12 +30,6 @@ interface PageDao {
     ): Long?
 
     @Query(
-        "SELECT * FROM pages WHERE trashTimestamp IS NULL " +
-            "ORDER BY serverTimestamp DESC LIMIT :limit",
-    )
-    fun observeRecent(limit: Int): Flow<List<PageEntity>>
-
-    @Query(
         "SELECT * FROM pages WHERE collectiveId = :collectiveId AND trashTimestamp IS NULL " +
             "AND parentId != 0 ORDER BY serverTimestamp DESC LIMIT :limit",
     )
@@ -46,9 +37,6 @@ interface PageDao {
         collectiveId: Long,
         limit: Int,
     ): Flow<List<PageEntity>>
-
-    @Query("SELECT * FROM pages WHERE id IN (:ids) AND trashTimestamp IS NULL")
-    fun observeByIds(ids: List<Long>): Flow<List<PageEntity>>
 
     /**
      * Pages in [collectiveId] whose `tagsCsv` contains [tagName] (Batch 25).
@@ -96,23 +84,6 @@ interface PageDao {
     suspend fun updateTagsCsv(
         id: Long,
         csv: String,
-    )
-
-    @Query(
-        "UPDATE pages SET title = :title, fileName = :fileName, filePath = :filePath WHERE id = :id",
-    )
-    suspend fun updateTitleAndPath(
-        id: Long,
-        title: String,
-        fileName: String,
-        filePath: String,
-    )
-
-    @Query("UPDATE pages SET parentId = :parentId, filePath = :filePath WHERE id = :id")
-    suspend fun updateParentAndPath(
-        id: Long,
-        parentId: Long,
-        filePath: String,
     )
 
     @Query("UPDATE pages SET subpageOrderCsv = :csv WHERE id = :id")
