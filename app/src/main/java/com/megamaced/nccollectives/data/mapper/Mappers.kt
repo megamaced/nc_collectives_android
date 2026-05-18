@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.mapper
 
+import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.PageDto
 import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
@@ -15,7 +16,13 @@ import com.megamaced.nccollectives.domain.model.Page
 internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
     CollectiveEntity(
         id = id,
-        name = name,
+        // S-18: server-provided display strings pass through the trust
+        // boundary before they reach Room (and from there nav route args
+        // + SQL LIKE patterns). Strips control chars + caps length so a
+        // misbehaving Nextcloud can't smuggle in newlines that break
+        // Compose Navigation arg parsing or oversized titles that bloat
+        // every observe-pages query.
+        name = ServerStringValidation.sanitiseDisplay(name),
         slug = slug,
         emoji = emoji,
         canEdit = canEdit,
@@ -51,7 +58,12 @@ internal fun PageDto.toEntity(
         id = id,
         collectiveId = collectiveId,
         parentId = parentId,
-        title = title,
+        // S-18: same trust-boundary sanitisation as collective name —
+        // the title flows into nav route args (TagBrowse / PageView)
+        // and the recent-pages strip; control chars or megabyte-titles
+        // from a misbehaving server would otherwise reach Compose
+        // Navigation's path parser unchecked.
+        title = ServerStringValidation.sanitiseDisplay(title),
         emoji = emoji,
         // Server returns tag IDs only; resolve to names via the per-collective
         // tag map. Unknown IDs (newly created tag we haven't refreshed yet) are

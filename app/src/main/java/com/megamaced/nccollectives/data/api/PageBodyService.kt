@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.api
 
+import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.auth.TokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -242,24 +243,40 @@ class PageBodyService
                 .addPathSegment("dav")
                 .addPathSegment("files")
                 .addPathSegment(credentials.loginName)
-            collectivePath
-                .trim('/')
-                .split('/')
-                .filter { it.isNotEmpty() }
-                .forEach(builder::addPathSegment)
+            // S-14′: every server-supplied segment is validated before
+            // being spliced into the URL. `addPathSegment` percent-encodes
+            // an embedded `/` but leaves `..` intact — without this gate a
+            // compromised server returning `collectivePath="../../"` would
+            // walk the WebDAV request up the user's Files tree.
+            appendSegments(builder, collectivePath)
             if (filePath.isNotEmpty()) {
-                filePath
-                    .trim('/')
-                    .split('/')
-                    .filter { it.isNotEmpty() }
-                    .forEach(builder::addPathSegment)
+                appendSegments(builder, filePath)
             }
-            builder.addPathSegment(fileName)
+            val finalSegment = ServerStringValidation.cleanPathSegment(fileName)
+                ?: throw IllegalStateException("Refusing to build WebDAV URL with hostile fileName")
+            builder.addPathSegment(finalSegment)
             val result = builder.build().toString()
             // OkHttp's HttpUrl trims trailing slashes; WebDAV PROPFIND/MKCOL
             // on a directory benefits from the trailing slash so the server
             // never returns a 301 redirect to the canonical form.
             return if (asCollection && !result.endsWith('/')) "$result/" else result
+        }
+
+        private fun appendSegments(
+            builder: okhttp3.HttpUrl.Builder,
+            raw: String,
+        ) {
+            raw
+                .trim('/')
+                .split('/')
+                .filter { it.isNotEmpty() }
+                .forEach { segment ->
+                    val clean = ServerStringValidation.cleanPathSegment(segment)
+                        ?: throw IllegalStateException(
+                            "Refusing to build WebDAV URL with hostile path segment",
+                        )
+                    builder.addPathSegment(clean)
+                }
         }
 
         /**

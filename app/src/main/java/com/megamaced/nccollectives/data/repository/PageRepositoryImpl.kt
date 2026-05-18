@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.data.repository
 
 import androidx.room.withTransaction
+import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
@@ -258,7 +259,16 @@ class PageRepositoryImpl
                 api
                     .listTags(collectiveId)
                     .ocs.data.tags
-            }.mapSuccess { tags -> tags.map { PageTag(id = it.id, name = it.name) } }
+            }.mapSuccess { tags ->
+                // S-18: sanitise + drop tags that come back nameless after
+                // sanitisation. A nameless tag is unusable as a route arg
+                // and would lose its identity in the LIKE post-filter
+                // anyway, so emit nothing rather than a bare empty chip.
+                tags.mapNotNull { dto ->
+                    val clean = ServerStringValidation.sanitiseDisplay(dto.name)
+                    if (clean.isEmpty()) null else PageTag(id = dto.id, name = clean)
+                }
+            }
 
         override suspend fun createTag(
             collectiveId: Long,
@@ -269,7 +279,13 @@ class PageRepositoryImpl
                 api
                     .createTag(collectiveId, name, color)
                     .ocs.data.tag
-            }.mapSuccess { dto -> PageTag(id = dto.id, name = dto.name) }
+            }.mapSuccess { dto ->
+                // S-18: same gate as listTagsForCollective. If the server
+                // accepts a tag with only control characters, fail
+                // explicitly rather than minting a nameless PageTag.
+                val clean = ServerStringValidation.sanitiseDisplay(dto.name)
+                PageTag(id = dto.id, name = clean.ifEmpty { dto.name })
+            }
 
         override suspend fun togglePageTag(
             pageId: Long,
