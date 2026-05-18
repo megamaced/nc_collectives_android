@@ -1,5 +1,7 @@
 package com.megamaced.nccollectives.data.api
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -30,6 +32,13 @@ sealed interface ApiResult<out T> {
 internal inline fun <T> apiCall(block: () -> T): ApiResult<T> =
     try {
         ApiResult.Success(block())
+    } catch (e: CancellationException) {
+        // B-45 / R-40: re-throw coroutine cancellation. The generic
+        // `catch (Exception)` below would otherwise swallow it into
+        // `ApiResult.Unexpected`, breaking structured concurrency (siblings
+        // don't tear down) and surfacing a confusing "Unexpected error"
+        // toast after the user navigates away from a screen.
+        throw e
     } catch (e: HttpException) {
         when (e.code()) {
             401 -> ApiResult.Unauthorised
@@ -38,7 +47,11 @@ internal inline fun <T> apiCall(block: () -> T): ApiResult<T> =
         }
     } catch (e: IOException) {
         ApiResult.NetworkError(e)
-    } catch (e: Exception) {
+    } catch (e: SerializationException) {
+        // B-49: deserialisation failures are network-shape problems (server
+        // changed the contract, missing field, etc.) — surface them as
+        // Unexpected with a typed cause rather than letting the generic
+        // catch hide them.
         ApiResult.Unexpected(e)
     }
 
