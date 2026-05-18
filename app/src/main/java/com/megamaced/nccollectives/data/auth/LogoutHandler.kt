@@ -3,11 +3,13 @@ package com.megamaced.nccollectives.data.auth
 import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.sync.SyncScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,11 +43,19 @@ class LogoutHandler
         private val sessionManager: SessionManager,
         private val syncScheduler: SyncScheduler,
         private val userPreferences: UserPreferences,
+        private val sharePayloadHolder: SharePayloadHolder,
+        private val okHttpClient: OkHttpClient,
     ) {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun signOut() {
             sessionManager.beginSignOut()
+            // S-16: drop any pending share payload before the next session
+            // starts. A share intent captured under user A would otherwise
+            // still be sitting in the process-wide singleton when user B
+            // signs in on the same install, and would pop the share UI
+            // with user A's payload targeting user B's Nextcloud.
+            sharePayloadHolder.consume()
             scope.launch {
                 syncScheduler.cancelAll()
                 database.withTransaction {
@@ -55,6 +65,14 @@ class LogoutHandler
                     database.collectiveDao().clear()
                 }
                 userPreferences.clearAll()
+                // B-50: evict the OkHttp connection pool so a quick
+                // user-A → user-B sign-in cycle can't reuse a still-warm
+                // connection negotiated under the previous credentials.
+                // `dispatcher.cancelAll()` aborts any in-flight requests
+                // (e.g. a sync job racing the sign-out) so they don't
+                // hit the server after the local wipe.
+                okHttpClient.dispatcher.cancelAll()
+                okHttpClient.connectionPool.evictAll()
                 sessionManager.endSignOut()
             }
         }

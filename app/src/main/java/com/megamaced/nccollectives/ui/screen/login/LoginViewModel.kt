@@ -7,13 +7,11 @@ import com.megamaced.nccollectives.data.auth.LoginFlowStatus
 import com.megamaced.nccollectives.data.auth.NextcloudLoginFlow
 import com.megamaced.nccollectives.data.auth.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -66,11 +64,11 @@ class LoginViewModel
             _uiState.update { it.copy(isLoading = true, error = null) }
 
             viewModelScope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    loginFlow.initiate(normalisedHost)
-                }
+                // B-44: `loginFlow.initiate` is now `suspend` and owns its
+                // own `Dispatchers.IO` switch + Response.use {}.
+                val result = loginFlow.initiate(normalisedHost)
                 result.fold(
-                    onSuccess = { initResponse -> onFlowInitiated(initResponse) },
+                    onSuccess = { initResponse -> onFlowInitiated(initResponse, normalisedHost) },
                     onFailure = { e ->
                         _uiState.update {
                             it.copy(isLoading = false, error = e.message ?: "Connection failed")
@@ -80,7 +78,10 @@ class LoginViewModel
             }
         }
 
-        private fun onFlowInitiated(initResponse: LoginFlowInitResponse) {
+        private fun onFlowInitiated(
+            initResponse: LoginFlowInitResponse,
+            expectedHost: String,
+        ) {
             _uiState.update {
                 it.copy(
                     isLoading = false,
@@ -90,9 +91,14 @@ class LoginViewModel
             }
 
             viewModelScope.launch {
-                val status = withContext(Dispatchers.IO) {
-                    loginFlow.poll(initResponse.poll.endpoint, initResponse.poll.token)
-                }
+                // S-17: pass `expectedHost` so a server returning a different
+                // canonical host than the user typed gets rejected before its
+                // credentials are persisted.
+                val status = loginFlow.poll(
+                    endpoint = initResponse.poll.endpoint,
+                    token = initResponse.poll.token,
+                    expectedHost = expectedHost,
+                )
                 when (status) {
                     is LoginFlowStatus.Success -> {
                         sessionManager.onLoginSuccess(

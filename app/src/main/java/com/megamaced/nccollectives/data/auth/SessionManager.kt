@@ -99,14 +99,19 @@ class SessionManager
          */
         fun onAuthenticatedResponse(code: Int) {
             if (signOutInProgress.get()) return
-            when {
-                code == 401 -> {
-                    val n = consecutive401s.incrementAndGet()
-                    if (n >= CONSECUTIVE_401_THRESHOLD) {
-                        logout()
-                    }
+            if (code == 401) {
+                val n = consecutive401s.incrementAndGet()
+                if (n >= CONSECUTIVE_401_THRESHOLD) {
+                    logout()
                 }
-                code in 200..299 -> consecutive401s.set(0)
+            } else {
+                // B-51: reset on *any* non-401, not just 2xx. The previous
+                // `code in 200..299` branch meant a transient `401 → 500 →
+                // 401` sequence (e.g. flaky reverse proxy) would still
+                // sign the user out — the 5xx wasn't evidence of a working
+                // auth exchange but also wasn't evidence of an invalid
+                // token. Only stack consecutive 401s.
+                consecutive401s.set(0)
             }
         }
 
