@@ -177,6 +177,15 @@ internal fun PageEditWebScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
                     }
                 },
+                // The Scaffold's `contentWindowInsets = 0` zeros the
+                // body padding, but `TopAppBar` keeps its own
+                // `windowInsets` defaulting to the status-bar inset.
+                // The outer NcCollectivesScaffold has already consumed
+                // that inset into `innerPadding`, so without zeroing
+                // here the bar renders pushed-down by the status-bar
+                // height and a visible gap appears between the system
+                // status bar and the "Edit (collaborative)" title.
+                windowInsets = WindowInsets(0, 0, 0, 0),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -288,26 +297,26 @@ private fun EditorWebView(
                         useWideViewPort = true
                         loadWithOverviewMode = true
                     }
-                    // Two darkening shims, picked at runtime by which
-                    // `WebViewFeature` the System WebView reports as
-                    // supported. ALGORITHMIC_DARKENING (Android 13+ WebView)
-                    // honours the page's `<meta name="color-scheme">` and
-                    // `prefers-color-scheme: dark`. FORCE_DARK is the older
-                    // pre-Android-13 shim — it inverts content even without
-                    // an opt-in. Nextcloud Text doesn't ship a color-scheme
-                    // hint, so FORCE_DARK is the one that actually paints
-                    // dark on older WebViews. Belt-and-braces: when both
-                    // are available we prefer the newer one.
-                    if (isDarkTheme) {
-                        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-                            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
-                        } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                            @Suppress("DEPRECATION")
-                            WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_ON)
-                        }
+                    // Belt-and-braces darkening signal to the WebView
+                    // engine: algorithmic darkening (Android 13+) only
+                    // paints dark if the page opts in via
+                    // `<meta name="color-scheme">` — Nextcloud Text
+                    // doesn't, so this alone won't visually flip the
+                    // theme. The real work is done by the CSS-variable
+                    // override in `buildInjectionScript` below; this
+                    // setting still helps for the slim WebView chrome
+                    // (scrollbars, default form widgets) the page
+                    // itself doesn't style.
+                    if (isDarkTheme &&
+                        WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)
+                    ) {
+                        WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                     }
                     addJavascriptInterface(bridge, DirectEditingMobileInterface.NAME)
-                    webViewClient = StripChromeWebViewClient(onSslError)
+                    webViewClient = StripChromeWebViewClient(
+                        onSslError = onSslError,
+                        injectionScript = buildInjectionScript(isDarkTheme),
+                    )
                     webChromeClient = ImagePickingChromeClient(
                         launchPicker = { callback ->
                             pendingFileCallback.value = callback
@@ -346,6 +355,7 @@ private fun EditorWebView(
  */
 private class StripChromeWebViewClient(
     private val onSslError: () -> Unit,
+    private val injectionScript: String,
 ) : WebViewClient() {
     override fun onReceivedSslError(
         view: WebView?,
@@ -362,39 +372,106 @@ private class StripChromeWebViewClient(
         url: String?,
     ) {
         super.onPageFinished(view, url)
-        view?.evaluateJavascript(STRIP_CHROME_JS, null)
+        view?.evaluateJavascript(injectionScript, null)
     }
 }
 
 /**
- * Injects a `<style>` element with `display: none` rules for every
- * Files-app shell selector that wraps the embedded Text editor. The
- * rules are scoped tightly so a stray match doesn't kill the editor
- * surface itself. Reapplied via MutationObserver because Vue mounts
- * the navigation / sidebar lazily, after `onPageFinished` fires.
+ * Builds the JS payload injected on every `onPageFinished`. The IIFE:
+ *
+ *  - Inserts a `<style id="nc-collectives-strip">` element whose rules
+ *    `display: none` the Files-app shell selectors we know wrap the
+ *    embedded editor (top header — that's the "blue rail" on a narrow
+ *    viewport — left navigation, right details sidebar, etc.).
+ *  - When [isDarkTheme] is true, also overrides Nextcloud's `--color-*`
+ *    CSS custom properties to dark equivalents. This is what actually
+ *    paints the editor dark — algorithmic darkening alone is a no-op
+ *    against pages that hard-code colours via custom properties, which
+ *    Nextcloud does throughout.
+ *  - Installs a MutationObserver on `<body>` so the rules survive
+ *    Vue's lazy mounts (Nextcloud assembles the shell in chunks after
+ *    `onPageFinished` fires). Idempotent — re-running does nothing if
+ *    the `<style>` is already present.
+ *
+ * Selectors and CSS variable names are upstream Server/Files/Text
+ * contracts. If they rename, the rail or theme leak back but the
+ * editor itself still works.
  */
-private val STRIP_CHROME_JS =
-    """
-    (function() {
-        var css = [
-            '#header { display: none !important; }',
-            '#app-navigation, #app-navigation-vue { display: none !important; }',
-            '#app-sidebar, #app-sidebar-vue, .app-sidebar { display: none !important; }',
-            'aside.app-sidebar, aside#app-sidebar-vue { display: none !important; }',
-            '.app-content-list, .files-controls { display: none !important; }',
-            '#content-vue, #content { padding: 0 !important; margin: 0 !important; top: 0 !important; }',
-            'body, #body-user { padding: 0 !important; margin: 0 !important; }',
-            '.text-editor, .editor, .ProseMirror { padding-top: 0 !important; }'
-        ].join('\n');
-        var existing = document.getElementById('nc-collectives-strip');
-        if (!existing) {
-            var s = document.createElement('style');
-            s.id = 'nc-collectives-strip';
-            s.appendChild(document.createTextNode(css));
-            document.head.appendChild(s);
-        }
-    })();
-    """.trimIndent()
+private fun buildInjectionScript(isDarkTheme: Boolean): String {
+    val css = STRIP_CHROME_CSS + if (isDarkTheme) DARK_THEME_CSS else ""
+    val escaped = css
+        .replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("'", "\\'")
+    return """
+        (function() {
+            var STYLE_ID = 'nc-collectives-strip';
+            var css = '$escaped';
+            function install() {
+                if (document.getElementById(STYLE_ID)) return;
+                var head = document.head || document.documentElement;
+                if (!head) return;
+                var s = document.createElement('style');
+                s.id = STYLE_ID;
+                s.appendChild(document.createTextNode(css));
+                head.appendChild(s);
+            }
+            install();
+            if (!window.__ncCollectivesObserver && document.body) {
+                window.__ncCollectivesObserver = new MutationObserver(install);
+                window.__ncCollectivesObserver.observe(document.body, { childList: true, subtree: true });
+            }
+        })();
+        """.trimIndent()
+}
+
+private const val STRIP_CHROME_CSS = """
+#header, header#header, .header-right, .header-left { display: none !important; }
+#app-navigation, #app-navigation-vue, nav#app-navigation { display: none !important; }
+#app-sidebar, #app-sidebar-vue, aside.app-sidebar { display: none !important; }
+.app-content-list, .files-controls, .breadcrumb { display: none !important; }
+#content, #content-vue, .app-content { padding: 0 !important; margin: 0 !important; top: 0 !important; left: 0 !important; }
+body, html, #body-user { padding: 0 !important; margin: 0 !important; min-height: 100% !important; }
+.text-editor, .editor, .text-editor__main, .ProseMirror { padding-top: 0 !important; }
+"""
+
+/**
+ * Dark-mode override. Nextcloud's stylesheet reads colours from
+ * `--color-*` custom properties on `:root`; overriding them once at
+ * the document root cascades through every Vue component that uses
+ * them, including the Text editor. Values mirror Nextcloud server's
+ * own "dark" theme tokens (from `apps/theming/css/default.css`).
+ * `color-scheme: dark` flips native form-control widgets so they
+ * don't paint white against the dark surface.
+ */
+private const val DARK_THEME_CSS = """
+:root, html, body {
+    color-scheme: dark !important;
+    --color-main-background: #171717 !important;
+    --color-main-background-rgb: 23, 23, 23 !important;
+    --color-main-background-translucent: rgba(23, 23, 23, 0.9) !important;
+    --color-background-hover: #2c2c2c !important;
+    --color-background-dark: #2c2c2c !important;
+    --color-background-darker: #232323 !important;
+    --color-main-text: #ebebeb !important;
+    --color-text-lighter: #b0b0b0 !important;
+    --color-text-light: #d0d0d0 !important;
+    --color-text-maxcontrast: #b0b0b0 !important;
+    --color-border: #3a3a3a !important;
+    --color-border-dark: #4a4a4a !important;
+    --color-placeholder-light: #2c2c2c !important;
+    --color-placeholder-dark: #3a3a3a !important;
+    background-color: #171717 !important;
+    color: #ebebeb !important;
+}
+.text-editor, .editor, .text-editor__main, .ProseMirror, .ProseMirror * {
+    background-color: transparent !important;
+    color: #ebebeb !important;
+}
+.text-editor__wrapper, .text-editor__content-wrapper {
+    background-color: #171717 !important;
+}
+"""
 
 /**
  * Surfaces the WebView's "insert image" file-chooser as the system

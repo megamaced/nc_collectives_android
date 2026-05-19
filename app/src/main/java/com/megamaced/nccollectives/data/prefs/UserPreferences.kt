@@ -16,21 +16,29 @@ import javax.inject.Singleton
 enum class ThemeMode { System, Light, Dark }
 
 /**
- * Routing preference for the edit-page action (Batch 29). The native
- * Markwon editor is always available; the WebView path is only used
- * when [com.megamaced.nccollectives.domain.repository.DirectEditingRepository.isAvailable]
- * returns true, regardless of this setting.
+ * Routing preference for the edit-page action.
  *
- * - [Auto]: prefer the collaborative editor when the server supports it;
- *   fall back to plain markdown otherwise. Default for new installs and
- *   for any existing user who hasn't touched the setting.
- * - [AlwaysPlain]: always native. Useful for offline-heavy use; doesn't
- *   need a network round-trip when tapping Edit.
- * - [AlwaysCollaborative]: always WebView. If the server doesn't support
- *   it, the screen surfaces an error and offers to switch to plain — the
- *   *setting* doesn't auto-revert, the *route* does.
+ * - [PreferPlain]: always use the native Markwon editor. Default. Works
+ *   offline and avoids the WebView entry's network round-trip + Vue
+ *   bootstrap latency on tap-to-edit. The collaborative editor is still
+ *   beta-quality on Android (rough chrome leak-through, ad-hoc dark-mode
+ *   override, no offline support), so plain is the sane default.
+ * - [PreferCollaborative]: open the WebView-backed Nextcloud Text editor
+ *   when both the server supports `directEditing` *and* the device is
+ *   online. If either is false, falls back to the plain editor with a
+ *   one-shot snackbar — the *setting* sticks, the *route* doesn't.
+ *
+ * **Migration:** older builds shipped `Auto` / `AlwaysPlain` /
+ * `AlwaysCollaborative`. The DataStore reader in
+ * [UserPreferences.toModel] maps the old names so existing installs
+ * don't lose their setting:
+ *  - `Auto` → `PreferPlain` (the old Auto routed to web when available;
+ *    we deliberately demote rather than promote, since plain is the new
+ *    default and users on Auto were the conservative cohort).
+ *  - `AlwaysPlain` → `PreferPlain`.
+ *  - `AlwaysCollaborative` → `PreferCollaborative`.
  */
-enum class EditorPreference { Auto, AlwaysPlain, AlwaysCollaborative }
+enum class EditorPreference { PreferPlain, PreferCollaborative }
 
 /**
  * Period for the periodic metadata sync. `Off` cancels the WorkManager
@@ -58,7 +66,7 @@ data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
-    val editorPreference: EditorPreference = EditorPreference.Auto,
+    val editorPreference: EditorPreference = EditorPreference.PreferPlain,
 )
 
 /**
@@ -135,8 +143,19 @@ class UserPreferences
             val cadence = this[KEY_SYNC_CADENCE]?.let { runCatching { SyncCadence.valueOf(it) }.getOrNull() }
                 ?: SyncCadence.SixHourly
             val editorPreference = this[KEY_EDITOR_PREFERENCE]
-                ?.let { runCatching { EditorPreference.valueOf(it) }.getOrNull() }
-                ?: EditorPreference.Auto
+                ?.let { stored ->
+                    // Direct match first, then legacy mapping for installs
+                    // that wrote `Auto` / `AlwaysPlain` / `AlwaysCollaborative`
+                    // under v2.x. See [EditorPreference] KDoc for the
+                    // migration rationale.
+                    runCatching { EditorPreference.valueOf(stored) }.getOrNull()
+                        ?: when (stored) {
+                            "Auto", "AlwaysPlain" -> EditorPreference.PreferPlain
+                            "AlwaysCollaborative" -> EditorPreference.PreferCollaborative
+                            else -> null
+                        }
+                }
+                ?: EditorPreference.PreferPlain
             return UserPrefs(
                 themeMode = mode,
                 syncCadence = cadence,

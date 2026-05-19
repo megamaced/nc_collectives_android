@@ -40,8 +40,8 @@ enum class EditRoute { Plain, Web }
 /**
  * Result of resolving the Edit button's destination. Carries an optional
  * [fallbackMessage] to surface as a snackbar when we couldn't honour the
- * user's setting exactly (e.g. `AlwaysCollaborative` on a server that
- * doesn't support it).
+ * user's setting exactly (e.g. `PreferCollaborative` on a server that
+ * doesn't support it, or while offline).
  */
 data class EditRouteDecision(
     val route: EditRoute,
@@ -148,43 +148,37 @@ class PageViewModel
 
         /**
          * Resolve the Edit button's destination based on the user's
-         * [EditorPreference] setting and runtime capability discovery
-         * (Batch 29). Suspending because the capability lookup may hit
-         * the network on the first call per session (memoised after).
+         * [EditorPreference] setting and runtime capability discovery.
+         * Suspending because the capability lookup may hit the network
+         * on the first call per session (memoised after).
          *
-         * Returns the route to navigate to, plus a user-facing toast if
-         * we couldn't honour the preference exactly (e.g.
-         * `AlwaysCollaborative` on a server that doesn't expose
-         * `directEditing`). Logs the routing decision at debug level
-         * via Timber — no analytics endpoint, ever.
+         * Returns the route to navigate to, plus a user-facing snackbar
+         * if we couldn't honour the preference exactly — i.e. user set
+         * `PreferCollaborative` but the server doesn't expose
+         * `directEditing`, or the device is offline. Logs the decision
+         * at debug level via Timber — no analytics endpoint, ever.
          */
         suspend fun resolveEditRoute(): EditRouteDecision {
             val preference = userPreferences.flow.first().editorPreference
             return when (preference) {
-                EditorPreference.AlwaysPlain -> {
-                    Timber.tag(TAG).d("Edit route: plain (preference=AlwaysPlain)")
+                EditorPreference.PreferPlain -> {
+                    Timber.tag(TAG).d("Edit route: plain (preference=PreferPlain)")
                     EditRouteDecision(EditRoute.Plain, fallbackMessage = null)
                 }
-                EditorPreference.AlwaysCollaborative -> {
+                EditorPreference.PreferCollaborative -> {
                     val available = directEditingRepository.isAvailable()
                     if (available) {
-                        Timber.tag(TAG).d("Edit route: web (preference=AlwaysCollaborative, server=available)")
+                        Timber.tag(TAG).d("Edit route: web (preference=PreferCollaborative, server=available)")
                         EditRouteDecision(EditRoute.Web, fallbackMessage = null)
                     } else {
                         Timber
                             .tag(TAG)
-                            .d("Edit route: plain (preference=AlwaysCollaborative, server=unavailable; surfacing toast)")
+                            .d("Edit route: plain (preference=PreferCollaborative, server=unavailable; surfacing toast)")
                         EditRouteDecision(
                             route = EditRoute.Plain,
-                            fallbackMessage = "Server doesn't support collaborative editing — opening plain editor.",
+                            fallbackMessage = "Collaborative editor unavailable — opening plain editor.",
                         )
                     }
-                }
-                EditorPreference.Auto -> {
-                    val available = directEditingRepository.isAvailable()
-                    val route = if (available) EditRoute.Web else EditRoute.Plain
-                    Timber.tag(TAG).d("Edit route: $route (preference=Auto, server=${if (available) "available" else "unavailable"})")
-                    EditRouteDecision(route, fallbackMessage = null)
                 }
             }
         }

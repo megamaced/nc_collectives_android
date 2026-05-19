@@ -134,8 +134,9 @@ internal fun SettingsScreen(
 
             SectionHeader("Editor")
             Text(
-                "Collaborative editing requires Nextcloud Text on the server. " +
-                    "Plain markdown works offline.",
+                "Plain markdown works offline and is the reliable default. " +
+                    "The collaborative editor (Nextcloud Text) is in beta and " +
+                    "only available when online with a supported server.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -258,9 +259,8 @@ private fun EditorPreferenceOptions(
         EditorPreference.entries.forEach { preference ->
             RadioRow(
                 label = when (preference) {
-                    EditorPreference.Auto -> "Automatic (default)"
-                    EditorPreference.AlwaysPlain -> "Always plain markdown"
-                    EditorPreference.AlwaysCollaborative -> "Always collaborative"
+                    EditorPreference.PreferPlain -> "Prefer plain markdown (default)"
+                    EditorPreference.PreferCollaborative -> "Prefer collaborative (beta, when online)"
                 },
                 selected = selected == preference,
                 onClick = { onSelect(preference) },

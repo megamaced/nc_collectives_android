@@ -55,7 +55,7 @@ class SettingsViewModel
                     account = null,
                     themeMode = ThemeMode.System,
                     syncCadence = SyncCadence.SixHourly,
-                    editorPreference = EditorPreference.Auto,
+                    editorPreference = EditorPreference.PreferPlain,
                 ),
             )
 
