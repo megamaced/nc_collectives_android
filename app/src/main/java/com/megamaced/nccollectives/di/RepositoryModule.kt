@@ -2,10 +2,12 @@ package com.megamaced.nccollectives.di
 
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.CollectiveRepositoryImpl
+import com.megamaced.nccollectives.data.repository.DirectEditingRepositoryImpl
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
 import com.megamaced.nccollectives.data.repository.SearchRepositoryImpl
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
 import dagger.Binds
@@ -27,4 +29,7 @@ abstract class RepositoryModule {
 
     @Binds
     abstract fun bindAttachmentRepository(impl: AttachmentRepositoryImpl): AttachmentRepository
+
+    @Binds
+    abstract fun bindDirectEditingRepository(impl: DirectEditingRepositoryImpl): DirectEditingRepository
 }

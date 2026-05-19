@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.di
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.api.AuthInterceptor
 import com.megamaced.nccollectives.data.api.CollectivesApiService
+import com.megamaced.nccollectives.data.api.DirectEditingService
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.SearchApiService
@@ -92,6 +93,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideSearchApi(retrofit: Retrofit): SearchApiService = retrofit.create(SearchApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDirectEditingService(retrofit: Retrofit): DirectEditingService = retrofit.create(DirectEditingService::class.java)
 
     /**
      * Separate OkHttp / Retrofit pair for the GitHub Releases API used by
