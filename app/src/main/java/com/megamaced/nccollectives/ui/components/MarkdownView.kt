@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
 import com.megamaced.nccollectives.util.expandWikilinks
 import com.megamaced.nccollectives.util.handleMarkdownLink
+import com.megamaced.nccollectives.util.rewriteCallouts
+import com.megamaced.nccollectives.util.rewriteHighlights
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -76,7 +78,13 @@ fun MarkdownView(
             ).okHttpClient()
     }
     val resolvedMarkdown = remember(markdown, imageBaseUrl) {
-        val withWikiLinks = expandWikilinks(markdown)
+        // Batch 31: rewrite Nextcloud Text dialect extensions
+        // (callouts, `==highlight==`) into shapes Markwon already
+        // renders. Done before wikilink expansion so the alternation
+        // patterns don't fight over the same fence/code regions.
+        val withCallouts = rewriteCallouts(markdown)
+        val withHighlights = rewriteHighlights(withCallouts)
+        val withWikiLinks = expandWikilinks(withHighlights)
         if (imageBaseUrl.isNullOrEmpty()) {
             withWikiLinks
         } else {
