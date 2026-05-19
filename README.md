@@ -21,12 +21,13 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 ## Features
 
 - Browse collectives and nested page trees
-- Render markdown pages, including images, links, task lists, tables, fenced code blocks, Nextcloud Text callouts (`> [!INFO]` / `[!WARN]` / `[!ERROR]` / `[!SUCCESS]`), and `==text==` highlights
+- Render markdown pages, including images, links, task lists, tables, syntax-highlighted fenced code blocks (Prism4j, themed against the app's M3 colour scheme), Nextcloud Text callouts (`> [!INFO]` / `[!WARN]` / `[!ERROR]` / `[!SUCCESS]`), and `==text==` highlights
 - View-first by default with a per-page edit toggle. Two editors ship side-by-side: a **native markdown editor** with formatting toolbar + live preview swap that works offline (default), and a **collaborative WebView editor** backed by [Nextcloud Text](https://github.com/nextcloud/text) (beta — multi-user real-time editing, callouts, multi-line tables, math, etc.) used when the server supports it and you're online. Choose the default under **Settings → Editor** (Prefer plain markdown / Prefer collaborative).
 - Offline read cache and offline edit queue (last-write-wins on conflict; local edits preserved as drafts attached to the page)
 - Full-text search via the Nextcloud unified-search provider
 - Favourites and recent searches, persisted across sessions
 - Per-page tags, emoji, rename, and move (folder pages supported)
+- Long-press to drag pages and reorder them within their parent — same `subpageOrder` the web Collectives UI uses
 - Attachments: view inline images, upload from camera or gallery
 - Trash + restore, with pre-commit undo on a snackbar
 - Share-intent quick capture from any app (text, URLs, single or multiple images)
@@ -74,7 +75,8 @@ Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/ser
 - Room 2.8 for the offline cache, edit queue, and attachment upload queue
 - WorkManager for background sync and queued-edit / attachment-upload flush
 - Coil 3 for image loading (reuses the authenticated OkHttp client via a `SingletonImageLoader.Factory`)
-- Markwon for markdown rendering — themed directly against the M3 colour scheme via `AndroidView`
+- Markwon for markdown rendering (with Prism4j for syntax-highlighted code blocks) — themed directly against the M3 colour scheme via `AndroidView`
+- System `WebView` + `androidx.webkit` (`WebSettingsCompat`) for the beta collaborative editor against the Nextcloud Text `directEditing` OCS endpoint
 - Tink (`androidx.security:security-crypto`) for the encrypted credential store
 - `androidx.core:core-splashscreen` for the launcher splash
 - The system camera intent (via a scoped FileProvider) for in-app photo capture — no CAMERA permission
@@ -95,7 +97,7 @@ For a release build:
 
 Without signing env vars set, this produces an *unsigned* APK at `app/build/outputs/apk/release/app-release-unsigned.apk`. The signing setup (keystore generation, GitHub Actions secret names, local env vars) is documented in [`docs/SIGNING.md`](docs/SIGNING.md).
 
-R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). Release builds are around 4.4 MB; debug builds, which include the full debug tooling, are around 73 MB.
+R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). Release builds are around 4.9 MB; debug builds, which include the full debug tooling, are around 73 MB.
 
 ## Contributing
 
