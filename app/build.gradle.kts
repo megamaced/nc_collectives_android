@@ -43,8 +43,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 36
-        versionCode = 13
-        versionName = "2.3.0"
+        versionCode = 14
+        versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -132,6 +132,10 @@ dependencies {
 
     // Browser (Custom Tabs for Nextcloud login)
     implementation(libs.androidx.browser)
+
+    // WebKit compat (algorithmic darkening for the WebView-backed Text
+    // editor — see PageEditWebScreen.kt)
+    implementation(libs.androidx.webkit)
 
     // Secure storage (Tink-backed)
     implementation(libs.androidx.security.crypto)

@@ -15,9 +15,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,8 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.megamaced.nccollectives.BuildConfig
 import kotlinx.coroutines.delay
 import timber.log.Timber
@@ -77,6 +83,13 @@ internal fun PageEditWebScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Detect "is the rendered theme dark?" from the resolved M3 surface
+    // colour rather than `isSystemInDarkTheme()` — the app honours the
+    // user's per-app Theme preference (Settings → Theme), which can
+    // diverge from the OS setting. Luminance < 0.5 is the standard
+    // contrast-based dark/light split.
+    val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     // Holds the WebView reference for back-press JS injection (30d).
     // Set from the AndroidView factory; read by the BackHandler.
@@ -148,6 +161,13 @@ internal fun PageEditWebScreen(
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
+        // The outer `NcCollectivesScaffold` already consumed every system
+        // bar inset into `innerPadding`; if the inner Scaffold also
+        // applied its own status-bar inset (the default), the TopAppBar
+        // would render below the consumed inset, leaving a visible gap
+        // between the status bar and the title. Zero it out — every
+        // inset is already handled one level up.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
@@ -176,6 +196,7 @@ internal fun PageEditWebScreen(
                         url = (state as? PageEditWebUiState.Loaded)?.url
                             ?: (state as PageEditWebUiState.Interactive).url,
                         isInteractive = state is PageEditWebUiState.Interactive,
+                        isDarkTheme = isDarkTheme,
                         onLoaded = viewModel::onEditorReady,
                         onCloseFromJs = viewModel::onClose,
                         onSslError = {
@@ -205,6 +226,7 @@ internal fun PageEditWebScreen(
 private fun EditorWebView(
     url: String,
     isInteractive: Boolean,
+    isDarkTheme: Boolean,
     onLoaded: () -> Unit,
     onCloseFromJs: () -> Unit,
     onSslError: () -> Unit,
@@ -241,7 +263,15 @@ private fun EditorWebView(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            // System navigation gesture bar sits at the very bottom of an
+            // edge-to-edge window. Without this inset the WebView's
+            // formatting toolbar slips behind the gesture indicator and
+            // looks "squashed" against the bottom edge.
+            .windowInsetsPadding(WindowInsets.navigationBars),
+    ) {
         if (!isInteractive) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
@@ -258,8 +288,26 @@ private fun EditorWebView(
                         useWideViewPort = true
                         loadWithOverviewMode = true
                     }
+                    // Two darkening shims, picked at runtime by which
+                    // `WebViewFeature` the System WebView reports as
+                    // supported. ALGORITHMIC_DARKENING (Android 13+ WebView)
+                    // honours the page's `<meta name="color-scheme">` and
+                    // `prefers-color-scheme: dark`. FORCE_DARK is the older
+                    // pre-Android-13 shim — it inverts content even without
+                    // an opt-in. Nextcloud Text doesn't ship a color-scheme
+                    // hint, so FORCE_DARK is the one that actually paints
+                    // dark on older WebViews. Belt-and-braces: when both
+                    // are available we prefer the newer one.
+                    if (isDarkTheme) {
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                        } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                            @Suppress("DEPRECATION")
+                            WebSettingsCompat.setForceDark(settings, WebSettingsCompat.FORCE_DARK_ON)
+                        }
+                    }
                     addJavascriptInterface(bridge, DirectEditingMobileInterface.NAME)
-                    webViewClient = StrictSslWebViewClient(onSslError)
+                    webViewClient = StripChromeWebViewClient(onSslError)
                     webChromeClient = ImagePickingChromeClient(
                         launchPicker = { callback ->
                             pendingFileCallback.value = callback
@@ -277,13 +325,26 @@ private fun EditorWebView(
 }
 
 /**
- * Rejects any SSL handshake failure — same posture as the rest of the
- * app's `network_security_config.xml` (`cleartextTrafficPermitted="false"`).
- * If a user's Nextcloud is on a self-signed CA, they must add it to the
- * Android system store; the editor won't load over a cert the OS doesn't
- * already trust.
+ * Two responsibilities baked into one client:
+ *
+ *  1. **Strict TLS** — same posture as the rest of the app's
+ *     `network_security_config.xml` (`cleartextTrafficPermitted="false"`).
+ *     If a user's Nextcloud is on a self-signed CA, they must add it to
+ *     the Android system store; the editor won't load over a cert the OS
+ *     doesn't already trust.
+ *  2. **Chrome strip** — Nextcloud's `directediting` URL loads the full
+ *     Files-app shell around the Text editor: top header bar, left
+ *     navigation, right details sidebar (which on a narrow viewport
+ *     collapses into a slim coloured rail along the right edge — that's
+ *     what the user reports as "blue bar"). The CSS below hides every
+ *     known shell selector on `onPageFinished` so only the editor itself
+ *     remains. Selectors are upstream Files / Server contracts; if they
+ *     rename, the rail comes back but the editor itself still works.
+ *     This is a deliberately additive `display: none` list — bias
+ *     toward leaving unknown elements visible over hiding something
+ *     useful.
  */
-private class StrictSslWebViewClient(
+private class StripChromeWebViewClient(
     private val onSslError: () -> Unit,
 ) : WebViewClient() {
     override fun onReceivedSslError(
@@ -295,7 +356,45 @@ private class StrictSslWebViewClient(
         handler?.cancel()
         onSslError()
     }
+
+    override fun onPageFinished(
+        view: WebView?,
+        url: String?,
+    ) {
+        super.onPageFinished(view, url)
+        view?.evaluateJavascript(STRIP_CHROME_JS, null)
+    }
 }
+
+/**
+ * Injects a `<style>` element with `display: none` rules for every
+ * Files-app shell selector that wraps the embedded Text editor. The
+ * rules are scoped tightly so a stray match doesn't kill the editor
+ * surface itself. Reapplied via MutationObserver because Vue mounts
+ * the navigation / sidebar lazily, after `onPageFinished` fires.
+ */
+private val STRIP_CHROME_JS =
+    """
+    (function() {
+        var css = [
+            '#header { display: none !important; }',
+            '#app-navigation, #app-navigation-vue { display: none !important; }',
+            '#app-sidebar, #app-sidebar-vue, .app-sidebar { display: none !important; }',
+            'aside.app-sidebar, aside#app-sidebar-vue { display: none !important; }',
+            '.app-content-list, .files-controls { display: none !important; }',
+            '#content-vue, #content { padding: 0 !important; margin: 0 !important; top: 0 !important; }',
+            'body, #body-user { padding: 0 !important; margin: 0 !important; }',
+            '.text-editor, .editor, .ProseMirror { padding-top: 0 !important; }'
+        ].join('\n');
+        var existing = document.getElementById('nc-collectives-strip');
+        if (!existing) {
+            var s = document.createElement('style');
+            s.id = 'nc-collectives-strip';
+            s.appendChild(document.createTextNode(css));
+            document.head.appendChild(s);
+        }
+    })();
+    """.trimIndent()
 
 /**
  * Surfaces the WebView's "insert image" file-chooser as the system

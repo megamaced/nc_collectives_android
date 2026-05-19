@@ -110,19 +110,26 @@ class PageEditWebViewModel
 
         /**
          * Called from the JS bridge (`close()`), the back press, or the
-         * activity finish path. Triggers a Room refresh so the server-side
-         * autosaved body comes back into the cache; the screen then pops
-         * the back stack.
+         * activity finish path. Pulls the server-side autosaved body back
+         * into Room so PageView's observe-page Flow re-emits with the
+         * fresh content, then transitions to Closed so the screen pops.
+         *
+         * **Why fetchBody and not just refresh:** `PageRepository.refresh`
+         * upserts the page-list metadata but **preserves** the cached body
+         * (`existingBody = existing.bodyMd`), so the Room row's bodyMd
+         * stays stale — and the read-only view that re-renders on pop
+         * shows the pre-edit content even though Text autosaved on the
+         * server. `fetchBody` is the WebDAV round-trip that actually
+         * replaces the body in Room. We still call refresh so any
+         * sibling/tree changes Text might have made (rename, emoji)
+         * come back too.
          */
         fun onClose() {
             viewModelScope.launch {
-                // Refresh the collective so the autosaved body, last-modified
-                // timestamp, and any tag/emoji changes Text might have made
-                // come back into Room. PageView's observe-page Flow will
-                // then re-render with the fresh content.
                 pageRepository.getPage(pageId)?.let { page ->
                     pageRepository.refresh(page.collectiveId)
                 }
+                pageRepository.fetchBody(pageId)
                 _uiState.value = PageEditWebUiState.Closed
             }
         }
