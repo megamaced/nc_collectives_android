@@ -16,6 +16,23 @@ import javax.inject.Singleton
 enum class ThemeMode { System, Light, Dark }
 
 /**
+ * Routing preference for the edit-page action (Batch 29). The native
+ * Markwon editor is always available; the WebView path is only used
+ * when [com.megamaced.nccollectives.domain.repository.DirectEditingRepository.isAvailable]
+ * returns true, regardless of this setting.
+ *
+ * - [Auto]: prefer the collaborative editor when the server supports it;
+ *   fall back to plain markdown otherwise. Default for new installs and
+ *   for any existing user who hasn't touched the setting.
+ * - [AlwaysPlain]: always native. Useful for offline-heavy use; doesn't
+ *   need a network round-trip when tapping Edit.
+ * - [AlwaysCollaborative]: always WebView. If the server doesn't support
+ *   it, the screen surfaces an error and offers to switch to plain — the
+ *   *setting* doesn't auto-revert, the *route* does.
+ */
+enum class EditorPreference { Auto, AlwaysPlain, AlwaysCollaborative }
+
+/**
  * Period for the periodic metadata sync. `Off` cancels the WorkManager
  * job entirely so the user only sees one-shot foreground refreshes.
  *
@@ -41,6 +58,7 @@ data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
+    val editorPreference: EditorPreference = EditorPreference.Auto,
 )
 
 /**
@@ -69,6 +87,10 @@ class UserPreferences
 
         suspend fun setSyncCadence(cadence: SyncCadence) {
             context.dataStore.edit { it[KEY_SYNC_CADENCE] = cadence.name }
+        }
+
+        suspend fun setEditorPreference(preference: EditorPreference) {
+            context.dataStore.edit { it[KEY_EDITOR_PREFERENCE] = preference.name }
         }
 
         suspend fun pushRecentSearch(term: String) {
@@ -112,10 +134,14 @@ class UserPreferences
                 ?: ThemeMode.System
             val cadence = this[KEY_SYNC_CADENCE]?.let { runCatching { SyncCadence.valueOf(it) }.getOrNull() }
                 ?: SyncCadence.SixHourly
+            val editorPreference = this[KEY_EDITOR_PREFERENCE]
+                ?.let { runCatching { EditorPreference.valueOf(it) }.getOrNull() }
+                ?: EditorPreference.Auto
             return UserPrefs(
                 themeMode = mode,
                 syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
+                editorPreference = editorPreference,
             )
         }
 
@@ -125,6 +151,7 @@ class UserPreferences
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
+            val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
             val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
             val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
 

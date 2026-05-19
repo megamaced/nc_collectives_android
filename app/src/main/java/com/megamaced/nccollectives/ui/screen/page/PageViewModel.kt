@@ -5,12 +5,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +31,22 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
+
+/** Destination the Edit button should navigate to (Batch 29). */
+enum class EditRoute { Plain, Web }
+
+/**
+ * Result of resolving the Edit button's destination. Carries an optional
+ * [fallbackMessage] to surface as a snackbar when we couldn't honour the
+ * user's setting exactly (e.g. `AlwaysCollaborative` on a server that
+ * doesn't support it).
+ */
+data class EditRouteDecision(
+    val route: EditRoute,
+    val fallbackMessage: String?,
+)
 
 data class PageViewUiState(
     val isLoadingBody: Boolean = false,
@@ -56,6 +74,8 @@ class PageViewModel
         private val pageRepository: PageRepository,
         private val collectiveRepository: CollectiveRepository,
         private val attachmentRepository: AttachmentRepository,
+        private val directEditingRepository: DirectEditingRepository,
+        private val userPreferences: UserPreferences,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageView.ARG_PAGE_ID),
@@ -122,6 +142,49 @@ class PageViewModel
                         isLoadingBody = false,
                         errorMessage = if (result is ApiResult.Success) null else result.userMessage(),
                     )
+                }
+            }
+        }
+
+        /**
+         * Resolve the Edit button's destination based on the user's
+         * [EditorPreference] setting and runtime capability discovery
+         * (Batch 29). Suspending because the capability lookup may hit
+         * the network on the first call per session (memoised after).
+         *
+         * Returns the route to navigate to, plus a user-facing toast if
+         * we couldn't honour the preference exactly (e.g.
+         * `AlwaysCollaborative` on a server that doesn't expose
+         * `directEditing`). Logs the routing decision at debug level
+         * via Timber — no analytics endpoint, ever.
+         */
+        suspend fun resolveEditRoute(): EditRouteDecision {
+            val preference = userPreferences.flow.first().editorPreference
+            return when (preference) {
+                EditorPreference.AlwaysPlain -> {
+                    Timber.tag(TAG).d("Edit route: plain (preference=AlwaysPlain)")
+                    EditRouteDecision(EditRoute.Plain, fallbackMessage = null)
+                }
+                EditorPreference.AlwaysCollaborative -> {
+                    val available = directEditingRepository.isAvailable()
+                    if (available) {
+                        Timber.tag(TAG).d("Edit route: web (preference=AlwaysCollaborative, server=available)")
+                        EditRouteDecision(EditRoute.Web, fallbackMessage = null)
+                    } else {
+                        Timber
+                            .tag(TAG)
+                            .d("Edit route: plain (preference=AlwaysCollaborative, server=unavailable; surfacing toast)")
+                        EditRouteDecision(
+                            route = EditRoute.Plain,
+                            fallbackMessage = "Server doesn't support collaborative editing — opening plain editor.",
+                        )
+                    }
+                }
+                EditorPreference.Auto -> {
+                    val available = directEditingRepository.isAvailable()
+                    val route = if (available) EditRoute.Web else EditRoute.Plain
+                    Timber.tag(TAG).d("Edit route: $route (preference=Auto, server=${if (available) "available" else "unavailable"})")
+                    EditRouteDecision(route, fallbackMessage = null)
                 }
             }
         }
@@ -347,6 +410,7 @@ class PageViewModel
 
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L
+            const val TAG = "PageViewModel"
 
             /**
              * Default colour for tags created in-app — 6-hex without `#`

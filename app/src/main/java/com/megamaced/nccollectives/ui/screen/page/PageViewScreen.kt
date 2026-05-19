@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,13 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +76,7 @@ internal fun PageViewScreen(
     val backlinks by viewModel.backlinks.collectAsState()
     val remoteAttachmentCount by viewModel.remoteAttachmentCount.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val editScope = rememberCoroutineScope()
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -155,7 +157,25 @@ internal fun PageViewScreen(
                                 contentDescription = if (isFavorite) "Unfavorite" else "Favorite",
                             )
                         }
-                        IconButton(onClick = onEdit) {
+                        IconButton(
+                            onClick = {
+                                // Resolve EditorPreference + server capability,
+                                // then route. The decision is async because the
+                                // first capability lookup hits the network; once
+                                // memoised by DirectEditingRepository the call is
+                                // effectively instant.
+                                editScope.launch {
+                                    val decision = viewModel.resolveEditRoute()
+                                    decision.fallbackMessage?.let { msg ->
+                                        snackbarHostState.showSnackbar(msg)
+                                    }
+                                    when (decision.route) {
+                                        EditRoute.Plain -> onEdit()
+                                        EditRoute.Web -> onEditWeb()
+                                    }
+                                }
+                            },
+                        ) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }
                         Box {
@@ -166,20 +186,6 @@ internal fun PageViewScreen(
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false },
                             ) {
-                                // Batch 28: debug-only entry for the
-                                // collaborative WebView editor. Batch 29
-                                // will replace this with a user-settable
-                                // preference + automatic routing of the
-                                // normal Edit button.
-                                if (BuildConfig.DEBUG) {
-                                    DropdownMenuItem(
-                                        text = { Text("Edit (collaborative, debug)") },
-                                        onClick = {
-                                            menuExpanded = false
-                                            onEditWeb()
-                                        },
-                                    )
-                                }
                                 DropdownMenuItem(
                                     text = { Text("Attachments…") },
                                     onClick = {

@@ -48,6 +48,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 
@@ -127,6 +128,20 @@ internal fun SettingsScreen(
             SyncCadenceOptions(
                 selected = ui.syncCadence,
                 onSelect = viewModel::setSyncCadence,
+            )
+
+            HorizontalDivider()
+
+            SectionHeader("Editor")
+            Text(
+                "Collaborative editing requires Nextcloud Text on the server. " +
+                    "Plain markdown works offline.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            EditorPreferenceOptions(
+                selected = ui.editorPreference,
+                onSelect = viewModel::setEditorPreference,
             )
 
             HorizontalDivider()
@@ -229,6 +244,26 @@ private fun SyncCadenceOptions(
                 },
                 selected = selected == cadence,
                 onClick = { onSelect(cadence) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorPreferenceOptions(
+    selected: EditorPreference,
+    onSelect: (EditorPreference) -> Unit,
+) {
+    Column {
+        EditorPreference.entries.forEach { preference ->
+            RadioRow(
+                label = when (preference) {
+                    EditorPreference.Auto -> "Automatic (default)"
+                    EditorPreference.AlwaysPlain -> "Always plain markdown"
+                    EditorPreference.AlwaysCollaborative -> "Always collaborative"
+                },
+                selected = selected == preference,
+                onClick = { onSelect(preference) },
             )
         }
     }

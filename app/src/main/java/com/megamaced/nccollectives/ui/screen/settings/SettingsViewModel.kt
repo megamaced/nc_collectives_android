@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.auth.LogoutHandler
 import com.megamaced.nccollectives.data.auth.TokenStore
+import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
@@ -27,6 +28,7 @@ data class SettingsUiState(
     val account: AccountInfo?,
     val themeMode: ThemeMode,
     val syncCadence: SyncCadence,
+    val editorPreference: EditorPreference,
 )
 
 @HiltViewModel
@@ -53,6 +55,7 @@ class SettingsViewModel
                     account = null,
                     themeMode = ThemeMode.System,
                     syncCadence = SyncCadence.SixHourly,
+                    editorPreference = EditorPreference.Auto,
                 ),
             )
 
@@ -62,6 +65,10 @@ class SettingsViewModel
 
         fun setSyncCadence(cadence: SyncCadence) {
             viewModelScope.launch { userPreferences.setSyncCadence(cadence) }
+        }
+
+        fun setEditorPreference(preference: EditorPreference) {
+            viewModelScope.launch { userPreferences.setEditorPreference(preference) }
         }
 
         fun signOut() {
@@ -76,6 +83,7 @@ class SettingsViewModel
                 },
                 themeMode = prefs.themeMode,
                 syncCadence = prefs.syncCadence,
+                editorPreference = prefs.editorPreference,
             )
         }
 
