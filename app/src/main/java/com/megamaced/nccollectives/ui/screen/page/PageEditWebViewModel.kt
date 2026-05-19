@@ -89,6 +89,15 @@ class PageEditWebViewModel
             }
         }
 
+        /**
+         * Surface a load-time failure from outside the OCS request path
+         * (Batch 30c — e.g. WebView SSL error). Transitions to
+         * [PageEditWebUiState.Failed] so the screen's snackbar fires.
+         */
+        fun surfaceLoadFailure(message: String) {
+            _uiState.value = PageEditWebUiState.Failed(message)
+        }
+
         /** Called by the JS bridge once the editor JS has finished bootstrap. */
         fun onEditorReady() {
             _uiState.update { state ->
