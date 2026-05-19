@@ -29,6 +29,19 @@ internal sealed class Destination(
         fun route(pageId: Long) = "page/$pageId/edit"
     }
 
+    /**
+     * Batch 28 — Nextcloud Text WebView editor reached via the Files
+     * `directediting` OCS endpoint. Behind a debug-only entry point on
+     * `PageViewScreen` until Batch 29 lands the production routing
+     * setting. Native [PageEdit] remains the offline / older-server
+     * fallback.
+     */
+    object PageEditWeb : Destination("page/{pageId}/edit-web") {
+        const val ARG_PAGE_ID = "pageId"
+
+        fun route(pageId: Long) = "page/$pageId/edit-web"
+    }
+
     object Attachments : Destination("page/{pageId}/attachments") {
         const val ARG_PAGE_ID = "pageId"
 

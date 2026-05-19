@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
@@ -61,6 +62,7 @@ internal fun PageViewScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onEditWeb: () -> Unit,
     onAttachments: () -> Unit,
     onOpenPage: (Long) -> Unit,
     onBrowseTag: (collectiveId: Long, tagName: String) -> Unit,
@@ -164,6 +166,20 @@ internal fun PageViewScreen(
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false },
                             ) {
+                                // Batch 28: debug-only entry for the
+                                // collaborative WebView editor. Batch 29
+                                // will replace this with a user-settable
+                                // preference + automatic routing of the
+                                // normal Edit button.
+                                if (BuildConfig.DEBUG) {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit (collaborative, debug)") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onEditWeb()
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Attachments…") },
                                     onClick = {

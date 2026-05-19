@@ -12,6 +12,7 @@ import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
 import com.megamaced.nccollectives.ui.screen.page.AttachmentsScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
+import com.megamaced.nccollectives.ui.screen.page.PageEditWebScreen
 import com.megamaced.nccollectives.ui.screen.page.PageViewScreen
 import com.megamaced.nccollectives.ui.screen.search.SearchScreen
 import com.megamaced.nccollectives.ui.screen.settings.SettingsScreen
@@ -97,6 +98,7 @@ internal fun NcCollectivesNavHost(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate(Destination.PageEdit.route(pageId)) },
+                onEditWeb = { navController.navigate(Destination.PageEditWeb.route(pageId)) },
                 onAttachments = { navController.navigate(Destination.Attachments.route(pageId)) },
                 onOpenPage = { target ->
                     if (target != pageId) navController.navigate(Destination.PageView.route(target))
@@ -113,6 +115,17 @@ internal fun NcCollectivesNavHost(
             ),
         ) {
             PageEditScreen(
+                innerPadding = innerPadding,
+                onClose = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Destination.PageEditWeb.route,
+            arguments = listOf(
+                navArgument(Destination.PageEditWeb.ARG_PAGE_ID) { type = NavType.LongType },
+            ),
+        ) {
+            PageEditWebScreen(
                 innerPadding = innerPadding,
                 onClose = { navController.popBackStack() },
             )
