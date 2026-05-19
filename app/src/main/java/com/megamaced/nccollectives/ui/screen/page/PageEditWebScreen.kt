@@ -297,6 +297,14 @@ private fun EditorWebView(
                         useWideViewPort = true
                         loadWithOverviewMode = true
                     }
+                    // The native vertical scrollbar inherits the Nextcloud
+                    // theme colour and rendered as a wide vertical rail —
+                    // the "blue bar" reported on-device. Killing it here
+                    // (the WebView can still be panned/scrolled by touch)
+                    // and the CSS injection below removes any
+                    // `::-webkit-scrollbar` styling the page might add.
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
                     // Belt-and-braces darkening signal to the WebView
                     // engine: algorithmic darkening (Android 13+) only
                     // paints dark if the page opts in via
@@ -430,9 +438,20 @@ private const val STRIP_CHROME_CSS = """
 #app-navigation, #app-navigation-vue, nav#app-navigation { display: none !important; }
 #app-sidebar, #app-sidebar-vue, aside.app-sidebar { display: none !important; }
 .app-content-list, .files-controls, .breadcrumb { display: none !important; }
-#content, #content-vue, .app-content { padding: 0 !important; margin: 0 !important; top: 0 !important; left: 0 !important; }
-body, html, #body-user { padding: 0 !important; margin: 0 !important; min-height: 100% !important; }
+/* Belt-and-braces wildcard: anything Nextcloud names as a sidebar or
+   activity rail, hide. Catches per-version selector renames upstream
+   ships periodically. The editor itself is `.text-editor` / `#editor`
+   so this won't blanket it. */
+aside, [class*="-sidebar"], [class*="sidebar-"], .app-sidebar-toggle,
+[class*="activity"], [class*="-activity-"] { display: none !important; }
+#content, #content-vue, .app-content { padding: 0 !important; margin: 0 !important; top: 0 !important; left: 0 !important; width: 100% !important; }
+body, html, #body-user { padding: 0 !important; margin: 0 !important; min-height: 100% !important; overflow-x: hidden !important; }
 .text-editor, .editor, .text-editor__main, .ProseMirror { padding-top: 0 !important; }
+/* WebKit scrollbars: with the WebView's native scrollbar disabled in
+   Kotlin, this kills any in-page scrollbar Nextcloud styles via CSS
+   (the page itself can still scroll via touch / overflow). */
+::-webkit-scrollbar { width: 0 !important; height: 0 !important; background: transparent !important; }
+::-webkit-scrollbar-thumb, ::-webkit-scrollbar-track { background: transparent !important; }
 """
 
 /**
@@ -461,7 +480,23 @@ private const val DARK_THEME_CSS = """
     --color-border-dark: #4a4a4a !important;
     --color-placeholder-light: #2c2c2c !important;
     --color-placeholder-dark: #3a3a3a !important;
+    /* Override the user's NC theme accent colour to a contrast-only
+       neutral so any chrome painted in `--color-primary` (the source
+       of the "blue rail") blends into the dark surface instead of
+       cutting through it. */
+    --color-primary: #2c2c2c !important;
+    --color-primary-default: #2c2c2c !important;
+    --color-primary-text: #ebebeb !important;
+    --color-primary-text-dark: #ebebeb !important;
+    --color-primary-element: #2c2c2c !important;
+    --color-primary-element-default: #2c2c2c !important;
+    --color-primary-element-text: #ebebeb !important;
+    --color-primary-light: #2c2c2c !important;
+    --color-primary-light-text: #ebebeb !important;
+    --image-background: none !important;
+    --image-background-default: none !important;
     background-color: #171717 !important;
+    background-image: none !important;
     color: #ebebeb !important;
 }
 .text-editor, .editor, .text-editor__main, .ProseMirror, .ProseMirror * {
