@@ -4,13 +4,15 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-// Ink-and-paper palette: cool slate-blue primary suited to a notebook app,
-// with warm parchment neutrals. Distinct from the Nextcloud brand blue to
-// avoid implying affiliation.
-private val InkPrimary = Color(0xFF38618C)
+// Ink-and-paper palette: Nextcloud brand blue as the M3 primary so the app
+// sits visually alongside the official Nextcloud client suite (Files, News,
+// Passwords, Talk), paired with warm parchment neutrals to keep the
+// notebook character. The README's "Unofficial" disclaimer is the
+// affiliation cover; visually we lean into the suite.
+private val InkPrimary = Color(0xFF0082C9)
 private val InkOnPrimary = Color(0xFFFFFFFF)
-private val InkPrimaryContainer = Color(0xFFD2E4F7)
-private val InkOnPrimaryContainer = Color(0xFF001C36)
+private val InkPrimaryContainer = Color(0xFFCDE5FF)
+private val InkOnPrimaryContainer = Color(0xFF001D36)
 
 private val SlateSecondary = Color(0xFF515E70)
 private val SlateOnSecondary = Color(0xFFFFFFFF)
@@ -36,10 +38,10 @@ private val OnSurfaceVariantLight = Color(0xFF44474E)
 private val OutlineLight = Color(0xFF74777F)
 private val OutlineVariantLight = Color(0xFFC4C6CF)
 
-private val InkPrimaryDark = Color(0xFFA2C9EE)
+private val InkPrimaryDark = Color(0xFF9BCAFF)
 private val InkOnPrimaryDark = Color(0xFF003258)
-private val InkPrimaryContainerDark = Color(0xFF1B4870)
-private val InkOnPrimaryContainerDark = Color(0xFFD2E4F7)
+private val InkPrimaryContainerDark = Color(0xFF00497D)
+private val InkOnPrimaryContainerDark = Color(0xFFCDE5FF)
 
 private val SlateSecondaryDark = Color(0xFFB8C7DA)
 private val SlateOnSecondaryDark = Color(0xFF233140)

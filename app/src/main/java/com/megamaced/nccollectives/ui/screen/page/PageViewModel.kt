@@ -238,8 +238,8 @@ class PageViewModel
         /**
          * Create a tag on the current page's collective and immediately
          * attach it to the page (OCS-5, Batch 18k). The colour is fixed
-         * to the brand slate-blue — Collectives uses the colour only as
-         * a visual marker and the tag picker doesn't surface it yet.
+         * to the Nextcloud brand blue — Collectives uses the colour only
+         * as a visual marker and the tag picker doesn't surface it yet.
          */
         fun createTag(name: String) {
             val current = page.value ?: return
@@ -408,9 +408,10 @@ class PageViewModel
 
             /**
              * Default colour for tags created in-app — 6-hex without `#`
-             * per `ENDPOINTS.md` gotcha #2. Roughly matches the brand
-             * slate-blue (`0xFF38618C` in [com.megamaced.nccollectives.ui.theme.Color]).
+             * per `ENDPOINTS.md` gotcha #2. Matches the M3 primary
+             * (`0xFF0082C9` in [com.megamaced.nccollectives.ui.theme.Color]),
+             * which is the canonical Nextcloud brand blue.
              */
-            const val NEW_TAG_COLOUR = "38618c"
+            const val NEW_TAG_COLOUR = "0082c9"
         }
     }
