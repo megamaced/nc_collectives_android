@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#38618C</color>
+    <!-- Nextcloud's canonical brand blue (the server's default primary
+         colour, used across the Nextcloud server logo, Files, News,
+         Passwords, Talk, and the rest of the official client suite).
+         Match here so the launcher icon and splash sit alongside the
+         official Nextcloud icons on a homescreen without colour drift. -->
+    <color name="ic_launcher_background">#0082C9</color>
     <color name="ic_launcher_foreground">#FBF8F3</color>
 </resources>
