@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,11 +30,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,8 +68,34 @@ internal fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsState()
+    val updateCheck by viewModel.updateCheck.collectAsState()
     val context = LocalContext.current
     var showSignOutConfirm by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Side-effects for terminal manual-update-check states. UpdateAvailable
+    // → open the release page in a Custom Tab and reset; UpToDate / Failed
+    // → snackbar then reset. Drives off `updateCheck` itself so a fresh
+    // tap re-triggers cleanly each time.
+    LaunchedEffect(updateCheck) {
+        when (val state = updateCheck) {
+            is UpdateCheckUiState.UpdateAvailable -> {
+                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(state.htmlUrl))
+                viewModel.dismissUpdateCheck()
+            }
+            is UpdateCheckUiState.UpToDate -> {
+                snackbarHostState.showSnackbar(
+                    "You're on the latest version (${BuildConfig.VERSION_NAME}).",
+                )
+                viewModel.dismissUpdateCheck()
+            }
+            is UpdateCheckUiState.Failed -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.dismissUpdateCheck()
+            }
+            UpdateCheckUiState.Checking, UpdateCheckUiState.Idle -> Unit
+        }
+    }
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
@@ -81,6 +112,7 @@ internal fun SettingsScreen(
                 windowInsets = WindowInsets(0, 0, 0, 0),
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { scaffoldPadding ->
         Column(
             modifier = Modifier
@@ -151,6 +183,10 @@ internal fun SettingsScreen(
             Text(
                 "NC Collectives ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.bodyMedium,
+            )
+            UpdateCheckRow(
+                state = updateCheck,
+                onCheck = viewModel::checkForUpdate,
             )
             LinkRow(label = "Source code") {
                 CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(SOURCE_URL))
@@ -305,5 +341,43 @@ private fun LinkRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
         )
+    }
+}
+
+/**
+ * Tap-to-check row for the manual update affordance. Disabled while a
+ * check is in flight and shows a small spinner alongside the label so
+ * the user gets immediate feedback that the GitHub round-trip is
+ * happening. Terminal outcomes (update available / up-to-date / failed)
+ * are surfaced by the caller via the snackbar + browser side-effects.
+ */
+@Composable
+private fun UpdateCheckRow(
+    state: UpdateCheckUiState,
+    onCheck: () -> Unit,
+) {
+    val checking = state is UpdateCheckUiState.Checking
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                enabled = !checking,
+                onClick = onCheck,
+                role = Role.Button,
+            ).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = if (checking) "Checking for updates…" else "Check for updates",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (checking) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+            )
+        }
     }
 }

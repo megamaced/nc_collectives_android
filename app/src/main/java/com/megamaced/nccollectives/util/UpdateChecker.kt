@@ -70,6 +70,47 @@ class UpdateChecker
             userPreferences.setUpdateLastNotifiedVersion(tag)
         }
 
+        /**
+         * Manual check triggered from Settings → About → "Check for updates".
+         * Unlike [checkOnStartup] this:
+         *  - ignores the 24h throttle (the user has explicitly asked),
+         *  - returns a structured result for the caller to drive the UI,
+         *  - does **not** post a notification (the UI surfaces the outcome
+         *    directly, so a notification would just duplicate the message).
+         *
+         * Still updates the `lastCheckedAt` stamp on a successful response —
+         * a manual check is a perfectly good signal that we've talked to
+         * GitHub recently, so the startup check skips for the next 24h.
+         * Still updates `lastNotifiedVersion` when surfacing a new tag so a
+         * notification doesn't fire on the next launch for the same release
+         * the user already saw in-app.
+         */
+        suspend fun checkNow(): ManualCheckResult {
+            val release =
+                runCatching { service.latestRelease() }
+                    .onFailure { Timber.tag(TAG).w(it, "Manual update check failed") }
+                    .getOrNull()
+                    ?: return ManualCheckResult.Failed("Couldn't reach GitHub. Check your connection and try again.")
+
+            userPreferences.setUpdateLastCheckedAt(System.currentTimeMillis())
+
+            if (release.draft || release.preRelease) {
+                return ManualCheckResult.UpToDate
+            }
+
+            val latest = parseSemVer(release.tagName)
+                ?: return ManualCheckResult.Failed("Release tag \"${release.tagName}\" doesn't look like a version.")
+            val current = parseSemVer(BuildConfig.VERSION_NAME)
+                ?: return ManualCheckResult.Failed("This build's version (${BuildConfig.VERSION_NAME}) doesn't look like a version.")
+
+            return if (latest > current) {
+                userPreferences.setUpdateLastNotifiedVersion(release.tagName)
+                ManualCheckResult.UpdateAvailable(tag = release.tagName, htmlUrl = release.htmlUrl)
+            } else {
+                ManualCheckResult.UpToDate
+            }
+        }
+
         private fun postNotification(
             tag: String,
             htmlUrl: String,
@@ -143,6 +184,25 @@ class UpdateChecker
             private const val CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
         }
     }
+
+/**
+ * Outcome of [UpdateChecker.checkNow]. Drives the manual "Check for
+ * updates" affordance in Settings. [UpdateAvailable] carries the
+ * release page URL so the UI can open the browser directly — same end
+ * destination as tapping the auto-check notification.
+ */
+sealed interface ManualCheckResult {
+    data object UpToDate : ManualCheckResult
+
+    data class UpdateAvailable(
+        val tag: String,
+        val htmlUrl: String,
+    ) : ManualCheckResult
+
+    data class Failed(
+        val message: String,
+    ) : ManualCheckResult
+}
 
 /**
  * Loosely-parsed semver triple. Strips an optional leading `v` and any

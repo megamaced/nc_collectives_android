@@ -55,6 +55,8 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 The app checks `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at most once every 24 hours on launch and posts a notification when a newer non-pre-release tag is available. Tap the notification to open the release page in your browser and download the new APK; install it over the existing app (same signing key from `v1.0.0` onwards, so it's an in-place upgrade). No notification is shown if the request fails, if you're already on the latest version, or if you've already been notified about that tag. On Android 13+ the notification needs `POST_NOTIFICATIONS` granted to your app under **Settings → Apps → NC Collectives → Notifications**.
 
+You can also force a check at any time via **Settings → About → Check for updates** — that bypasses the 24h throttle, opens the release page directly if an update exists, or shows a "you're on the latest version" toast if not.
+
 ## Authentication
 
 Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2). You provide your server URL and authorise the app from your browser. The app stores only the device-scoped app password returned by your server — your account password is never seen, transmitted, or stored. You can revoke the device at any time from your Nextcloud security settings.
