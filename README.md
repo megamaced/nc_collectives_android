@@ -9,13 +9,14 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/01-collective-list.png" alt="Collectives list with search, favourites, and settings actions" width="260" />
-  <img src="docs/screenshots/02-field-guide-tree.png" alt="Page tree inside a collective with favourite + new-subpage actions per row" width="260" />
-  <img src="docs/screenshots/03-seasonal-calendar.png" alt="Page view rendering a markdown table" width="260" />
+  <img src="docs/screenshots/01-collective-list.png" alt="Collectives list with search, favourites, trash, new-collective and settings actions" width="260" />
+  <img src="docs/screenshots/02-field-guide-tree.png" alt="Page tree inside a collective with recent-pages cards, the landing-page card, favourite + new-subpage actions per row, and the long-press drag affordance" width="260" />
+  <img src="docs/screenshots/03-seasonal-calendar.png" alt="Page view rendering a markdown table with seasonal-guide tag chip" width="260" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/04-edit-mode.png" alt="Raw markdown editor with formatting toolbar" width="260" />
-  <img src="docs/screenshots/05-grid-references.png" alt="Page view rendering a fenced code block and bullet list" width="260" />
+  <img src="docs/screenshots/04-collaborative-edit.png" alt="Collaborative WebView editor backed by Nextcloud Text, with the upstream formatting toolbar pinned to the bottom" width="260" />
+  <img src="docs/screenshots/05-edit-mode.png" alt="Native markdown editor with formatting toolbar over a task-list page" width="260" />
+  <img src="docs/screenshots/06-grid-references.png" alt="Page view with the per-page actions overflow menu open (Attachments, Set emoji, Tags, Rename, Move, Duplicate, Move to trash)" width="260" />
 </p>
 
 ## Features
