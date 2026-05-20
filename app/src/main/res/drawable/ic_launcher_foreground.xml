@@ -4,45 +4,38 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Open notebook: two facing parchment pages with a slight perspective tilt
-         (top edges sweep outward, bottom edges sweep outward) so the V-shaped
-         spine reads as "open book" at small sizes. Stays within the 66dp
-         circular safe-zone of the adaptive-icon viewport. -->
+    <!-- Chunky 5-pointed star with a rounded letterform C drawn over its
+         centre. Loose homage to Nextcloud Collectives' own star-with-C
+         mark, deliberately re-proportioned: thicker star arms (inner/outer
+         radius ratio ~0.5 vs the pentagram-tight ~0.382 upstream uses),
+         rounded points, and the C rendered as a drawn stroke laid over the
+         star rather than punched out of it as negative space. Sits within
+         the 66dp circular safe-zone of the adaptive-icon viewport.
 
-    <!-- Left page -->
+         Star vertices, in clockwise order starting at the top, around
+         centre (54, 54):
+             outer (R=32):   top (54,22)            upper-right (84.45,44.11)
+                             lower-right (72.81,79.88)
+                             lower-left (35.19,79.88) upper-left (23.55,44.11)
+             inner (R=16):   inner-UR (63.40,41.06) inner-R (69.22,58.94)
+                             inner-B (54,70)
+                             inner-L (38.78,58.94)  inner-UL (44.60,41.06) -->
     <path
         android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M27,40 L54,44 L54,78 L27,74 Z" />
+        android:strokeColor="@color/ic_launcher_foreground"
+        android:strokeWidth="3"
+        android:strokeLineJoin="round"
+        android:pathData="M54,22 L63.4,41.06 L84.45,44.11 L69.22,58.94
+                          L72.81,79.88 L54,70 L35.19,79.88 L38.78,58.94
+                          L23.55,44.11 L44.6,41.06 Z" />
 
-    <!-- Right page -->
-    <path
-        android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M54,44 L81,40 L81,74 L54,78 Z" />
-
-    <!-- Spine where the pages meet -->
-    <path
-        android:strokeColor="@color/ic_launcher_background"
-        android:strokeWidth="1.0"
-        android:strokeLineCap="round"
-        android:pathData="M54,44 L54,78" />
-
-    <!-- Text lines on the left page -->
+    <!-- C: 270° arc opening to the right, centred at (54, 54), arc radius
+         9, stroke 4. Rounded end-caps so the letterform reads at small
+         sizes instead of looking like a chiselled cutout. Painted in the
+         background blue so it punches through the cream star surface. -->
     <path
         android:strokeColor="@color/ic_launcher_background"
-        android:strokeWidth="1.6"
+        android:strokeWidth="4"
         android:strokeLineCap="round"
-        android:pathData="M33,51 L48,53
-                          M33,57 L48,59
-                          M33,63 L48,65
-                          M33,69 L45,70" />
-
-    <!-- Text lines on the right page -->
-    <path
-        android:strokeColor="@color/ic_launcher_background"
-        android:strokeWidth="1.6"
-        android:strokeLineCap="round"
-        android:pathData="M60,53 L75,51
-                          M60,59 L75,57
-                          M60,65 L75,63
-                          M63,70 L75,69" />
+        android:pathData="M60.36,47.64 A9,9 0 1 0 60.36,60.36" />
 </vector>
