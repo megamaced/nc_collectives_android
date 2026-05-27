@@ -1,0 +1,3 @@
+First signed release.
+
+CI now produces a release-key-signed APK on tag pushes (RSA 4096, APK Signature Scheme v2). Reproducible builds: two release builds at the same commit produce byte-identical APKs. R8 minification keeps the release APK around 4.6 MB. Picks up all the features through v0.3.0 (collectives, page tree, markdown viewer, native + collaborative editors, offline edit queue, search, favourites, tags, attachments, share intent, trash, backlinks, wikilinks, settings).
