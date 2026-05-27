@@ -1,6 +1,6 @@
 Categories:
-  - Writing
   - Internet
+  - Writing
 License: AGPL-3.0-only
 AuthorName: megamaced
 AuthorEmail: 22581049+megamaced@users.noreply.github.com
@@ -22,7 +22,14 @@ Builds:
     gradle:
       - yes
 
-AutoUpdateMode: Version v%v
+  - versionName: 2.3.7
+    versionCode: 20
+    commit: eee24e3d64a7c2be191ef9a45800605fdb0a09c8
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 1.0.0
-CurrentVersionCode: 8
+CurrentVersion: 2.3.7
+CurrentVersionCode: 20
