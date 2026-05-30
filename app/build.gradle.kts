@@ -43,11 +43,19 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.3.7"
+        versionCode = 21
+        versionName = "2.3.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // AGP 8.x embeds an extra APK signing block named "Dependency metadata"
+    // intended for Play Console reporting. F-Droid's binary scanner flags
+    // any non-standard signing block, so disable both APK + bundle embedding.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     signingConfigs {
