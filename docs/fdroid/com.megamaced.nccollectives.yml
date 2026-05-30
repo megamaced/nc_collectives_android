@@ -3,8 +3,7 @@ Categories:
   - Writing
 License: AGPL-3.0-only
 AuthorName: megamaced
-AuthorEmail: 22581049+megamaced@users.noreply.github.com
-WebSite: https://github.com/megamaced/nc_collectives_android
+AuthorEmail: david@macemail.co.uk
 SourceCode: https://github.com/megamaced/nc_collectives_android
 IssueTracker: https://github.com/megamaced/nc_collectives_android/issues
 Changelog: https://github.com/megamaced/nc_collectives_android/releases
@@ -13,21 +12,17 @@ AutoName: NC Collectives
 
 RepoType: git
 Repo: https://github.com/megamaced/nc_collectives_android.git
+Binaries: https://github.com/megamaced/nc_collectives_android/releases/download/v%v/app-release.apk
 
 Builds:
-  - versionName: 1.0.0
-    versionCode: 8
-    commit: v1.0.0
-    subdir: app
-    gradle:
-      - yes
-
   - versionName: 2.3.7
     versionCode: 20
     commit: eee24e3d64a7c2be191ef9a45800605fdb0a09c8
     subdir: app
     gradle:
       - yes
+
+AllowedAPKSigningKeys: 65402e2578d91727d43c6849da20622d0fad160734c6272d887c167767d44b91
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
