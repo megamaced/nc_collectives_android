@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NC Collectives</string>
-
-    <string name="update_channel_name">App updates</string>
-    <string name="update_channel_description">Notifies you when a new version of NC Collectives is available on GitHub.</string>
-    <string name="update_available_title">NC Collectives update available</string>
-    <string name="update_available_text">Version %1$s is available — tap to download.</string>
-    <string name="update_available_big_text">NC Collectives %1$s is available on GitHub. Tap to open the release page and download the new APK.</string>
 </resources>

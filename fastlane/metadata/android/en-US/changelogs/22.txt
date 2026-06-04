@@ -1,0 +1,1 @@
+Remove the on-launch auto-update check that hit api.github.com once every 24 hours. Sideload users who want to know about new versions can still use Settings → About → "Check for updates" on demand. F-Droid users get updates through F-Droid as normal. POST_NOTIFICATIONS permission and the update notification channel are gone with it.
