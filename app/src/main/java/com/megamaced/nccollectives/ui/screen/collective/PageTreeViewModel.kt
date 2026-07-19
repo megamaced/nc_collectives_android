@@ -226,59 +226,82 @@ class PageTreeViewModel
             }
         }
 
-        private fun buildVisibleNodes(
-            pages: List<Page>,
-            expanded: Set<Long>,
-            favoriteIds: Set<Long>,
-        ): List<PageNode> {
-            val byParent: Map<Long, List<Page>> = pages.groupBy { it.parentId }
-            val byId: Map<Long, Page> = pages.associateBy { it.id }
-
-            // Sibling ordering: parent's explicit `subpageOrder` wins for
-            // items it lists (Batch 23 — drag-to-reorder writes this), then
-            // anything not in the list falls back to alphabetical-by-title.
-            // Matches what the Nextcloud web client does for the "By order"
-            // page-order user setting.
-            fun siblingsOrdered(parentId: Long): List<Page> {
-                val children = byParent[parentId].orEmpty()
-                if (children.isEmpty()) return children
-                val parent = byId[parentId]
-                val orderHint = parent?.subpageOrder.orEmpty()
-                if (orderHint.isEmpty()) {
-                    return children.sortedBy { it.title.lowercase() }
-                }
-                val byChildId = children.associateBy { it.id }
-                val hinted = orderHint.mapNotNull { byChildId[it] }
-                val hintedIds = hinted.map { it.id }.toSet()
-                val rest = children
-                    .filter { it.id !in hintedIds }
-                    .sortedBy { it.title.lowercase() }
-                return hinted + rest
-            }
-
-            val out = mutableListOf<PageNode>()
-
-            fun walk(parent: Long) {
-                for (child in siblingsOrdered(parent)) {
-                    val hasChildren = byParent[child.id]?.isNotEmpty() == true
-                    out += PageNode(
-                        page = child,
-                        hasChildren = hasChildren,
-                        isFavorite = child.id in favoriteIds,
-                    )
-                    if (hasChildren && child.id in expanded) walk(child.id)
-                }
-            }
-            // The collective's landing page (parentId == 0) is represented by
-            // the landing-card above the tree (Batch 21); skip it here and
-            // render its children as the tree's top level.
-            val landingPageId = byParent[0L]?.firstOrNull()?.id
-            if (landingPageId != null) walk(parent = landingPageId)
-            return out
-        }
-
         private companion object {
             const val STOP_TIMEOUT_MS = 5_000L
             const val RECENT_LIMIT = 8
         }
     }
+
+/**
+ * Flattens the page list into the depth-first sequence of visible tree
+ * rows: the children of the collective's landing page (the landing page's
+ * own row is the card above the tree, Batch 21), recursing into expanded
+ * folders. Sibling order honours each parent's server-supplied
+ * `subpageOrder` first (Batch 23), then alphabetical-by-title for anything
+ * not listed.
+ *
+ * Pure (no ViewModel state) so the flattening + its dedup guard are
+ * unit-testable without a ViewModel — see `PageTreeNodesTest`.
+ *
+ * **Dedup / cycle guard (issue #2 — "crashes with many pages").** Every
+ * emitted `page.id` becomes a `LazyColumn` item key in [PageTreeScreen],
+ * and Compose throws `IllegalArgumentException` on a duplicate key. A
+ * parent's `subpageOrder` is server-supplied and can contain a duplicate
+ * id — a large, actively-reorganised collective is the reported trigger —
+ * which would otherwise emit the same page twice and crash the screen.
+ * The `seen` set makes each id emit at most once and, as a bonus, stops
+ * any pathological parent cycle from recursing forever;
+ * `orderHint.distinct()` removes the duplicate at the source as well.
+ * Neither guard changes output for well-formed data (a page has exactly
+ * one `parentId`, so it is reached once).
+ */
+internal fun buildVisibleNodes(
+    pages: List<Page>,
+    expanded: Set<Long>,
+    favoriteIds: Set<Long>,
+): List<PageNode> {
+    val byParent: Map<Long, List<Page>> = pages.groupBy { it.parentId }
+    val byId: Map<Long, Page> = pages.associateBy { it.id }
+
+    fun siblingsOrdered(parentId: Long): List<Page> {
+        val children = byParent[parentId].orEmpty()
+        if (children.isEmpty()) return children
+        val orderHint = byId[parentId]?.subpageOrder.orEmpty().distinct()
+        if (orderHint.isEmpty()) {
+            return children.sortedBy { it.title.lowercase() }
+        }
+        val byChildId = children.associateBy { it.id }
+        val hinted = orderHint.mapNotNull { byChildId[it] }
+        val hintedIds = hinted.map { it.id }.toSet()
+        val rest = children
+            .filter { it.id !in hintedIds }
+            .sortedBy { it.title.lowercase() }
+        return hinted + rest
+    }
+
+    val out = mutableListOf<PageNode>()
+    val seen = HashSet<Long>()
+
+    fun walk(parent: Long) {
+        for (child in siblingsOrdered(parent)) {
+            // Skip an id we've already emitted — a duplicate/cyclic
+            // server `subpageOrder` must never yield a duplicate
+            // LazyColumn key (issue #2).
+            if (!seen.add(child.id)) continue
+            val hasChildren = byParent[child.id]?.isNotEmpty() == true
+            out += PageNode(
+                page = child,
+                hasChildren = hasChildren,
+                isFavorite = child.id in favoriteIds,
+            )
+            if (hasChildren && child.id in expanded) walk(child.id)
+        }
+    }
+
+    // The collective's landing page (parentId == 0) is represented by the
+    // landing-card above the tree (Batch 21); skip it here and render its
+    // children as the tree's top level.
+    val landingPageId = byParent[0L]?.firstOrNull()?.id
+    if (landingPageId != null) walk(parent = landingPageId)
+    return out
+}

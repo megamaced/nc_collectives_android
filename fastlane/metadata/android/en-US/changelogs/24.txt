@@ -1,0 +1,1 @@
+Fix a crash when opening a collective whose page tree has a duplicated entry in its server-side subpage order (reported on larger, actively-reorganised collectives). The tree now renders each page once and is resilient to malformed ordering data.
