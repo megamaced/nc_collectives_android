@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -137,5 +138,92 @@ class TextDialectExtensionsTest {
     fun rewriteHighlights_noMarkers_returnsInputVerbatim() {
         val input = "plain text\nno highlights here"
         assertEquals(input, rewriteHighlights(input))
+    }
+
+    // --- Footnotes ---
+
+    @Test
+    fun rewriteFootnotes_refAndDefinition_supAndSection() {
+        val input =
+            """
+            As noted[^1] here.
+
+            [^1]: The source.
+            """.trimIndent()
+        val out = rewriteFootnotes(input)
+        assertTrue("ref becomes superscript", out.contains("As noted<sup>1</sup> here."))
+        assertTrue("footnotes section appended", out.contains("**Footnotes**"))
+        assertTrue("definition listed", out.contains("1. The source."))
+        assertFalse("definition line lifted out of body", out.contains("[^1]: The source."))
+    }
+
+    @Test
+    fun rewriteFootnotes_numbersByDefinitionOrder() {
+        val input =
+            """
+            First[^a] then second[^b].
+
+            [^a]: Alpha.
+            [^b]: Beta.
+            """.trimIndent()
+        val out = rewriteFootnotes(input)
+        assertTrue(out.contains("First<sup>1</sup> then second<sup>2</sup>."))
+        assertTrue(out.contains("1. Alpha."))
+        assertTrue(out.contains("2. Beta."))
+    }
+
+    @Test
+    fun rewriteFootnotes_orphanReference_passesThrough() {
+        // A ref with no matching definition is left verbatim, and with
+        // no definitions at all the whole input is returned unchanged.
+        val input = "Dangling[^x] ref with no definition."
+        assertEquals(input, rewriteFootnotes(input))
+    }
+
+    @Test
+    fun rewriteFootnotes_indentedContinuation_foldedIntoText() {
+        val input =
+            """
+            Ref[^1].
+
+            [^1]: First line
+              continued line.
+            """.trimIndent()
+        val out = rewriteFootnotes(input)
+        assertTrue(out.contains("1. First line continued line."))
+        assertFalse("indented continuation line lifted out of body", out.contains("\n  continued line."))
+    }
+
+    @Test
+    fun rewriteFootnotes_insideFence_notRewritten() {
+        val input =
+            """
+            ```
+            look up[^1] in
+            [^1]: not a real definition
+            ```
+            """.trimIndent()
+        // Everything is inside a fence: no definition is extracted, so
+        // the body (including the literal `[^1]`) is returned verbatim.
+        assertEquals(input, rewriteFootnotes(input))
+    }
+
+    @Test
+    fun rewriteFootnotes_refInInlineCode_notRewritten() {
+        val input =
+            """
+            Use `[^1]` literally[^1].
+
+            [^1]: The note.
+            """.trimIndent()
+        val out = rewriteFootnotes(input)
+        assertTrue("inline-code ref survives", out.contains("`[^1]`"))
+        assertTrue("prose ref rewritten", out.contains("literally<sup>1</sup>."))
+    }
+
+    @Test
+    fun rewriteFootnotes_noMarkers_returnsInputVerbatim() {
+        val input = "plain text\nno footnotes here"
+        assertEquals(input, rewriteFootnotes(input))
     }
 }

@@ -15,8 +15,14 @@ import timber.log.Timber
  * and
  * [nextcloud/android `EditorWebView.java`](
  * https://github.com/nextcloud/android/blob/master/app/src/main/java/com/owncloud/android/ui/activity/EditorWebView.java)
- * — method names (`loaded`, `close`, `share`) are an upstream contract.
- * If those change in `nextcloud/text`, this stops working silently.
+ * — method names (`loaded`, `close`, `share`, `reload`) are an upstream
+ * contract. If those change in `nextcloud/text`, this stops working silently.
+ *
+ * `reload` is the newest of these: `nextcloud/text` `src/views/DirectEditing.vue`
+ * emits it (alongside `loaded`/`close`/`share`) when an editing session is
+ * invalidated server-side — its `onPushForbidden` path. Verified present at
+ * Text tag `v34.0.1` (2026-07-19 upstream re-check). Without handling it the
+ * WebView would sit on a dead session; we respond by re-opening a fresh one.
  *
  * Methods are invoked on the WebView's JS thread (not the Android main
  * thread); callbacks here forward to the ViewModel, which is safe to
@@ -27,6 +33,7 @@ internal class DirectEditingMobileInterface(
     private val onLoaded: () -> Unit,
     private val onClose: () -> Unit,
     private val onShare: () -> Unit,
+    private val onReload: () -> Unit,
 ) {
     @JavascriptInterface
     fun loaded() {
@@ -44,6 +51,12 @@ internal class DirectEditingMobileInterface(
     fun share() {
         Timber.tag(TAG).d("Editor reported share() — not wired to a host action yet")
         onShare()
+    }
+
+    @JavascriptInterface
+    fun reload() {
+        Timber.tag(TAG).d("Editor reported reload() — session invalidated, re-opening")
+        onReload()
     }
 
     companion object {

@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.megamaced.nccollectives.util.expandWikilinks
 import com.megamaced.nccollectives.util.handleMarkdownLink
 import com.megamaced.nccollectives.util.rewriteCallouts
+import com.megamaced.nccollectives.util.rewriteFootnotes
 import com.megamaced.nccollectives.util.rewriteHighlights
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -78,11 +79,14 @@ fun MarkdownView(
             ).okHttpClient()
     }
     val resolvedMarkdown = remember(markdown, imageBaseUrl) {
-        // Batch 31: rewrite Nextcloud Text dialect extensions
-        // (callouts, `==highlight==`) into shapes Markwon already
-        // renders. Done before wikilink expansion so the alternation
-        // patterns don't fight over the same fence/code regions.
-        val withCallouts = rewriteCallouts(markdown)
+        // Batch 31 + footnotes: rewrite Nextcloud Text dialect
+        // extensions (footnotes, callouts, `==highlight==`) into shapes
+        // Markwon already renders. Footnotes run first so highlight /
+        // callout syntax inside a lifted footnote definition still gets
+        // processed; wikilink expansion runs last. Each pass skips
+        // fence/code regions independently.
+        val withFootnotes = rewriteFootnotes(markdown)
+        val withCallouts = rewriteCallouts(withFootnotes)
         val withHighlights = rewriteHighlights(withCallouts)
         val withWikiLinks = expandWikilinks(withHighlights)
         if (imageBaseUrl.isNullOrEmpty()) {

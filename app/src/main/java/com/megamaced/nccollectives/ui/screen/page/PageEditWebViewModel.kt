@@ -98,6 +98,20 @@ class PageEditWebViewModel
             _uiState.value = PageEditWebUiState.Failed(message)
         }
 
+        /**
+         * Called by the JS bridge (`reload()`) when Text reports the editing
+         * session was invalidated server-side (its `onPushForbidden` path,
+         * new at Text v34). The one-shot `directediting/open` token behind
+         * the current URL is dead, so we re-request a fresh session rather
+         * than reloading the stale URL (which would 410 / bounce to login).
+         * `requestSession()` flips state to `Loading`, which tears down the
+         * current WebView; the subsequent `Loaded(freshUrl)` mounts a new
+         * one — same path a retry or a fresh VM instance takes.
+         */
+        fun onReloadRequested() {
+            requestSession()
+        }
+
         /** Called by the JS bridge once the editor JS has finished bootstrap. */
         fun onEditorReady() {
             _uiState.update { state ->

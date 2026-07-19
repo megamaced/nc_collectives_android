@@ -1,17 +1,22 @@
 package com.megamaced.nccollectives.ui.screen.page
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.webkit.WebSettingsCompat
@@ -208,6 +214,7 @@ internal fun PageEditWebScreen(
                         isDarkTheme = isDarkTheme,
                         onLoaded = viewModel::onEditorReady,
                         onCloseFromJs = viewModel::onClose,
+                        onReloadFromJs = viewModel::onReloadRequested,
                         onSslError = {
                             viewModel.surfaceLoadFailure(
                                 "Couldn't verify the server's TLS certificate. The editor was not opened.",
@@ -238,17 +245,33 @@ private fun EditorWebView(
     isDarkTheme: Boolean,
     onLoaded: () -> Unit,
     onCloseFromJs: () -> Unit,
+    onReloadFromJs: () -> Unit,
     onSslError: () -> Unit,
     onWebViewCreated: (WebView) -> Unit,
 ) {
+    val context = LocalContext.current
     val bridge: DirectEditingMobileInterface =
-        remember(onLoaded, onCloseFromJs) {
+        remember(onLoaded, onCloseFromJs, onReloadFromJs) {
             DirectEditingMobileInterface(
                 onLoaded = onLoaded,
                 onClose = onCloseFromJs,
                 onShare = {},
+                onReload = onReloadFromJs,
             )
         }
+
+    // Links the Text editor renders (user mentions, file references,
+    // embedded-image sources, `mailto:` in tables, external URLs) must not
+    // be allowed to navigate the *editor* WebView itself — doing so tears
+    // down the edit session. Only same-host https navigations stay in the
+    // WebView; everything else is routed out to the system. Mirrors
+    // nextcloud/notes-android `NoteDirectEditFragment` (commit 398abd51,
+    // merged 2026-07-09). `allowedHost` is the host of the directediting
+    // URL we opened — i.e. the user's own Nextcloud.
+    val allowedHost = remember(url) { Uri.parse(url).host }
+    val openExternally: (Uri) -> Unit = remember(context) {
+        { uri -> openExternalLink(context, uri) }
+    }
 
     // Pending callback for the WebView's file chooser. The WebChromeClient
     // stashes the `ValueCallback` here, launches the system picker, and
@@ -324,6 +347,8 @@ private fun EditorWebView(
                     webViewClient = StripChromeWebViewClient(
                         onSslError = onSslError,
                         injectionScript = buildInjectionScript(isDarkTheme),
+                        allowedHost = allowedHost,
+                        onExternalLink = openExternally,
                     )
                     webChromeClient = ImagePickingChromeClient(
                         launchPicker = { callback ->
@@ -364,7 +389,31 @@ private fun EditorWebView(
 private class StripChromeWebViewClient(
     private val onSslError: () -> Unit,
     private val injectionScript: String,
+    private val allowedHost: String?,
+    private val onExternalLink: (Uri) -> Unit,
 ) : WebViewClient() {
+    /**
+     * Keep only same-host `https` navigations inside the editor WebView;
+     * route everything else out to the system browser / handler. Without
+     * this, any link Text renders (mentions, file refs, `mailto:` in a
+     * table, embedded-image sources, arbitrary external URLs) that the
+     * user taps would navigate the editor WebView away from the edit
+     * session and break it. Mirrors nextcloud/notes-android
+     * `NoteDirectEditFragment.shouldOverrideUrlLoading` (398abd51).
+     */
+    override fun shouldOverrideUrlLoading(
+        view: WebView?,
+        request: WebResourceRequest?,
+    ): Boolean {
+        val target = request?.url ?: return false
+        return if (shouldKeepInWebView(target.host, target.scheme, allowedHost)) {
+            false // let the WebView load it — it's part of the edit session
+        } else {
+            onExternalLink(target)
+            true // consumed — don't navigate the editor away
+        }
+    }
+
     override fun onReceivedSslError(
         view: WebView?,
         handler: SslErrorHandler?,
@@ -528,6 +577,52 @@ private class ImagePickingChromeClient(
         filePathCallback ?: return false
         launchPicker(filePathCallback)
         return true
+    }
+}
+
+/**
+ * Navigation gate for [StripChromeWebViewClient.shouldOverrideUrlLoading],
+ * extracted as a pure function so the host-matching logic is unit-testable
+ * without a WebView. A navigation stays inside the editor WebView only when
+ * it targets the same host we opened the `directediting` session on, over
+ * `https`. Anything else — a different host, a non-https scheme (`mailto:`,
+ * `tel:`, `geo:`, `intent:`), or a null host — is routed out to the system.
+ *
+ * `allowedHost` null (couldn't parse a host from the session URL) fails
+ * closed: nothing is kept in the WebView, so links always leave rather than
+ * risk hijacking the session.
+ */
+internal fun shouldKeepInWebView(
+    targetHost: String?,
+    targetScheme: String?,
+    allowedHost: String?,
+): Boolean {
+    if (allowedHost.isNullOrEmpty() || targetHost.isNullOrEmpty()) return false
+    return targetScheme.equals("https", ignoreCase = true) &&
+        targetHost.equals(allowedHost, ignoreCase = true)
+}
+
+/**
+ * Routes a link the user tapped inside the editor out of the WebView.
+ * `http(s)` opens in Chrome Custom Tabs (same as the rest of the app —
+ * see [com.megamaced.nccollectives.util.handleMarkdownLink]); other
+ * schemes (`mailto:`, `tel:`, `geo:`, …) go through a plain `ACTION_VIEW`.
+ * Both are wrapped so a device with no handler for the scheme logs and
+ * no-ops rather than crashing — matching notes-android's try/catch.
+ */
+private fun openExternalLink(
+    context: Context,
+    uri: Uri,
+) {
+    val scheme = uri.scheme?.lowercase()
+    try {
+        if (scheme == "http" || scheme == "https") {
+            CustomTabsIntent.Builder().build().launchUrl(context, uri)
+        } else {
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    } catch (e: ActivityNotFoundException) {
+        Timber.tag(TAG).w(e, "No handler for in-editor link: %s", uri)
     }
 }
 

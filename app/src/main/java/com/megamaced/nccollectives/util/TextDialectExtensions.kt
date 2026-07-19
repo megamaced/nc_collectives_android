@@ -12,10 +12,11 @@ package com.megamaced.nccollectives.util
 // that happen to use the same syntax — same posture as
 // `MarkdownLinkResolver.expandWikilinks`.
 //
-// Closes Batch 31b (callouts) + 31c (highlight). 31a (multi-line
-// tables), 31d (underline `__text__` — collides with CommonMark
-// bold), 31e (math), 31f (mentions) are intentionally deferred —
-// see the wiki page for the per-item Skip rationale.
+// Closes Batch 31b (callouts) + 31c (highlight) + footnotes (upstream
+// Text added `markdown-it-footnote` in July 2026, lands v34.0.2+).
+// 31a (multi-line tables), 31d (underline `__text__` — collides with
+// CommonMark bold), 31e (math), 31f (mentions) are intentionally
+// deferred — see the wiki page for the per-item Skip rationale.
 
 /**
  * Rewrites Nextcloud Text callout / admonition syntax into a styled
@@ -120,6 +121,124 @@ internal fun rewriteHighlights(markdown: String): String {
     }
 }
 
+/**
+ * Rewrites Nextcloud Text footnote syntax (the `markdown-it-footnote`
+ * dialect upstream Text added July 2026 — see `nextcloud/text`
+ * `src/markdownit/index.js`, lands v34.0.2+) into a shape Markwon
+ * renders natively:
+ *
+ *  - inline references `[^id]` become `<sup>N</sup>` superscripts
+ *    (Markwon's `HtmlPlugin`, wired in Batch 24, renders `<sup>`), and
+ *  - the `[^id]: text` definitions are lifted out of the body into a
+ *    trailing "Footnotes" ordered list.
+ *
+ * ```
+ * As noted[^1] elsewhere[^src].          As noted<sup>1</sup> elsewhere<sup>2</sup>.
+ *                                  ─►
+ * [^1]: First note.                      ---
+ * [^src]: The source.                    **Footnotes**
+ *                                        1. First note.
+ *                                        2. The source.
+ * ```
+ *
+ * Numbering follows **definition order**. Only references that resolve
+ * to a definition are rewritten; an orphan `[^id]` with no matching
+ * definition passes through verbatim (same "unknown passes through"
+ * posture as [rewriteCallouts]). Definitions are matched at line start
+ * (0–3 leading spaces, CommonMark tolerance); a simple indented
+ * continuation line is folded into the definition text. Inline
+ * footnotes (`^[text]`) and multi-paragraph definitions are not
+ * handled — rare in practice; they pass through unchanged.
+ *
+ * Fenced code blocks and inline code spans are skipped for the inline
+ * reference rewrite (same alternation-regex posture as
+ * [rewriteHighlights]); definition extraction is line-based and also
+ * skips fences.
+ */
+internal fun rewriteFootnotes(markdown: String): String {
+    if (markdown.isEmpty() || "[^" !in markdown) return markdown
+    val keepTrailingNewline = markdown.endsWith('\n')
+    val sourceLines = markdown.lines()
+
+    // Pass 1: extract definitions (id → text) in document order,
+    // skipping fenced code. `dropped` marks the lines to remove from
+    // the body. Kotlin forbids local data classes, so a Pair suffices.
+    val defs = mutableListOf<Pair<String, String>>()
+    val dropped = BooleanArray(sourceLines.size)
+    var inFence = false
+    var i = 0
+    while (i < sourceLines.size) {
+        val line = sourceLines[i]
+        val trimmed = line.trimStart()
+        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+            inFence = !inFence
+            i++
+            continue
+        }
+        val match = if (!inFence) FOOTNOTE_DEF_REGEX.matchEntire(line) else null
+        if (match != null) {
+            val id = match.groupValues[1]
+            val text = StringBuilder(match.groupValues[2].trim())
+            dropped[i] = true
+            // Fold one level of indented continuation lines (≥2 spaces
+            // or a tab) into the definition text, stopping at the first
+            // blank or non-indented line.
+            var j = i + 1
+            while (j < sourceLines.size &&
+                sourceLines[j].isNotBlank() &&
+                (sourceLines[j].startsWith("  ") || sourceLines[j].startsWith("\t"))
+            ) {
+                if (text.isNotEmpty()) text.append(' ')
+                text.append(sourceLines[j].trim())
+                dropped[j] = true
+                j++
+            }
+            defs.add(id to text.toString())
+            i = j
+        } else {
+            i++
+        }
+    }
+    if (defs.isEmpty()) return markdown
+
+    // id → 1-based display number, first definition wins on duplicates.
+    val numberById = HashMap<String, Int>()
+    defs.forEachIndexed { index, (id, _) -> numberById.putIfAbsent(id, index + 1) }
+
+    // Rebuild the body without the definition lines.
+    val body = buildString {
+        sourceLines.forEachIndexed { index, line ->
+            if (!dropped[index]) {
+                append(line)
+                if (index < sourceLines.lastIndex) append('\n')
+            }
+        }
+    }.trimEnd('\n')
+
+    // Pass 2: rewrite inline references that resolve to a definition,
+    // leaving fences / inline code / orphan refs untouched.
+    val withRefs = FOOTNOTE_REF_PATTERN.replace(body) { m ->
+        when {
+            m.groups["fence"] != null -> m.value
+            m.groups["code"] != null -> m.value
+            m.groups["ref"] != null -> {
+                val n = numberById[m.groups["id"]!!.value]
+                if (n != null) "<sup>$n</sup>" else m.value
+            }
+            else -> m.value
+        }
+    }
+
+    val section = buildString {
+        append("\n\n---\n\n**Footnotes**\n\n")
+        defs.forEachIndexed { index, (_, text) ->
+            append(index + 1).append(". ").append(text).append('\n')
+        }
+    }
+    val result = withRefs + section
+    return if (keepTrailingNewline) result else result.trimEnd('\n')
+}
+
 private fun labelFor(type: String): Pair<String, String> =
     when (type) {
         "INFO" -> "ℹ️" to "Info"
@@ -141,4 +260,17 @@ private val HIGHLIGHT_PATTERN = Regex(
         "(?<fence>```.*?```|~~~.*?~~~)" +
         "|(?<code>`[^`\\n]+`)" +
         "|(?<mark>==(?<text>[^=\\n][^\\n]*?)==)",
+)
+
+// A footnote definition: 0–3 leading spaces, `[^id]:`, then the text.
+// `id` disallows `]` and whitespace so `[^ ]` / `[^a b]` don't match.
+private val FOOTNOTE_DEF_REGEX = Regex("^ {0,3}\\[\\^([^\\]\\s]+)]:\\s?(.*)$")
+
+// Inline footnote reference `[^id]`, with the same fence/inline-code-first
+// alternation as HIGHLIGHT_PATTERN so refs inside code samples survive.
+private val FOOTNOTE_REF_PATTERN = Regex(
+    "(?s)" +
+        "(?<fence>```.*?```|~~~.*?~~~)" +
+        "|(?<code>`[^`\\n]+`)" +
+        "|(?<ref>\\[\\^(?<id>[^\\]\\s]+)])",
 )
