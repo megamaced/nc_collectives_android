@@ -1,10 +1,13 @@
 package com.megamaced.nccollectives.data.auth
 
+import android.content.Context
 import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.sync.SyncScheduler
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,7 +34,8 @@ import javax.inject.Singleton
  *  3. Wipe every Room table in a single transaction.
  *  4. Clear the user's DataStore preferences (recent searches, theme,
  *     cadence). Keeping prefs across user accounts would leak the
- *     previous user's recent searches.
+ *     previous user's recent searches. Then delete the attachment cache
+ *     directories, which hold raw file bytes Room doesn't track.
  *  5. `sessionManager.endSignOut()` clears the encrypted token store
  *     and releases the 401-suppression flag.
  */
@@ -39,6 +43,7 @@ import javax.inject.Singleton
 class LogoutHandler
     @Inject
     constructor(
+        @ApplicationContext private val context: Context,
         private val database: NcCollectivesDatabase,
         private val sessionManager: SessionManager,
         private val syncScheduler: SyncScheduler,
@@ -65,6 +70,11 @@ class LogoutHandler
                     database.collectiveDao().clear()
                 }
                 userPreferences.clearAll()
+                // Raw attachment bytes live in the cache dir, not Room, so
+                // wiping the tables above orphans them rather than removing
+                // them. Without this a PDF the previous account opened stays
+                // readable on disk through the next account's session.
+                AttachmentRepositoryImpl.clearCachedFiles(context)
                 // B-50: evict the OkHttp connection pool so a quick
                 // user-A → user-B sign-in cycle can't reuse a still-warm
                 // connection negotiated under the previous credentials.

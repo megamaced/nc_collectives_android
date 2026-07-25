@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.data.repository
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
@@ -13,6 +14,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.domain.model.Attachment
+import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -243,6 +245,78 @@ class AttachmentRepositoryImpl
             )
         }
 
+        override suspend fun downloadForViewing(
+            pageId: Long,
+            relativePath: String,
+        ): ApiResult<OpenableAttachment> {
+            val page = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val segments = relativePath.split('/').filter { it.isNotEmpty() }
+            if (segments.isEmpty()) {
+                return ApiResult.Unexpected(IllegalArgumentException("Empty attachment path"))
+            }
+            // S-14′ again, on this side of the boundary: `parseAttachmentRef`
+            // already refuses traversal, but the attachments *screen* builds
+            // a path from a server-supplied filename. A `..` segment would
+            // otherwise stage the download outside the cache directory.
+            if (segments.any { it == ".." }) {
+                return ApiResult.Unexpected(
+                    IllegalArgumentException("Refusing attachment path with a traversal segment"),
+                )
+            }
+            val fileName = segments.last()
+            // Directory part of the ref joined onto the page's own filePath.
+            // `buildWebDavUrl` runs every segment through
+            // `ServerStringValidation.cleanPathSegment`, so a hostile ref
+            // still can't walk out of the user's Files tree (S-14′).
+            val refDir = segments.dropLast(1).joinToString("/")
+            val filePath = if (refDir.isEmpty()) page.filePath else combinePath(page.filePath, refDir)
+
+            val target = viewCacheFileFor(context, pageId, fileName)
+            target.parentFile?.mkdirs()
+            val result = bodyService.downloadTo(
+                collectivePath = page.collectivePath,
+                filePath = filePath,
+                fileName = fileName,
+                target = target,
+            )
+            if (result !is ApiResult.Success) {
+                // Don't leave a truncated file behind to be handed to a
+                // viewer app on the next tap. Unchecked cast is the same
+                // idiom `ApiResult.mapSuccess` documents — every non-Success
+                // arm is `ApiResult<Nothing>`.
+                target.delete()
+                @Suppress("UNCHECKED_CAST")
+                return result as ApiResult<OpenableAttachment>
+            }
+            val uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    target,
+                )
+            } catch (e: IllegalArgumentException) {
+                // Only fires if the cache dir stops matching
+                // `file_provider_paths.xml` — a build-config error rather
+                // than a runtime condition, but surface it instead of
+                // crashing on the user's tap.
+                Timber.e(e, "Staged attachment %s outside FileProvider paths", target)
+                target.delete()
+                return ApiResult.Unexpected(e)
+            }
+            return ApiResult.Success(
+                OpenableAttachment(
+                    uri = uri,
+                    fileName = fileName,
+                    // Prefer the server's Content-Type, but fall back to the
+                    // extension when it answers the generic octet-stream —
+                    // the chooser has nothing to match on otherwise.
+                    mimeType = result.data?.takeUnless { it == OCTET_STREAM }
+                        ?: guessMimeType(fileName),
+                ),
+            )
+        }
+
         override suspend fun attachmentsBaseUrl(pageId: Long): String? {
             val page = pageDao.getById(pageId) ?: return null
             val dir = attachmentsDirectoryFor(pageId)
@@ -325,6 +399,44 @@ class AttachmentRepositoryImpl
             ): String = if (base.isEmpty()) child else "$base/$child"
 
             /**
+             * Cache file a *downloaded* attachment is staged in before being
+             * handed to another app. Namespaced by page id so two pages with
+             * a same-named attachment can't serve each other's bytes, and
+             * kept separate from `attachments-pending/` so the upload
+             * worker's cleanup can never delete a file a viewer app is
+             * currently reading through our FileProvider grant.
+             */
+            fun viewCacheFileFor(
+                context: Context,
+                pageId: Long,
+                fileName: String,
+            ): File =
+                File(
+                    File(File(context.cacheDir, "attachments-view"), pageId.toString()),
+                    fileName.replace('/', '_'),
+                )
+
+            /**
+             * Delete every cached attachment byte-store: staged uploads and
+             * files downloaded for viewing.
+             *
+             * Called from the sign-out flow. Both directories hold raw user
+             * file content that no Room row points at once the tables are
+             * wiped, so leaving them behind would keep one account's
+             * documents readable on disk during the next account's session —
+             * the same concern that made the Batch 22 collective-delete
+             * cascade wipe queued edits.
+             */
+            fun clearCachedFiles(context: Context) {
+                listOf("attachments-pending", "attachments-view", "attachments").forEach { name ->
+                    val dir = File(context.cacheDir, name)
+                    if (dir.exists() && !dir.deleteRecursively()) {
+                        Timber.w("Couldn't fully clear attachment cache dir %s", dir.absolutePath)
+                    }
+                }
+            }
+
+            /**
              * Internal cache file backing a staged upload (B-29). Worker
              * deletes this when the row reaches REMOTE / FAILED.
              */
@@ -336,6 +448,9 @@ class AttachmentRepositoryImpl
                     File(context.cacheDir, "attachments-pending"),
                     attachmentId.replace('/', '_'),
                 )
+
+            /** Generic type Nextcloud falls back to when it can't tell. */
+            private const val OCTET_STREAM = "application/octet-stream"
 
             // S-13: filenames flow into markdown image refs `![…](…)` on the
             // share paths. The on-disk-illegal set is the base; the extra

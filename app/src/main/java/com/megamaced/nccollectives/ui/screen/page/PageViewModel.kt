@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
+import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
@@ -16,6 +17,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.AttachmentRef
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +65,14 @@ data class PageViewUiState(
      * [acknowledgeCopied] once it's been surfaced.
      */
     val copiedPageId: Long? = null,
+    /** Filename of an attachment currently being downloaded for viewing. */
+    val downloadingAttachment: String? = null,
+    /**
+     * Attachment staged and ready to hand off. The screen fires the
+     * `ACTION_VIEW` intent (a ViewModel has no business starting
+     * activities) and clears this via [acknowledgeAttachmentOpened].
+     */
+    val attachmentToOpen: OpenableAttachment? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -382,6 +392,53 @@ class PageViewModel
                         it.copy(statusMessage = "Linked page \"$target\" not found")
                     }
                 }
+            }
+        }
+
+        /**
+         * The user tapped a link pointing at one of this page's attachments.
+         * Non-image attachments (PDFs, office documents, archives) can't be
+         * rendered inline, so we download the file and hand it to whichever
+         * app the user has for that type.
+         *
+         * Guarded against re-entry: staging a multi-MB PDF takes long enough
+         * that an impatient double-tap would otherwise start a second
+         * download writing into the same cache file as the first.
+         */
+        fun openAttachment(ref: AttachmentRef) {
+            if (_uiState.value.downloadingAttachment != null) return
+            _uiState.update { it.copy(downloadingAttachment = ref.fileName) }
+            viewModelScope.launch {
+                val result = attachmentRepository.downloadForViewing(pageId, ref.relativePath)
+                _uiState.update { state ->
+                    when (result) {
+                        is ApiResult.Success ->
+                            state.copy(
+                                downloadingAttachment = null,
+                                attachmentToOpen = result.data,
+                            )
+                        else ->
+                            state.copy(
+                                downloadingAttachment = null,
+                                statusMessage = result.userMessage()
+                                    ?: "Couldn't open ${ref.fileName}",
+                            )
+                    }
+                }
+            }
+        }
+
+        /**
+         * Called once the screen has fired the view intent. [failureMessage]
+         * is non-null when nothing on the device could open the file — the
+         * user gets told rather than watching a tap do nothing.
+         */
+        fun acknowledgeAttachmentOpened(failureMessage: String? = null) {
+            _uiState.update {
+                it.copy(
+                    attachmentToOpen = null,
+                    statusMessage = failureMessage ?: it.statusMessage,
+                )
             }
         }
 

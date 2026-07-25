@@ -45,12 +45,13 @@ import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 
 /**
- * Picker the editor opens when the user taps the "Image" toolbar action.
- * Lists the page's existing attachments; tapping one returns its filename
- * (which the caller inserts as a markdown image link at cursor). Also
- * offers Camera / Gallery uploads — the upload runs in the background
- * and the sheet stays open so the user can pick it once the row turns
- * REMOTE.
+ * Picker the editor opens when the user taps the attachment toolbar action.
+ * Lists the page's existing attachments; tapping one returns its filename,
+ * which the caller inserts at the cursor via
+ * [MarkdownToolbarActions.insertAttachment] (embed syntax for images, a
+ * plain link for everything else). Also offers Camera / Gallery / File
+ * uploads — the upload runs in the background and the sheet stays open so
+ * the user can pick it once the row turns REMOTE.
  *
  * Reuses [AttachmentsViewModel] — both this sheet and the standalone
  * `AttachmentsScreen` resolve `pageId` from the same `{pageId}` path arg.
@@ -81,6 +82,17 @@ internal fun AttachmentPickerSheet(
             viewModel.enqueueUpload(uri, name, type)
         }
     }
+    // `OpenDocument` reaches every document provider, not just the media
+    // store — the only way to attach a PDF / spreadsheet from the editor.
+    val fileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val name = uriDisplayName(context, uri) ?: "attachment"
+            val type = context.contentResolver.getType(uri)
+            viewModel.enqueueUpload(uri, name, type)
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -89,7 +101,7 @@ internal fun AttachmentPickerSheet(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         ) {
             Text(
-                text = "Insert image",
+                text = "Insert attachment",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
@@ -108,6 +120,12 @@ internal fun AttachmentPickerSheet(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                         )
                     },
+                    modifier = Modifier.weight(1f),
+                )
+                UploadChip(
+                    icon = Icons.AutoMirrored.Filled.InsertDriveFile,
+                    label = "File",
+                    onClick = { fileLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.weight(1f),
                 )
             }

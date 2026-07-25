@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -56,10 +57,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Attachment
+import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 
@@ -99,6 +102,39 @@ internal fun AttachmentsScreen(
             viewModel.enqueueUpload(uri, name, type)
         }
     }
+    // `OpenDocument` rather than `GetContent`: the document picker reaches
+    // every provider (Drive, Files, SD card) and returns a stable URI. The
+    // visual-media picker above can only ever return images and video, which
+    // is why a PDF or spreadsheet couldn't be attached from the app at all
+    // before this launcher existed.
+    val fileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val name = uriDisplayName(context, uri) ?: "attachment"
+            val type = context.contentResolver.getType(uri)
+            viewModel.enqueueUpload(uri, name, type)
+        }
+    }
+
+    // Attachment staged — hand it to whichever app the user has for the type.
+    LaunchedEffect(ui.attachmentToOpen) {
+        val attachment = ui.attachmentToOpen ?: return@LaunchedEffect
+        val opened = openAttachmentExternally(context, attachment)
+        viewModel.acknowledgeOpened(
+            failureMessage = if (opened) null else "No app installed that can open ${attachment.fileName}",
+        )
+    }
+
+    LaunchedEffect(ui.downloadingAttachment) {
+        val name = ui.downloadingAttachment ?: return@LaunchedEffect
+        // Indefinite: implicitly dismissed when the download finishes and
+        // the state change cancels this effect.
+        snackbarHostState.showSnackbar(
+            message = "Downloading $name…",
+            duration = SnackbarDuration.Indefinite,
+        )
+    }
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
@@ -133,7 +169,7 @@ internal fun AttachmentsScreen(
                 attachments.isEmpty() ->
                     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "No attachments yet. Tap Add to upload an image.",
+                            text = "No attachments yet. Tap Add to upload a photo or file.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -148,6 +184,7 @@ internal fun AttachmentsScreen(
                         items(attachments, key = { it.id }) { attachment ->
                             AttachmentTile(
                                 attachment = attachment,
+                                onOpen = { viewModel.open(attachment.fileName) },
                                 onDelete = { pendingDelete = attachment.fileName },
                             )
                         }
@@ -167,6 +204,10 @@ internal fun AttachmentsScreen(
                 galleryLauncher.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
                 )
+            },
+            onFile = {
+                showUploadSheet = false
+                fileLauncher.launch(arrayOf("*/*"))
             },
             onDismiss = { showUploadSheet = false },
         )
@@ -193,8 +234,10 @@ internal fun AttachmentsScreen(
 @Composable
 private fun AttachmentTile(
     attachment: Attachment,
+    onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val isOpenable = attachment.status == Attachment.Status.REMOTE
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -207,7 +250,17 @@ private fun AttachmentTile(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                // The preview area is the open affordance; Delete keeps its
+                // own button so the two don't share a gesture. After
+                // `background` so the ripple draws on top of it rather than
+                // under. `role` per the Batch 19 accessibility pass — a
+                // clickable Box announces as nothing without it.
+                .clickable(
+                    enabled = isOpenable,
+                    onClick = onOpen,
+                    role = Role.Button,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             when {
@@ -251,6 +304,7 @@ private fun AttachmentTile(
 private fun UploadSourceSheet(
     onCamera: () -> Unit,
     onGallery: () -> Unit,
+    onFile: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -275,6 +329,12 @@ private fun UploadSourceSheet(
                 icon = androidx.compose.material.icons.Icons.Filled.PhotoLibrary,
                 label = "Pick from gallery",
                 onClick = onGallery,
+            )
+            HorizontalDivider()
+            SheetAction(
+                icon = Icons.AutoMirrored.Filled.InsertDriveFile,
+                label = "Pick a file",
+                onClick = onFile,
             )
         }
     }

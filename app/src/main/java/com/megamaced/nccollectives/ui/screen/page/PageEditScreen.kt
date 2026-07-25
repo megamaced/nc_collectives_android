@@ -100,7 +100,7 @@ internal fun PageEditScreen(
     if (showAttachmentPicker) {
         AttachmentPickerSheet(
             onPick = { fileName ->
-                fieldValue = MarkdownToolbarActions.insertImage(fieldValue, fileName)
+                fieldValue = MarkdownToolbarActions.insertAttachment(fieldValue, fileName)
                 showAttachmentPicker = false
             },
             onDismiss = { showAttachmentPicker = false },

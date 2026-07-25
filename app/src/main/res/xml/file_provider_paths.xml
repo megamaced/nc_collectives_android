@@ -15,4 +15,13 @@
         UI hand-off and the worker run.
     -->
     <cache-path name="pending-uploads" path="attachments-pending/" />
+    <!--
+        Attachments downloaded for viewing. A non-image attachment (PDF,
+        office document, archive) can't render inline, so tapping it stages
+        the bytes here and hands a read-only content:// grant to whichever
+        app the user has for that type. Separate from `attachments-pending/`
+        so the upload worker's cleanup can never pull a file out from under
+        a viewer app that's still reading it.
+    -->
+    <cache-path name="viewed-attachments" path="attachments-view/" />
 </paths>

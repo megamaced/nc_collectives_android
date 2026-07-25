@@ -137,6 +137,16 @@ class UserPreferences
             context.dataStore.edit { it[KEY_UPDATE_LAST_NOTIFIED_VERSION] = version }
         }
 
+        /**
+         * Last `status.php` version we saw, or null if we've never asked.
+         * See `ServerVersionTracker` for what it gates.
+         */
+        suspend fun getLastSeenServerVersion(): String? = context.dataStore.data.first()[KEY_SERVER_VERSION]
+
+        suspend fun setLastSeenServerVersion(version: String) {
+            context.dataStore.edit { it[KEY_SERVER_VERSION] = version }
+        }
+
         private fun Preferences.toModel(): UserPrefs {
             val mode = this[KEY_THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.System
@@ -173,6 +183,7 @@ class UserPreferences
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
             val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
             val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
+            val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
 
             const val MAX_RECENT_SEARCHES = 10
 

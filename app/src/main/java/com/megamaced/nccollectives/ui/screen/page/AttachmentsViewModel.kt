@@ -7,8 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Attachment
+import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.attachmentDirName
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +24,13 @@ import javax.inject.Inject
 data class AttachmentsUiState(
     val isRefreshing: Boolean = false,
     val statusMessage: String? = null,
+    /** Filename currently being downloaded for viewing. */
+    val downloadingAttachment: String? = null,
+    /**
+     * Attachment staged and ready to hand off. The screen fires the
+     * `ACTION_VIEW` intent and clears this via [AttachmentsViewModel.acknowledgeOpened].
+     */
+    val attachmentToOpen: OpenableAttachment? = null,
 )
 
 @HiltViewModel
@@ -78,6 +87,44 @@ class AttachmentsViewModel
                         },
                     )
                 }
+            }
+        }
+
+        /**
+         * Download [fileName] and hand it to another app. Works for images
+         * too — opening a photo in a real gallery app gives the user pinch-
+         * zoom and share, which a grid thumbnail can't.
+         */
+        fun open(fileName: String) {
+            if (_uiState.value.downloadingAttachment != null) return
+            _uiState.update { it.copy(downloadingAttachment = fileName) }
+            viewModelScope.launch {
+                val relativePath = "${attachmentDirName(pageId)}/$fileName"
+                val result = repository.downloadForViewing(pageId, relativePath)
+                _uiState.update { state ->
+                    when (result) {
+                        is ApiResult.Success ->
+                            state.copy(
+                                downloadingAttachment = null,
+                                attachmentToOpen = result.data,
+                            )
+                        else ->
+                            state.copy(
+                                downloadingAttachment = null,
+                                statusMessage = result.userMessage() ?: "Couldn't open $fileName",
+                            )
+                    }
+                }
+            }
+        }
+
+        /** Called once the screen has fired the view intent. */
+        fun acknowledgeOpened(failureMessage: String? = null) {
+            _uiState.update {
+                it.copy(
+                    attachmentToOpen = null,
+                    statusMessage = failureMessage ?: it.statusMessage,
+                )
             }
         }
 

@@ -14,8 +14,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.util.AttachmentRef
+import com.megamaced.nccollectives.util.demoteNonImageEmbeds
 import com.megamaced.nccollectives.util.expandWikilinks
 import com.megamaced.nccollectives.util.handleMarkdownLink
+import com.megamaced.nccollectives.util.isAttachmentDirSegment
+import com.megamaced.nccollectives.util.pageDirectoryUrlFrom
 import com.megamaced.nccollectives.util.rewriteCallouts
 import com.megamaced.nccollectives.util.rewriteFootnotes
 import com.megamaced.nccollectives.util.rewriteHighlights
@@ -61,16 +65,36 @@ fun MarkdownView(
      */
     imageBaseUrl: String? = null,
     /**
+     * Page being rendered. Needed to resolve a bare-filename attachment
+     * target (`[report.pdf](report.pdf)`) against the right
+     * `.attachments.<pageId>` folder. When null, every scheme-less target is
+     * treated as a wiki-page reference — the pre-attachment behaviour.
+     */
+    pageId: Long? = null,
+    /**
      * Invoked when the user taps an in-app link — `[[Wiki]]` or a relative
      * markdown reference. The argument is the cleaned page title (URL-decoded,
      * `./` and `.md` stripped). Default ignores them.
      */
     onWikiLink: (String) -> Unit = {},
+    /**
+     * Invoked when the user taps a link pointing at one of the page's
+     * attachments. Callers download the file and hand it to another app;
+     * default ignores them (used by the editor's live preview, where a
+     * tap-to-download would fight the edit session).
+     */
+    onAttachmentLink: (AttachmentRef) -> Unit = {},
 ) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val contentColor = LocalContentColor.current
     val onWikiLinkLatest by rememberUpdatedState(onWikiLink)
+    val onAttachmentLinkLatest by rememberUpdatedState(onAttachmentLink)
+    // Same reason as the callbacks: the Markwon instance is remembered on
+    // `colorScheme` alone (R-25), so anything the link resolver closes over
+    // has to be read through a latest-value holder or it would be pinned to
+    // whatever it was when the theme last changed.
+    val pageIdLatest by rememberUpdatedState(pageId)
     val okHttpClient = remember {
         EntryPointAccessors
             .fromApplication(
@@ -89,10 +113,14 @@ fun MarkdownView(
         val withCallouts = rewriteCallouts(withFootnotes)
         val withHighlights = rewriteHighlights(withCallouts)
         val withWikiLinks = expandWikilinks(withHighlights)
+        // Demote `![x](x.pdf)` to a link *before* absolutizing, so a
+        // non-image attachment never acquires an image URL that
+        // ImagesPlugin would try to decode as a bitmap.
+        val withFileLinks = demoteNonImageEmbeds(withWikiLinks)
         if (imageBaseUrl.isNullOrEmpty()) {
-            withWikiLinks
+            withFileLinks
         } else {
-            absolutizeImageRefs(withWikiLinks, imageBaseUrl)
+            absolutizeImageRefs(withFileLinks, imageBaseUrl)
         }
     }
 
@@ -183,7 +211,13 @@ fun MarkdownView(
 
                     override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                         builder.linkResolver { _, link ->
-                            handleMarkdownLink(context, link, onWikiLinkLatest)
+                            handleMarkdownLink(
+                                context = context,
+                                url = link,
+                                pageId = pageIdLatest,
+                                onWikiLink = onWikiLinkLatest,
+                                onAttachmentLink = onAttachmentLinkLatest,
+                            )
                         }
                     }
                 },
@@ -212,12 +246,20 @@ fun MarkdownView(
  * URLs untouched; **drops** `data:`, `file://`, and other schemes by
  * resolving them as relative (S-8). Image references inside fenced code
  * blocks or inline code spans are left alone (B-4).
+ *
+ * A ref that already names an attachment directory
+ * (`![x](.attachments.12/x.png)` — the shape Nextcloud Text writes) is
+ * resolved against the *page* directory instead of [imageBaseUrl], which
+ * already ends in `.attachments.<pageId>/`. Without that split the segment
+ * would be doubled up (`…/.attachments.12/.attachments.12/x.png`) and the
+ * image would 404.
  */
 internal fun absolutizeImageRefs(
     markdown: String,
     imageBaseUrl: String,
 ): String {
     val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
+    val pageDirBase = pageDirectoryUrlFrom(base)
     return IMAGE_REF_PATTERN.replace(markdown) { match ->
         val image = match.groups["image"]
         if (image == null) {
@@ -227,10 +269,18 @@ internal fun absolutizeImageRefs(
         val alt = match.groups["alt"]?.value.orEmpty()
         val target = match.groups["target"]?.value.orEmpty()
         val trailing = match.groups["trailing"]?.value.orEmpty()
+        val namesAttachmentDir = target
+            .split('/')
+            .any { isAttachmentDirSegment(it) }
         val resolved = when {
             target.startsWith("http://", ignoreCase = true) ||
                 target.startsWith("https://", ignoreCase = true) ||
                 target.startsWith('/') -> target
+            // Already directory-qualified — join against the page's own
+            // directory. Falls back to `base` if the attachments URL
+            // wasn't the expected shape, i.e. never worse than before.
+            namesAttachmentDir && pageDirBase != null ->
+                pageDirBase + target.removePrefix("./")
             // `data:`, `file://`, custom schemes — treat as relative so
             // they go through the authenticated OkHttp scheme handler,
             // which only knows about http(s) and will fail loudly.

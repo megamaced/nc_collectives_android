@@ -211,6 +211,9 @@ internal fun PageEditWebScreen(
                         url = (state as? PageEditWebUiState.Loaded)?.url
                             ?: (state as PageEditWebUiState.Interactive).url,
                         isInteractive = state is PageEditWebUiState.Interactive,
+                        // Only the Loaded arm can carry the flag; by the time
+                        // we reach Interactive the load has already happened.
+                        clearCacheFirst = (state as? PageEditWebUiState.Loaded)?.clearCacheFirst == true,
                         isDarkTheme = isDarkTheme,
                         onLoaded = viewModel::onEditorReady,
                         onCloseFromJs = viewModel::onClose,
@@ -242,6 +245,7 @@ internal fun PageEditWebScreen(
 private fun EditorWebView(
     url: String,
     isInteractive: Boolean,
+    clearCacheFirst: Boolean,
     isDarkTheme: Boolean,
     onLoaded: () -> Unit,
     onCloseFromJs: () -> Unit,
@@ -313,7 +317,22 @@ private fun EditorWebView(
                 WebView(ctx).apply {
                     settings.apply {
                         javaScriptEnabled = true
+                        // Load-bearing beyond DOM storage: Text v34+ persists
+                        // the Yjs document in the WebView's **IndexedDB**
+                        // (`useIndexedDbProvider.ts`, PR #7621) so unsaved
+                        // edits survive a connectivity drop mid-session.
+                        // Turning this off would silently take that away.
                         domStorageEnabled = true
+                        // `cacheMode` is deliberately left at LOAD_DEFAULT.
+                        // LOAD_CACHE_ELSE_NETWORK would serve Text's JS/CSS
+                        // from cache more aggressively, but it applies to
+                        // *every* subresource including the editor's XHR
+                        // sync calls — answering one of those from a stale
+                        // cache entry would corrupt the editing session.
+                        // Asset caching is handled the safe way instead: the
+                        // default HTTP cache keeps them, and
+                        // `ServerVersionTracker` drops the cache when the
+                        // server version changes (see `clearCacheFirst`).
                         userAgentString = "Mozilla/5.0 (Android) NCCollectives/${BuildConfig.VERSION_NAME} (Mobile)"
                         @Suppress("DEPRECATION")
                         allowFileAccess = false
@@ -358,6 +377,17 @@ private fun EditorWebView(
                             )
                         },
                     )
+                    if (clearCacheFirst) {
+                        // Server upgraded since we last opened the editor, so
+                        // any Text asset we're holding may be from the
+                        // previous version. `clearCache` drops the HTTP cache
+                        // only — IndexedDB (and with it Text's offline
+                        // document state) is untouched, which is exactly the
+                        // split we want. `clearBrowserData`-style wipes
+                        // would throw away unsaved edits.
+                        Timber.tag(TAG).d("Clearing WebView HTTP cache after server version change")
+                        clearCache(true)
+                    }
                     loadUrl(url)
                     onWebViewCreated(this)
                 }

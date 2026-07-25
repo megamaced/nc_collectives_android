@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.ui.screen.page
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.megamaced.nccollectives.util.isImageFileName
 
 /**
  * Pure helpers that compute the next [TextFieldValue] for each toolbar
@@ -54,11 +55,17 @@ internal object MarkdownToolbarActions {
     }
 
     /**
-     * Inserts a markdown image reference for [fileName] at the cursor. The
-     * URL part is the bare filename — `MarkdownView` resolves it against
-     * the page's `.attachments.<pageId>/` directory at render time.
+     * Inserts a reference to the attachment [fileName] at the cursor. The
+     * URL part is the bare filename — `MarkdownView` resolves it against the
+     * page's `.attachments.<pageId>/` directory at render time.
+     *
+     * Images get embed syntax (`![…](…)`); anything else gets a plain link,
+     * because an embed pointing at a PDF renders as a blank slot where
+     * Markwon failed to decode it as a bitmap. `MarkdownView` demotes such
+     * embeds on the render path too (`demoteNonImageEmbeds`) — this just
+     * avoids writing one in the first place.
      */
-    fun insertImage(
+    fun insertAttachment(
         value: TextFieldValue,
         fileName: String,
     ): TextFieldValue {
@@ -66,7 +73,11 @@ internal object MarkdownToolbarActions {
         val sel = value.selection
         val before = text.substring(0, sel.min)
         val after = text.substring(sel.max)
-        val snippet = "![$fileName]($fileName)"
+        val snippet = if (isImageFileName(fileName)) {
+            "![$fileName]($fileName)"
+        } else {
+            "[$fileName]($fileName)"
+        }
         val newText = before + snippet + after
         return value.copy(text = newText, selection = TextRange(sel.min + snippet.length))
     }

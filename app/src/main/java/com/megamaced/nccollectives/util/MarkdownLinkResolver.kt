@@ -8,19 +8,30 @@ import java.net.URLDecoder
 
 /**
  * Decides what to do when the user taps a link inside a rendered markdown
- * page. External `http(s)` links open in Chrome Custom Tabs; everything
- * else is forwarded to [onWikiLink] as a decoded page title so the caller
- * can resolve it against the cached page-title index and navigate in-app.
+ * page. External `http(s)` links open in Chrome Custom Tabs. Scheme-less
+ * targets are split two ways:
+ *
+ *  - **attachments** (`report.pdf`, `.attachments.12/report.pdf`) go to
+ *    [onAttachmentLink], which downloads the file and hands it to another
+ *    app. See [parseAttachmentRef] for the classification rules.
+ *  - **everything else** is forwarded to [onWikiLink] as a decoded page
+ *    title so the caller can resolve it against the cached page-title index
+ *    and navigate in-app.
  *
  * Wikilinks reach this function as `[[Page Name]]` after [expandWikilinks]
  * rewrites them into `[Page Name](Page Name)`. Relative markdown references
  * like `[See](./Other%20Page)` also land here — leading `./`, trailing
  * `.md`, and URL-encoding are stripped before the callback fires.
+ *
+ * [pageId] is the page being rendered; it is what a bare-filename
+ * attachment target resolves against.
  */
 fun handleMarkdownLink(
     context: Context,
     url: String,
+    pageId: Long?,
     onWikiLink: (String) -> Unit,
+    onAttachmentLink: (AttachmentRef) -> Unit,
 ) {
     val uri = runCatching { Uri.parse(url) }.getOrNull()
     val scheme = uri?.scheme?.lowercase()
@@ -29,7 +40,14 @@ fun handleMarkdownLink(
             checkNotNull(uri)
             CustomTabsIntent.Builder().build().launchUrl(context, uri)
         }
-        null -> onWikiLink(decodeWikiTarget(url))
+        null -> {
+            val attachment = pageId?.let { parseAttachmentRef(url, it) }
+            if (attachment != null) {
+                onAttachmentLink(attachment)
+            } else {
+                onWikiLink(decodeWikiTarget(url))
+            }
+        }
         else -> Timber.d("Ignored markdown link with scheme=%s", scheme)
     }
 }

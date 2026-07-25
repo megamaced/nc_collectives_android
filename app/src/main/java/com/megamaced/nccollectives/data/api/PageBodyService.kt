@@ -114,6 +114,41 @@ class PageBodyService
         }
 
         /**
+         * Streams the file at `(collectivePath, filePath, fileName)` into
+         * [target], returning the `Content-Type` the server reported (which
+         * is more trustworthy than guessing from the extension). Used to
+         * stage a non-image attachment in the app cache before handing it to
+         * another app via `ACTION_VIEW`.
+         *
+         * Streamed rather than buffered: attachments are arbitrary user
+         * files, and a multi-MB PDF read into a `ByteArray` first would be a
+         * needless allocation spike on the exact devices least able to
+         * absorb one. Partial writes are cleaned up by the caller.
+         */
+        suspend fun downloadTo(
+            collectivePath: String,
+            filePath: String,
+            fileName: String,
+            target: java.io.File,
+        ): ApiResult<String?> {
+            val request = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .get()
+                .build()
+            return webDavCall(request) { response ->
+                response.body.byteStream().use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                response
+                    .header("Content-Type")
+                    ?.substringBefore(';')
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            }
+        }
+
+        /**
          * R-20: shared WebDAV call boilerplate. Dispatches the call on the
          * IO pool, maps response codes into [ApiResult] (200..299 + any
          * [extraSuccessCodes] → Success via [onSuccess]; 401 → Unauthorised;

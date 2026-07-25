@@ -47,14 +47,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
+import com.megamaced.nccollectives.util.AttachmentRef
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +72,7 @@ internal fun PageViewScreen(
     onBrowseTag: (collectiveId: Long, tagName: String) -> Unit,
     viewModel: PageViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val ui by viewModel.uiState.collectAsState()
     val page by viewModel.page.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
@@ -102,6 +106,26 @@ internal fun PageViewScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.dismissStatus()
         }
+    }
+
+    // Attachment staged and ready — fire the view intent, then tell the
+    // ViewModel it's been consumed (and whether anything could open it).
+    LaunchedEffect(ui.attachmentToOpen) {
+        val attachment = ui.attachmentToOpen ?: return@LaunchedEffect
+        val opened = openAttachmentExternally(context, attachment)
+        viewModel.acknowledgeAttachmentOpened(
+            failureMessage = if (opened) null else "No app installed that can open ${attachment.fileName}",
+        )
+    }
+
+    LaunchedEffect(ui.downloadingAttachment) {
+        val name = ui.downloadingAttachment ?: return@LaunchedEffect
+        // Indefinite: dismissed implicitly when the download finishes and
+        // this effect is cancelled on the state change.
+        snackbarHostState.showSnackbar(
+            message = "Downloading $name…",
+            duration = SnackbarDuration.Indefinite,
+        )
     }
 
     LaunchedEffect(ui.copiedPageId) {
@@ -266,6 +290,7 @@ internal fun PageViewScreen(
                     onDiscardDraft = viewModel::discardDraft,
                     onOpenPage = onOpenPage,
                     onWikiLink = { target -> viewModel.resolveWikilink(target, onOpenPage) },
+                    onAttachmentLink = viewModel::openAttachment,
                     onBrowseTag = { tagName -> onBrowseTag(currentPage.collectiveId, tagName) },
                 )
             }
@@ -359,6 +384,7 @@ private fun PageViewContent(
     onDiscardDraft: () -> Unit,
     onOpenPage: (Long) -> Unit,
     onWikiLink: (String) -> Unit,
+    onAttachmentLink: (AttachmentRef) -> Unit,
     onBrowseTag: (String) -> Unit,
 ) {
     Column(
@@ -428,7 +454,9 @@ private fun PageViewContent(
             MarkdownView(
                 markdown = body,
                 imageBaseUrl = imageBaseUrl,
+                pageId = page.id,
                 onWikiLink = onWikiLink,
+                onAttachmentLink = onAttachmentLink,
             )
         }
         BacklinkChipRow(pages = backlinks, onOpenPage = onOpenPage)

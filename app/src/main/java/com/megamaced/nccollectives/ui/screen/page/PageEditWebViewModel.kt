@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.page
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.data.ServerVersionTracker
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
@@ -29,6 +30,13 @@ sealed interface PageEditWebUiState {
 
     data class Loaded(
         val url: String,
+        /**
+         * True when the server version changed since the last session, so
+         * the WebView should drop its HTTP cache before loading. Carried on
+         * the state rather than as a separate flow so it can't race the
+         * `loadUrl` it has to precede.
+         */
+        val clearCacheFirst: Boolean = false,
     ) : PageEditWebUiState
 
     /** Loaded once but the JS bridge has reported `loaded()`. */
@@ -50,6 +58,7 @@ class PageEditWebViewModel
         savedStateHandle: SavedStateHandle,
         private val directEditingRepository: DirectEditingRepository,
         private val pageRepository: PageRepository,
+        private val serverVersionTracker: ServerVersionTracker,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageEditWeb.ARG_PAGE_ID),
@@ -78,9 +87,18 @@ class PageEditWebViewModel
                     _uiState.value = PageEditWebUiState.Failed("Page is no longer cached locally")
                     return@launch
                 }
+                // Probed here rather than on app launch: we're about to make
+                // a network round-trip anyway, and the answer only matters
+                // when the WebView is about to load Text's assets. Keeps the
+                // app's "no network calls the user didn't ask for" posture
+                // (v2.3.9, F-Droid) intact.
+                val staleAssets = serverVersionTracker.serverVersionChanged()
                 when (val result = directEditingRepository.openSession(page)) {
                     is ApiResult.Success ->
-                        _uiState.value = PageEditWebUiState.Loaded(result.data)
+                        _uiState.value = PageEditWebUiState.Loaded(
+                            url = result.data,
+                            clearCacheFirst = staleAssets,
+                        )
                     else ->
                         _uiState.value = PageEditWebUiState.Failed(
                             result.userMessage() ?: "Couldn't open the collaborative editor",

@@ -103,6 +103,15 @@ class MarkdownLinkResolverTest {
     }
 
     @Test
+    fun decodeWikiTarget_attachmentPathIsLeftIntact() {
+        // Attachment targets never reach decodeWikiTarget any more —
+        // handleMarkdownLink routes them to parseAttachmentRef first. Pinned
+        // so the old behaviour (turning a file path into a page "title" that
+        // could never resolve) doesn't quietly come back.
+        assertEquals(".attachments.12/report.pdf", decodeWikiTarget(".attachments.12/report.pdf"))
+    }
+
+    @Test
     fun decodeWikiTarget_stripsMixedCaseMdSuffix() {
         // R-32: case-insensitive `.md` strip.
         assertEquals("Page", decodeWikiTarget("Page.Md"))
