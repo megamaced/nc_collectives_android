@@ -9,6 +9,8 @@ import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
+import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.util.ManualCheckResult
 import com.megamaced.nccollectives.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,8 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,6 +36,10 @@ data class SettingsUiState(
     val themeMode: ThemeMode,
     val syncCadence: SyncCadence,
     val editorPreference: EditorPreference,
+    /** Cached, non-trashed collectives offered as startup destinations. */
+    val collectives: List<Collective>,
+    /** Collective opened on launch, or null for the collective list. */
+    val defaultCollectiveId: Long?,
 )
 
 /**
@@ -68,9 +74,12 @@ class SettingsViewModel
         private val tokenStore: TokenStore,
         private val logoutHandler: LogoutHandler,
         private val updateChecker: UpdateChecker,
+        collectiveRepository: CollectiveRepository,
     ) : ViewModel() {
-        val uiState: StateFlow<SettingsUiState> = userPreferences.flow
-            .map { toState(it) }
+        val uiState: StateFlow<SettingsUiState> = combine(
+            userPreferences.flow,
+            collectiveRepository.observeCollectives(),
+        ) { prefs, collectives -> toState(prefs, collectives) }
             // `toState` reads `EncryptedSharedPreferences` on disk via
             // `tokenStore.getCredentials()`. Force it onto Dispatchers.IO
             // so the disk hit doesn't run on the Compose collector's
@@ -86,6 +95,8 @@ class SettingsViewModel
                     themeMode = ThemeMode.System,
                     syncCadence = SyncCadence.SixHourly,
                     editorPreference = EditorPreference.PreferPlain,
+                    collectives = emptyList(),
+                    defaultCollectiveId = null,
                 ),
             )
 
@@ -99,6 +110,11 @@ class SettingsViewModel
 
         fun setEditorPreference(preference: EditorPreference) {
             viewModelScope.launch { userPreferences.setEditorPreference(preference) }
+        }
+
+        /** Pass null to go back to landing on the collective list. */
+        fun setDefaultCollective(collectiveId: Long?) {
+            viewModelScope.launch { userPreferences.setDefaultCollectiveId(collectiveId) }
         }
 
         private val _updateCheck = MutableStateFlow<UpdateCheckUiState>(UpdateCheckUiState.Idle)
@@ -137,7 +153,10 @@ class SettingsViewModel
             logoutHandler.signOut()
         }
 
-        private fun toState(prefs: UserPrefs): SettingsUiState {
+        private fun toState(
+            prefs: UserPrefs,
+            collectives: List<Collective>,
+        ): SettingsUiState {
             val credentials = tokenStore.getCredentials()
             return SettingsUiState(
                 account = credentials?.let {
@@ -146,6 +165,13 @@ class SettingsViewModel
                 themeMode = prefs.themeMode,
                 syncCadence = prefs.syncCadence,
                 editorPreference = prefs.editorPreference,
+                collectives = collectives,
+                // Don't surface a selection the list can't show — a default
+                // whose collective has been trashed reads as "Collective
+                // list" here, matching what the launch path will actually do
+                // once `resolveStartupCollective` clears the stale id.
+                defaultCollectiveId = prefs.defaultCollectiveId
+                    ?.takeIf { id -> collectives.any { it.id == id } },
             )
         }
 

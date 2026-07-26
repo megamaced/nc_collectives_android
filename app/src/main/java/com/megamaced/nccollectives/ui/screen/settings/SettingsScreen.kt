@@ -56,6 +56,7 @@ import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.ThemeMode
+import com.megamaced.nccollectives.domain.model.Collective
 
 private const val SOURCE_URL = "https://github.com/megamaced/nc_collectives_android"
 private const val LICENCE_URL = "https://www.gnu.org/licenses/agpl-3.0.html"
@@ -147,6 +148,21 @@ internal fun SettingsScreen(
             ThemeModeOptions(
                 selected = ui.themeMode,
                 onSelect = viewModel::setThemeMode,
+            )
+
+            HorizontalDivider()
+
+            SectionHeader("Startup")
+            Text(
+                "Open a collective straight away instead of the collective list. " +
+                    "Back from the collective still returns to the list.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DefaultCollectiveOptions(
+                collectives = ui.collectives,
+                selectedId = ui.defaultCollectiveId,
+                onSelect = viewModel::setDefaultCollective,
             )
 
             HorizontalDivider()
@@ -300,6 +316,44 @@ private fun EditorPreferenceOptions(
                 },
                 selected = selected == preference,
                 onClick = { onSelect(preference) },
+            )
+        }
+    }
+}
+
+/**
+ * Startup-destination picker: "Collective list" plus one row per cached
+ * collective. Radio rows rather than a dropdown to match the rest of this
+ * screen; the enclosing Column already scrolls, so a long list is fine.
+ */
+@Composable
+private fun DefaultCollectiveOptions(
+    collectives: List<Collective>,
+    selectedId: Long?,
+    onSelect: (Long?) -> Unit,
+) {
+    Column {
+        RadioRow(
+            label = "Collective list (default)",
+            selected = selectedId == null,
+            onClick = { onSelect(null) },
+        )
+        collectives.forEach { collective ->
+            RadioRow(
+                label = listOfNotNull(
+                    collective.emoji?.takeIf { it.isNotBlank() },
+                    collective.name,
+                ).joinToString(" "),
+                selected = selectedId == collective.id,
+                onClick = { onSelect(collective.id) },
+            )
+        }
+        if (collectives.isEmpty()) {
+            Text(
+                "No collectives cached yet — open the collective list once and they'll appear here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }

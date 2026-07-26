@@ -1,0 +1,1 @@
+New Settings option: Startup. Pick a collective to open straight away when the app launches, instead of always landing on the collective list. Back from that collective still returns to the list, so you can switch whenever you want. If the collective you chose is later deleted, the app quietly falls back to the list and forgets the setting.

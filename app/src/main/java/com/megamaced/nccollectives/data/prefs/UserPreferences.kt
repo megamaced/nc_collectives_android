@@ -67,6 +67,13 @@ data class UserPrefs(
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
+    /**
+     * Collective to open straight into on launch, or null to land on the
+     * collective list (the default). Resolved once per app launch by
+     * `AuthGateViewModel.resolveStartupCollective`, which drops a stale id
+     * if the collective is gone.
+     */
+    val defaultCollectiveId: Long? = null,
 )
 
 /**
@@ -99,6 +106,21 @@ class UserPreferences
 
         suspend fun setEditorPreference(preference: EditorPreference) {
             context.dataStore.edit { it[KEY_EDITOR_PREFERENCE] = preference.name }
+        }
+
+        /**
+         * Set (or clear, with null) the collective the app opens on launch.
+         * Absence of the key — not a sentinel id — means "no default", so a
+         * collective can never be confused with "off".
+         */
+        suspend fun setDefaultCollectiveId(collectiveId: Long?) {
+            context.dataStore.edit { prefs ->
+                if (collectiveId == null) {
+                    prefs.remove(KEY_DEFAULT_COLLECTIVE_ID)
+                } else {
+                    prefs[KEY_DEFAULT_COLLECTIVE_ID] = collectiveId
+                }
+            }
         }
 
         suspend fun pushRecentSearch(term: String) {
@@ -171,6 +193,7 @@ class UserPreferences
                 syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
+                defaultCollectiveId = this[KEY_DEFAULT_COLLECTIVE_ID],
             )
         }
 
@@ -181,6 +204,7 @@ class UserPreferences
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
+            val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
             val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
             val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
