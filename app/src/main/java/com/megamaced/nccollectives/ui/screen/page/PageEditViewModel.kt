@@ -54,20 +54,32 @@ class PageEditViewModel
                 // when the body arrived.
                 _uiState.update { it.copy(isLoadingBody = true) }
                 val page = repository.getPage(pageId)
-                val needsFetch = page != null && page.bodyMd == null
-                val fetched = if (needsFetch) repository.fetchBody(pageId) else null
+                // B-58: revalidate rather than fetching only when the body is
+                // missing. Editing a stale body is worse than viewing one —
+                // the save carries the stale etag, the server rejects it on
+                // `If-Match`, and the user's work lands in a conflict draft
+                // they then have to resolve by hand. Cheap: an unchanged page
+                // is a 304.
+                val refreshed = if (page == null) null else repository.refreshBodyIfChanged(pageId)
+                val current = if (refreshed is ApiResult.Success && refreshed.data) {
+                    // Body moved on — re-read the row rather than editing the
+                    // copy we loaded a moment ago.
+                    repository.getPage(pageId)
+                } else {
+                    page
+                }
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
                 _uiState.update {
                     it.copy(
-                        title = page?.title.orEmpty(),
-                        initialBody = when {
-                            page == null -> null
-                            fetched is ApiResult.Success -> fetched.data
-                            else -> page.bodyMd
-                        },
+                        title = current?.title.orEmpty(),
+                        initialBody = current?.bodyMd,
                         isLoadingBody = false,
-                        saveError = fetched
-                            ?.takeIf { it !is ApiResult.Success<*> }
+                        // Only complain when there's nothing to edit. A failed
+                        // revalidation over a cached body is the offline case,
+                        // and the editor still works there — the save path
+                        // queues the edit for `EditFlushWorker`.
+                        saveError = refreshed
+                            ?.takeIf { it !is ApiResult.Success<*> && current?.bodyMd == null }
                             ?.userMessage(),
                     )
                 }

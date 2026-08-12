@@ -210,6 +210,17 @@ internal fun PageViewScreen(
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false },
                             ) {
+                                // The page already revalidates on open; this is
+                                // for the case where it changed while you were
+                                // looking at it, and for an answer you can see
+                                // ("Page updated" / "Already up to date").
+                                DropdownMenuItem(
+                                    text = { Text("Refresh") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.refreshBody()
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Attachments…") },
                                     onClick = {

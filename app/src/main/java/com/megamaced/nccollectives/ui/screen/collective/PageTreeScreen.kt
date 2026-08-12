@@ -2,7 +2,6 @@ package com.megamaced.nccollectives.ui.screen.collective
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
@@ -100,6 +101,13 @@ internal fun PageTreeScreen(
     // landing-card snippet can show a preview without the user opening it.
     LaunchedEffect(ui.landingPage?.id) {
         viewModel.primeLandingBody()
+    }
+
+    // Coming back from a page reuses this ViewModel — re-check the tree so
+    // pages added, renamed or removed elsewhere show up (B-58).
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshIfStale()
+        onPauseOrDispose { }
     }
 
     val isCompactWidth = LocalConfiguration.current.screenWidthDp < 600
@@ -142,7 +150,11 @@ internal fun PageTreeScreen(
             SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data) }
         },
     ) { scaffoldPadding ->
-        Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = ui.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
+        ) {
             when {
                 ui.isRefreshing && nodes.isEmpty() && ui.landingPage == null -> LoadingState()
                 ui.errorMessage != null && nodes.isEmpty() && ui.landingPage == null ->

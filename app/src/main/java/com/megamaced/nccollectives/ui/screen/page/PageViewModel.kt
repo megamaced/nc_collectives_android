@@ -136,21 +136,49 @@ class PageViewModel
 
         init {
             viewModelScope.launch {
-                val cached = pageRepository.getPage(pageId)
-                if (cached != null && cached.bodyMd == null) refreshBody()
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
             }
+            // B-58: revalidate on every open, not just when the body is
+            // missing. The old `if (cached.bodyMd == null)` gate meant a body
+            // was fetched exactly once and then never again — nothing else in
+            // the app re-fetches page markdown, so a page edited anywhere else
+            // stayed frozen at whatever this device first saw. The conditional
+            // request makes the no-change case a 304.
+            refreshBody(userInitiated = false)
         }
 
-        fun refreshBody() {
+        /**
+         * Pull the current body from the server, updating the cache if it has
+         * changed.
+         *
+         * [userInitiated] separates "the user asked" from "we're checking
+         * because the page just opened". An automatic check that fails while
+         * a cached body is already on screen stays silent: offline is the
+         * normal state for this app, and a network snackbar on every page
+         * open would be noise, not information. A user-initiated refresh
+         * always reports — including "Already up to date", which is the
+         * answer they were actually asking for.
+         */
+        fun refreshBody(userInitiated: Boolean = true) {
             if (_uiState.value.isLoadingBody) return
             _uiState.update { it.copy(isLoadingBody = true, errorMessage = null) }
             viewModelScope.launch {
-                val result = pageRepository.fetchBody(pageId)
+                val hadCachedBody = pageRepository.getPage(pageId)?.bodyMd != null
+                val result = pageRepository.refreshBodyIfChanged(pageId)
                 _uiState.update { state ->
                     state.copy(
                         isLoadingBody = false,
-                        errorMessage = if (result is ApiResult.Success) null else result.userMessage(),
+                        errorMessage = when {
+                            result is ApiResult.Success -> null
+                            userInitiated || !hadCachedBody -> result.userMessage()
+                            else -> null
+                        },
+                        statusMessage = when {
+                            !userInitiated -> state.statusMessage
+                            result !is ApiResult.Success -> state.statusMessage
+                            result.data -> "Page updated"
+                            else -> "Already up to date"
+                        },
                     )
                 }
             }

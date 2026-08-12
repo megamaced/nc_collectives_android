@@ -6,11 +6,14 @@ import com.megamaced.nccollectives.data.auth.LogoutHandler
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
+import com.megamaced.nccollectives.data.prefs.SyncStatus
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.sync.FullSync
+import com.megamaced.nccollectives.sync.SyncOutcome
 import com.megamaced.nccollectives.util.ManualCheckResult
 import com.megamaced.nccollectives.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -66,6 +69,24 @@ sealed interface UpdateCheckUiState {
     ) : UpdateCheckUiState
 }
 
+/**
+ * State for the manual "Sync now" affordance. Same shape and rationale as
+ * [UpdateCheckUiState]: a separate flow so the row can show a spinner and
+ * report an outcome without entangling it with the observation-driven
+ * preferences state.
+ */
+sealed interface ManualSyncUiState {
+    data object Idle : ManualSyncUiState
+
+    data object Syncing : ManualSyncUiState
+
+    data object Done : ManualSyncUiState
+
+    data class Failed(
+        val message: String,
+    ) : ManualSyncUiState
+}
+
 @HiltViewModel
 class SettingsViewModel
     @Inject
@@ -74,8 +95,19 @@ class SettingsViewModel
         private val tokenStore: TokenStore,
         private val logoutHandler: LogoutHandler,
         private val updateChecker: UpdateChecker,
+        private val fullSync: FullSync,
         collectiveRepository: CollectiveRepository,
     ) : ViewModel() {
+        /**
+         * Last-sync state, observed rather than snapshotted so a background
+         * `SyncWorker` run updates the line while Settings is open.
+         */
+        val syncStatus: StateFlow<SyncStatus> = userPreferences.syncStatus.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = SyncStatus(),
+        )
+
         val uiState: StateFlow<SettingsUiState> = combine(
             userPreferences.flow,
             collectiveRepository.observeCollectives(),
@@ -146,6 +178,40 @@ class SettingsViewModel
         fun dismissUpdateCheck() {
             _updateCheck.update { current ->
                 if (current is UpdateCheckUiState.Checking) current else UpdateCheckUiState.Idle
+            }
+        }
+
+        private val _manualSync = MutableStateFlow<ManualSyncUiState>(ManualSyncUiState.Idle)
+        val manualSync: StateFlow<ManualSyncUiState> = _manualSync.asStateFlow()
+
+        /**
+         * Explicit "Sync now". Runs [FullSync] inline rather than enqueuing a
+         * `SyncWorker` so the user gets a result they can see: WorkManager
+         * would return immediately and leave them watching an unchanged
+         * screen, which is the complaint this whole batch exists to answer.
+         *
+         * A [SyncOutcome.Retryable] is reported as a plain failure here —
+         * there's no background retry attached to a button press, and telling
+         * someone "we'll try again later" when they explicitly asked now is
+         * worse than telling them it didn't work.
+         */
+        fun syncNow() {
+            if (_manualSync.value is ManualSyncUiState.Syncing) return
+            _manualSync.value = ManualSyncUiState.Syncing
+            viewModelScope.launch {
+                _manualSync.value = when (val outcome = fullSync.run()) {
+                    SyncOutcome.Success -> ManualSyncUiState.Done
+                    SyncOutcome.Unauthorised -> ManualSyncUiState.Failed("Session expired — please log in again.")
+                    is SyncOutcome.Retryable -> ManualSyncUiState.Failed(outcome.message)
+                    is SyncOutcome.Failed -> ManualSyncUiState.Failed(outcome.message)
+                }
+            }
+        }
+
+        /** Mirrors [dismissUpdateCheck] — clears a consumed terminal state. */
+        fun dismissManualSync() {
+            _manualSync.update { current ->
+                if (current is ManualSyncUiState.Syncing) current else ManualSyncUiState.Idle
             }
         }
 

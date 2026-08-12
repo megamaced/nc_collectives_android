@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
@@ -78,6 +80,14 @@ internal fun CollectiveListScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.dismissStatus()
         }
+    }
+
+    // Re-check the server whenever this screen comes back to the front —
+    // returning from a collective reuses the ViewModel, so nothing else
+    // would (B-58). Throttled in the ViewModel.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshIfStale()
+        onPauseOrDispose { }
     }
 
     // Auto-dismiss the create sheet + navigate into the new collective.
@@ -124,7 +134,11 @@ internal fun CollectiveListScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) { Snackbar(snackbarData = it) } },
     ) { scaffoldPadding ->
-        Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = ui.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
+        ) {
             when {
                 ui.isRefreshing && collectives.isEmpty() -> LoadingState()
                 ui.errorMessage != null && collectives.isEmpty() ->

@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -59,12 +60,24 @@ class SyncScheduler
             }
         }
 
-        /** Fires a one-shot metadata sync, e.g. on app foreground. */
+        /**
+         * Fires a one-shot metadata sync, e.g. on app foreground.
+         *
+         * B-57: `REPLACE`, not `KEEP`. Under `KEEP` an earlier run still
+         * holding the unique name — parked in retry backoff, or wedged
+         * against a server that accepts the connection and then stalls —
+         * swallowed every subsequent request, so foreground sync silently
+         * stopped happening. Superseding is the right call for a sync: the
+         * newer request does strictly the same work with fresher intent, and
+         * `SyncWorker` is idempotent, so cancelling a run mid-flight costs
+         * nothing but the wasted request.
+         */
         fun syncNow() {
             val oneShot = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(connectedConstraints)
+                .setInputData(workDataOf(SyncWorker.KEY_ONE_SHOT to true))
                 .build()
-            workManager.enqueueUniqueWork(ONE_SHOT_SYNC, ExistingWorkPolicy.KEEP, oneShot)
+            workManager.enqueueUniqueWork(ONE_SHOT_SYNC, ExistingWorkPolicy.REPLACE, oneShot)
         }
 
         /** Schedules a one-shot edit-queue flush; runs as soon as the network is up. */

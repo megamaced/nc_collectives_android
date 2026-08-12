@@ -20,6 +20,21 @@ data class PageBody(
 )
 
 /**
+ * Outcome of a conditional body fetch ([PageBodyService.fetchBodyIfChanged]).
+ *
+ * [NotModified] is the common case on a revalidation — the server answered
+ * `304` and sent no body, which is what makes "check for changes every time
+ * a page is opened" affordable on mobile data.
+ */
+sealed interface ConditionalBody {
+    data object NotModified : ConditionalBody
+
+    data class Modified(
+        val body: PageBody,
+    ) : ConditionalBody
+}
+
+/**
  * Fetches and saves a page's markdown body over WebDAV. The Collectives REST
  * API only returns metadata — the markdown itself lives as a plain file in
  * the user's Files area under `{collectivePath}/{filePath}/{fileName}` and
@@ -51,6 +66,43 @@ class PageBodyService
                     markdown = response.body?.string().orEmpty(),
                     etag = normaliseEtag(response.header("ETag")),
                 )
+            }
+        }
+
+        /**
+         * Revalidating variant of [fetchBody]. Sends [knownEtag] as
+         * `If-None-Match`, so an unchanged page costs a bare `304` with no
+         * body rather than a full re-download (B-58).
+         *
+         * The quoting mirrors [saveBody]'s `If-Match`: [normaliseEtag]
+         * stripped the quotes and any weak-validator prefix on the way in,
+         * so they go back on here. A server that answers a normalised strong
+         * form with `W/"…"` still matches — RFC 7232 mandates the *weak*
+         * comparison function for `If-None-Match`, which ignores the prefix.
+         */
+        suspend fun fetchBodyIfChanged(
+            collectivePath: String,
+            filePath: String,
+            fileName: String,
+            knownEtag: String,
+        ): ApiResult<ConditionalBody> {
+            val request = Request
+                .Builder()
+                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .header("If-None-Match", "\"$knownEtag\"")
+                .get()
+                .build()
+            return webDavCall(request, extraSuccessCodes = setOf(304)) { response ->
+                if (response.code == 304) {
+                    ConditionalBody.NotModified
+                } else {
+                    ConditionalBody.Modified(
+                        PageBody(
+                            markdown = response.body?.string().orEmpty(),
+                            etag = normaliseEtag(response.header("ETag")),
+                        ),
+                    )
+                }
             }
         }
 

@@ -35,7 +35,8 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 - Backlinks: collapsible "linked from" row under every page that shows which other pages reference it
 - Wikilink support: `[[Page Name]]` and relative `.md` links resolve in-app
 - Light, Dark, or System theme; Material 3 styling
-- Configurable background sync cadence (Off, 1h, 6h, 12h, daily)
+- Configurable background sync cadence (Off, 1h, 6h, 12h, daily), plus pull-to-refresh on the collective and page lists and a "Sync now" button in Settings that reports when sync last succeeded or why it failed
+- Pages revalidate their content against the server on open (`If-None-Match`, so an unchanged page costs a 304), which is what keeps edits made elsewhere from staying invisible
 - Adaptive launcher icon with a monochrome layer for Android 13+ themed icons
 - Splash screen via `androidx.core:core-splashscreen`
 - In-app update check: on startup, polls the GitHub Releases API at most once per 24 hours and posts a notification when a newer version is published. Tapping the notification opens the release page in your browser. Distribution is sideload-only, so this is how you hear about updates.

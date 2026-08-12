@@ -5,6 +5,7 @@ import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
+import com.megamaced.nccollectives.data.api.ConditionalBody
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.mapSuccess
@@ -131,6 +132,49 @@ class PageRepositoryImpl
                     pageDao.updateBody(pageId, result.data.markdown, result.data.etag, System.currentTimeMillis())
                     ApiResult.Success(result.data.markdown)
                 }
+                is ApiResult.NetworkError -> result
+                is ApiResult.HttpError -> result
+                ApiResult.Unauthorised -> ApiResult.Unauthorised
+                ApiResult.Conflict -> ApiResult.Conflict
+                is ApiResult.Unexpected -> result
+            }
+        }
+
+        override suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean> {
+            val entity = pageDao.getById(pageId)
+                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+            val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag)
+            if (plan !is BodyFetchPlan.Revalidate) {
+                return fetchBody(pageId).mapSuccess { true }
+            }
+            val result = bodyService.fetchBodyIfChanged(
+                collectivePath = entity.collectivePath,
+                filePath = entity.filePath,
+                fileName = entity.fileName,
+                knownEtag = plan.etag,
+            )
+            return when (result) {
+                is ApiResult.Success ->
+                    when (val body = result.data) {
+                        ConditionalBody.NotModified -> ApiResult.Success(false)
+                        is ConditionalBody.Modified -> {
+                            // Deliberately unconditional on the edit queue: a
+                            // queued offline edit lives in `edit_queue`, not on
+                            // the page row, and `EditFlushWorker` compares the
+                            // server etag against the entry's own `baseEtag`.
+                            // Advancing the row here therefore can't lose a
+                            // pending edit — and it stops the user editing text
+                            // the server has already replaced, which is how a
+                            // stale row turned every first save into a 412.
+                            pageDao.updateBody(
+                                pageId,
+                                body.body.markdown,
+                                body.body.etag,
+                                System.currentTimeMillis(),
+                            )
+                            ApiResult.Success(true)
+                        }
+                    }
                 is ApiResult.NetworkError -> result
                 is ApiResult.HttpError -> result
                 ApiResult.Unauthorised -> ApiResult.Unauthorised
@@ -652,4 +696,39 @@ class PageRepositoryImpl
             }
             return result.mapSuccess { }
         }
+    }
+
+/**
+ * What opening a page should do about its markdown body.
+ *
+ * Note what isn't here: a "leave it alone" arm. Before B-58 the page screen
+ * fetched a body only when it had none cached, which meant a page's content
+ * was pulled exactly once per install and then never checked again — nothing
+ * else in the app re-fetches markdown, so an edit made anywhere else was
+ * invisible forever. Every open now either revalidates or fetches.
+ */
+internal sealed interface BodyFetchPlan {
+    /** Nothing cached to validate against — ask for the whole body. */
+    data object FetchWhole : BodyFetchPlan
+
+    /** Ask the server whether [etag] is still current. */
+    data class Revalidate(
+        val etag: String,
+    ) : BodyFetchPlan
+}
+
+/**
+ * A cached body with no ETag can't be revalidated — the etag column only
+ * populates on a fetch, so a body without one predates that or came from a
+ * server that didn't send one. Fetch it whole and pick up an ETag for next
+ * time.
+ */
+internal fun bodyFetchPlan(
+    bodyMd: String?,
+    bodyEtag: String?,
+): BodyFetchPlan =
+    if (bodyMd != null && bodyEtag != null) {
+        BodyFetchPlan.Revalidate(bodyEtag)
+    } else {
+        BodyFetchPlan.FetchWhole
     }

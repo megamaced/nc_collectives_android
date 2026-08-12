@@ -86,6 +86,24 @@ data class UpdateCheckState(
     val lastNotifiedVersion: String?,
 )
 
+/**
+ * Outcome of the last full sync (`FullSync`). App state rather than a user
+ * preference, but it shares DataStore with [UpdateCheckState] for the same
+ * reasons: it's two scalars, it has to survive a restart, and sign-out
+ * clears it along with everything else.
+ *
+ * Exists so the Settings screen can answer the question the issue-5 reporter
+ * couldn't: is this cache stale because nothing changed, or because syncing
+ * has been failing?
+ */
+data class SyncStatus(
+    /** Epoch millis of the last clean sync, or 0 if there's never been one. */
+    val lastSuccessAt: Long = 0L,
+    /** Epoch millis of the last failed sync, or 0 if none since the last success. */
+    val lastFailureAt: Long = 0L,
+    val lastFailureMessage: String? = null,
+)
+
 private val Context.dataStore by preferencesDataStore(name = "user_prefs")
 
 @Singleton
@@ -95,6 +113,8 @@ class UserPreferences
         @ApplicationContext private val context: Context,
     ) {
         val flow: Flow<UserPrefs> = context.dataStore.data.map { it.toModel() }
+
+        val syncStatus: Flow<SyncStatus> = context.dataStore.data.map { it.toSyncStatus() }
 
         suspend fun setThemeMode(mode: ThemeMode) {
             context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
@@ -136,6 +156,30 @@ class UserPreferences
 
         suspend fun clearRecentSearches() {
             context.dataStore.edit { it.remove(KEY_RECENT_SEARCHES) }
+        }
+
+        /**
+         * Stamp a clean sync. Clears any recorded failure: the UI should say
+         * "synced 2 minutes ago", not keep showing an error the next sync
+         * already recovered from.
+         */
+        suspend fun recordSyncSuccess(epochMillis: Long) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_SYNC_LAST_SUCCESS_AT] = epochMillis
+                prefs.remove(KEY_SYNC_LAST_FAILURE_AT)
+                prefs.remove(KEY_SYNC_LAST_FAILURE_MESSAGE)
+            }
+        }
+
+        /** Stamp a failed sync, leaving the last-success time intact. */
+        suspend fun recordSyncFailure(
+            epochMillis: Long,
+            message: String,
+        ) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_SYNC_LAST_FAILURE_AT] = epochMillis
+                prefs[KEY_SYNC_LAST_FAILURE_MESSAGE] = message
+            }
         }
 
         /** Wipe everything — invoked by the sign-out flow before the auth state flips. */
@@ -197,6 +241,13 @@ class UserPreferences
             )
         }
 
+        private fun Preferences.toSyncStatus(): SyncStatus =
+            SyncStatus(
+                lastSuccessAt = this[KEY_SYNC_LAST_SUCCESS_AT] ?: 0L,
+                lastFailureAt = this[KEY_SYNC_LAST_FAILURE_AT] ?: 0L,
+                lastFailureMessage = this[KEY_SYNC_LAST_FAILURE_MESSAGE],
+            )
+
         private fun String?.toList(): List<String> = this?.split(SEP)?.filter { it.isNotEmpty() } ?: emptyList()
 
         private companion object {
@@ -208,6 +259,9 @@ class UserPreferences
             val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
             val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
+            val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
+            val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")
+            val KEY_SYNC_LAST_FAILURE_MESSAGE = stringPreferencesKey("sync_last_failure_message")
 
             const val MAX_RECENT_SEARCHES = 10
 

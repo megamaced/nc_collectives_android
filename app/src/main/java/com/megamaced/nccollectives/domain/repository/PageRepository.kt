@@ -27,6 +27,21 @@ interface PageRepository {
     suspend fun fetchBody(pageId: Long): ApiResult<String>
 
     /**
+     * Revalidates the cached body against the server and updates the cache
+     * if it has moved on. Returns whether the cached body actually changed.
+     *
+     * B-58: this is what page *content* freshness hangs off. The metadata
+     * refresh deliberately preserves the cached body (a page list carries no
+     * markdown), and `SyncWorker` doesn't pull bodies either — so without a
+     * revalidation on open, a body fetched once stayed frozen for the life of
+     * the install no matter what the server said.
+     *
+     * Falls back to an unconditional [fetchBody] when there's nothing cached
+     * to validate against; otherwise costs a `304` when nothing changed.
+     */
+    suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean>
+
+    /**
      * Tries to save [newBody] to the server now. On network failure the edit
      * is enqueued for `EditFlushWorker` to retry; on 412 the user's body is
      * stored as a draft on the page row and `Conflict` is returned.

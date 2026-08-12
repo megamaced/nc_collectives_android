@@ -10,6 +10,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -65,6 +66,12 @@ class PageTreeViewModel
         private val _uiState = MutableStateFlow(PageTreeUiState())
         val uiState: StateFlow<PageTreeUiState> = _uiState.asStateFlow()
 
+        /**
+         * When the last refresh started, seeded by the `init` refresh so the
+         * screen's first resume doesn't immediately repeat it.
+         */
+        private var lastRefreshAt = 0L
+
         val nodes: StateFlow<List<PageNode>> =
             combine(
                 pagesFlow,
@@ -115,8 +122,19 @@ class PageTreeViewModel
             viewModelScope.launch { pageRepository.fetchBody(landing.id) }
         }
 
+        /**
+         * B-58: see [CollectiveListViewModel.refreshIfStale]. Same problem,
+         * same fix — a page tree left on the backstack while the user reads a
+         * page never re-checked the server on the way back.
+         */
+        fun refreshIfStale() {
+            if (!shouldAutoRefresh(lastRefreshAt, System.currentTimeMillis())) return
+            refresh()
+        }
+
         fun refresh() {
             if (_uiState.value.isRefreshing) return
+            lastRefreshAt = System.currentTimeMillis()
             _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             viewModelScope.launch {
                 val result = pageRepository.refresh(collectiveId)

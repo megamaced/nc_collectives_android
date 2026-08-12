@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,12 +46,32 @@ class CollectiveListViewModel
         private val _uiState = MutableStateFlow(CollectiveListUiState())
         val uiState: StateFlow<CollectiveListUiState> = _uiState.asStateFlow()
 
+        /**
+         * When the last refresh *started*. Seeded by the `init` refresh so
+         * the first `LifecycleResumeEffect` — which fires immediately after
+         * the screen appears — doesn't turn every entry into two requests.
+         */
+        private var lastRefreshAt = 0L
+
         init {
+            refresh()
+        }
+
+        /**
+         * B-58: called from the screen's resume hook. Navigating back to a
+         * screen that's still on the nav backstack reuses this ViewModel, so
+         * `init` doesn't run again and nothing else re-checked the server —
+         * the list just sat there showing whatever it had when it was first
+         * created, which is what the issue-5 reporter kept hitting.
+         */
+        fun refreshIfStale() {
+            if (!shouldAutoRefresh(lastRefreshAt, System.currentTimeMillis())) return
             refresh()
         }
 
         fun refresh() {
             if (_uiState.value.isRefreshing) return
+            lastRefreshAt = System.currentTimeMillis()
             _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             viewModelScope.launch {
                 val result = repository.refresh()

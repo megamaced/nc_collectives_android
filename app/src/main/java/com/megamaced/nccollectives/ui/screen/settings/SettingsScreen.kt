@@ -55,8 +55,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
+import com.megamaced.nccollectives.data.prefs.SyncStatus
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.util.syncStatusLines
 
 private const val SOURCE_URL = "https://github.com/megamaced/nc_collectives_android"
 private const val LICENCE_URL = "https://www.gnu.org/licenses/agpl-3.0.html"
@@ -70,6 +72,8 @@ internal fun SettingsScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     val updateCheck by viewModel.updateCheck.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    val manualSync by viewModel.manualSync.collectAsState()
     val context = LocalContext.current
     var showSignOutConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -95,6 +99,23 @@ internal fun SettingsScreen(
                 viewModel.dismissUpdateCheck()
             }
             UpdateCheckUiState.Checking, UpdateCheckUiState.Idle -> Unit
+        }
+    }
+
+    // "Sync now" reports through the same snackbar. The status line above it
+    // updates on its own from DataStore, so success only needs an
+    // acknowledgement — the detail is already on screen.
+    LaunchedEffect(manualSync) {
+        when (val state = manualSync) {
+            ManualSyncUiState.Done -> {
+                snackbarHostState.showSnackbar("Sync complete")
+                viewModel.dismissManualSync()
+            }
+            is ManualSyncUiState.Failed -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.dismissManualSync()
+            }
+            ManualSyncUiState.Syncing, ManualSyncUiState.Idle -> Unit
         }
     }
 
@@ -169,13 +190,20 @@ internal fun SettingsScreen(
 
             SectionHeader("Sync")
             Text(
-                "How often the app refreshes pages and metadata in the background.",
+                "How often the app refreshes pages and metadata in the background. " +
+                    "Page lists also refresh when you pull down on them, and a page " +
+                    "checks for changes each time you open it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncCadenceOptions(
                 selected = ui.syncCadence,
                 onSelect = viewModel::setSyncCadence,
+            )
+            SyncStatusRow(
+                status = syncStatus,
+                state = manualSync,
+                onSyncNow = viewModel::syncNow,
             )
 
             HorizontalDivider()
@@ -395,6 +423,60 @@ private fun LinkRow(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
         )
+    }
+}
+
+/**
+ * When sync last worked, why it last didn't, and a button to do it now.
+ * The two status lines come from a pure formatter so the wording is
+ * pinned by tests rather than by reading this screen.
+ */
+@Composable
+private fun SyncStatusRow(
+    status: SyncStatus,
+    state: ManualSyncUiState,
+    onSyncNow: () -> Unit,
+) {
+    val syncing = state is ManualSyncUiState.Syncing
+    // Recomputed whenever the status changes or a sync finishes — enough to
+    // keep the line honest without a ticking clock in a settings screen.
+    val lines = remember(status, state) { syncStatusLines(status, System.currentTimeMillis()) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = lines.summary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        lines.error?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    enabled = !syncing,
+                    onClick = onSyncNow,
+                    role = Role.Button,
+                ).padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = if (syncing) "Syncing…" else "Sync now",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (syncing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
     }
 }
 

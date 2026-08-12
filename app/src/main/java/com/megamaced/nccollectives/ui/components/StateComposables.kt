@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +33,12 @@ fun EmptyState(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Scrollable despite always fitting: `Modifier.verticalScroll`
+            // is what hands unconsumed drag to an enclosing
+            // `PullToRefreshBox`. Without it the pull gesture is dead on
+            // exactly the screens where refreshing matters most — an empty
+            // list is the one you most want to retry (B-58).
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -55,6 +63,8 @@ fun ErrorState(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Same reason as EmptyState: keeps pull-to-refresh alive.
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
