@@ -15,9 +15,23 @@ Binaries:
   https://github.com/megamaced/nc_collectives_android/releases/download/v%v/app-release.apk
 
 Builds:
+  - versionName: 2.6.0
+    versionCode: 26
+    commit: 31238813a384008400d81d0cc6751ad78ee5a17c
+    subdir: app
+    gradle:
+      - yes
+
   - versionName: 2.6.1
     versionCode: 27
     commit: 2649b5bb7e80dbd4f68106677762d990a6637535
+    subdir: app
+    gradle:
+      - yes
+
+  - versionName: 2.7.0
+    versionCode: 28
+    commit: 90f6212b8c0d57e9acdac46364ca02cd164fe594
     subdir: app
     gradle:
       - yes
@@ -26,5 +40,5 @@ AllowedAPKSigningKeys: 65402e2578d91727d43c6849da20622d0fad160734c6272d887c16776
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 2.6.1
-CurrentVersionCode: 27
+CurrentVersion: 2.7.0
+CurrentVersionCode: 28
