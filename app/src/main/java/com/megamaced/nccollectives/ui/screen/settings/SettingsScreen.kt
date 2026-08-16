@@ -56,6 +56,7 @@ import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
+import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.util.syncStatusLines
@@ -169,6 +170,19 @@ internal fun SettingsScreen(
             ThemeModeOptions(
                 selected = ui.themeMode,
                 onSelect = viewModel::setThemeMode,
+            )
+
+            Text(
+                "Text size applies to page content and both editors. It multiplies " +
+                    "your device's font size setting rather than replacing it, so " +
+                    "if pages are still too small, raise it under Android " +
+                    "Settings → Display → Display size and text.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextScaleOptions(
+                selected = ui.textScale,
+                onSelect = viewModel::setTextScale,
             )
 
             HorizontalDivider()
@@ -305,6 +319,45 @@ private fun ThemeModeOptions(
                 onClick = { onSelect(mode) },
             )
         }
+    }
+}
+
+/**
+ * Body-text size picker, with a sample rendered at the selected size so
+ * the choice can be made without leaving the screen. The sample uses the
+ * same `bodyLarge`-times-multiplier arithmetic the page renderer and the
+ * native editor use, so what it shows is what a page will look like; the
+ * collaborative editor lands close but not pixel-identical — it's
+ * Nextcloud Text's stylesheet doing the drawing there.
+ */
+@Composable
+private fun TextScaleOptions(
+    selected: TextScale,
+    onSelect: (TextScale) -> Unit,
+) {
+    Column {
+        TextScale.entries.forEach { scale ->
+            RadioRow(
+                label = when (scale) {
+                    TextScale.Small -> "Small"
+                    TextScale.Default -> "Default"
+                    TextScale.Large -> "Large"
+                    TextScale.Larger -> "Larger"
+                },
+                selected = selected == scale,
+                onClick = { onSelect(scale) },
+            )
+        }
+        val bodyLarge = MaterialTheme.typography.bodyLarge
+        Text(
+            text = "Sample page text at this size.",
+            style = bodyLarge.copy(
+                fontSize = bodyLarge.fontSize * selected.multiplier,
+                lineHeight = bodyLarge.lineHeight * selected.multiplier,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 

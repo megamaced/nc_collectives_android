@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
+import com.megamaced.nccollectives.ui.theme.LocalTextScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +68,20 @@ internal fun PageEditScreen(
     val ui by viewModel.uiState.collectAsState()
     val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Same preference the rendered page and the collaborative editor
+    // read, so switching between edit, preview, and view doesn't change
+    // the size of the text under the cursor. `lineHeight` scales with it
+    // — leaving it fixed would crush the lines together at the larger
+    // steps, which is the other half of what issue #6 reported.
+    val textScale = LocalTextScale.current
+    val bodyStyle = MaterialTheme.typography.bodyLarge.let { style ->
+        style.copy(
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = style.fontSize * textScale,
+            lineHeight = style.lineHeight * textScale,
+        )
+    }
 
     var fieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var previewing by remember { mutableStateOf(false) }
@@ -193,9 +208,7 @@ internal fun PageEditScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(16.dp),
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                            ),
+                            textStyle = bodyStyle,
                             keyboardOptions = KeyboardOptions.Default,
                             keyboardActions = KeyboardActions.Default,
                         )

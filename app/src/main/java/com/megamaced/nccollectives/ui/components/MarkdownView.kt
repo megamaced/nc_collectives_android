@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import com.megamaced.nccollectives.util.AttachmentRef
 import com.megamaced.nccollectives.util.demoteNonImageEmbeds
 import com.megamaced.nccollectives.util.expandWikilinks
@@ -141,10 +142,15 @@ fun MarkdownView(
     val prismFunction = colorScheme.primary.toArgb()
     val prismOperator = colorScheme.onSurfaceVariant.toArgb()
 
-    val bodyTextSizeSp = MaterialTheme.typography.bodyLarge.fontSize
-        .takeIf { it.type == TextUnitType.Sp }
-        ?.value
-        ?: 16f
+    // Markwon sizes headings, code, and blockquotes as multipliers off the
+    // TextView's own text size, so scaling this one value scales the whole
+    // document proportionally.
+    val bodyTextSizeSp = (
+        MaterialTheme.typography.bodyLarge.fontSize
+            .takeIf { it.type == TextUnitType.Sp }
+            ?.value
+            ?: 16f
+    ) * LocalTextScale.current
 
     // R-25: every colour derives from `colorScheme`; a single ColorScheme
     // reference change (theme switch) is the only event that needs to
@@ -229,12 +235,22 @@ fun MarkdownView(
         factory = { ctx ->
             TextView(ctx).apply {
                 movementMethod = LinkMovementMethod.getInstance()
-                setTextColor(bodyColor)
-                textSize = bodyTextSizeSp
+                // Markwon leaves leading at the font's default, which
+                // reads as a dense wall of text on a phone (issue #6).
+                // Multiplier rather than `lineSpacingExtra` so the gap
+                // grows with the text size instead of shrinking away
+                // relative to it at the larger `TextScale` steps.
+                setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
             }
         },
         update = { tv ->
             tv.setTextColor(bodyColor)
+            // Set *before* `setMarkdown`: heading and code spans read the
+            // paint's text size when they scale themselves. `AndroidView`
+            // reuses the view across recompositions, so this has to live
+            // here and not in `factory`, or a text-size change wouldn't
+            // land until the view was rebuilt for some other reason.
+            tv.textSize = bodyTextSizeSp
             markwon.setMarkdown(tv, resolvedMarkdown)
         },
     )
@@ -299,6 +315,19 @@ private val IMAGE_REF_PATTERN = Regex(
         "|(?<code>`[^`\\n]+`)" +
         "|(?<image>!\\[(?<alt>[^\\]]*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
 )
+
+/**
+ * Leading for rendered page bodies, as a multiple of the font's own line
+ * height (≈1.2× the text size for the default family). 1.2 therefore puts
+ * a rendered page near the 1.5 line-height-to-size ratio M3 specifies for
+ * `bodyLarge`, i.e. level with every Compose `Text` in the app instead of
+ * at the tighter TextView default.
+ *
+ * Deliberately not tied to `TextScale`: "too small" and "too dense" are
+ * separate complaints in issue #6, and this one has a right answer that
+ * doesn't depend on the chosen size.
+ */
+private const val LINE_SPACING_MULTIPLIER = 1.2f
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)

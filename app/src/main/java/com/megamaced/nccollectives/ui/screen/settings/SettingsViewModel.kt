@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
+import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
@@ -37,6 +38,7 @@ data class AccountInfo(
 data class SettingsUiState(
     val account: AccountInfo?,
     val themeMode: ThemeMode,
+    val textScale: TextScale,
     val syncCadence: SyncCadence,
     val editorPreference: EditorPreference,
     /** Cached, non-trashed collectives offered as startup destinations. */
@@ -125,6 +127,7 @@ class SettingsViewModel
                 initialValue = SettingsUiState(
                     account = null,
                     themeMode = ThemeMode.System,
+                    textScale = TextScale.Default,
                     syncCadence = SyncCadence.SixHourly,
                     editorPreference = EditorPreference.PreferPlain,
                     collectives = emptyList(),
@@ -134,6 +137,10 @@ class SettingsViewModel
 
         fun setThemeMode(mode: ThemeMode) {
             viewModelScope.launch { userPreferences.setThemeMode(mode) }
+        }
+
+        fun setTextScale(scale: TextScale) {
+            viewModelScope.launch { userPreferences.setTextScale(scale) }
         }
 
         fun setSyncCadence(cadence: SyncCadence) {
@@ -229,6 +236,7 @@ class SettingsViewModel
                     AccountInfo(host = it.host, loginName = it.loginName)
                 },
                 themeMode = prefs.themeMode,
+                textScale = prefs.textScale,
                 syncCadence = prefs.syncCadence,
                 editorPreference = prefs.editorPreference,
                 collectives = collectives,

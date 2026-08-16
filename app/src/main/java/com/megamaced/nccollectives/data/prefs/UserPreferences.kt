@@ -16,6 +16,34 @@ import javax.inject.Singleton
 enum class ThemeMode { System, Light, Dark }
 
 /**
+ * Size of page body text, applied to the rendered page, the native
+ * editor, and the collaborative editor from one setting.
+ *
+ * [multiplier] scales the M3 `bodyLarge` size for everything Compose and
+ * Markwon draw, and drives the WebView's `textZoom` percentage for the
+ * Nextcloud Text editor — the two renderers have nothing else in common,
+ * so a single ratio is what keeps them roughly aligned.
+ *
+ * Multiplies the OS font-size setting rather than replacing it: Compose
+ * `sp` and the WebView's default text zoom already track it, so a user
+ * at 1.3 system + [Larger] here lands near 1.8. That compounding is why
+ * the top step stops at 1.4 — beyond it the Text editor's toolbar, which
+ * is laid out in px, starts to crowd the content.
+ *
+ * Chrome (top bars, lists, settings) is deliberately left alone: this
+ * answers "the page text is too small to read", not "the whole UI is too
+ * small", which is what the OS setting is for.
+ */
+enum class TextScale(
+    val multiplier: Float,
+) {
+    Small(0.85f),
+    Default(1.0f),
+    Large(1.2f),
+    Larger(1.4f),
+}
+
+/**
  * Routing preference for the edit-page action.
  *
  * - [PreferPlain]: always use the native Markwon editor. Default. Works
@@ -64,6 +92,7 @@ enum class SyncCadence(
 
 data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
+    val textScale: TextScale = TextScale.Default,
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
@@ -118,6 +147,10 @@ class UserPreferences
 
         suspend fun setThemeMode(mode: ThemeMode) {
             context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
+        }
+
+        suspend fun setTextScale(scale: TextScale) {
+            context.dataStore.edit { it[KEY_TEXT_SCALE] = scale.name }
         }
 
         suspend fun setSyncCadence(cadence: SyncCadence) {
@@ -216,6 +249,8 @@ class UserPreferences
         private fun Preferences.toModel(): UserPrefs {
             val mode = this[KEY_THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.System
+            val textScale = this[KEY_TEXT_SCALE]?.let { runCatching { TextScale.valueOf(it) }.getOrNull() }
+                ?: TextScale.Default
             val cadence = this[KEY_SYNC_CADENCE]?.let { runCatching { SyncCadence.valueOf(it) }.getOrNull() }
                 ?: SyncCadence.SixHourly
             val editorPreference = this[KEY_EDITOR_PREFERENCE]
@@ -234,6 +269,7 @@ class UserPreferences
                 ?: EditorPreference.PreferPlain
             return UserPrefs(
                 themeMode = mode,
+                textScale = textScale,
                 syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
@@ -252,6 +288,7 @@ class UserPreferences
 
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+            val KEY_TEXT_SCALE = stringPreferencesKey("text_scale")
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")

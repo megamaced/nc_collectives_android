@@ -35,6 +35,7 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 - Backlinks: collapsible "linked from" row under every page that shows which other pages reference it
 - Wikilink support: `[[Page Name]]` and relative `.md` links resolve in-app
 - Light, Dark, or System theme; Material 3 styling
+- Page text size (Small / Default / Large / Larger) under **Settings → Appearance**, applied to rendered pages, the native editor, and the collaborative editor from one setting. It multiplies your device's font-size setting rather than replacing it, so the two stack
 - Configurable background sync cadence (Off, 1h, 6h, 12h, daily), plus pull-to-refresh on the collective and page lists and a "Sync now" button in Settings that reports when sync last succeeded or why it failed
 - Pages revalidate their content against the server on open (`If-None-Match`, so an unchanged page costs a 304), which is what keeps edits made elsewhere from staying invisible
 - Adaptive launcher icon with a monochrome layer for Android 13+ themed icons

@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
         publishShareIfPresent(intent)
         setContent {
             val prefs by userPreferences.flow.collectAsState(initial = UserPrefs())
-            NcCollectivesTheme(themeMode = prefs.themeMode) {
+            NcCollectivesTheme(themeMode = prefs.themeMode, textScale = prefs.textScale) {
                 NcCollectivesScaffold()
             }
         }

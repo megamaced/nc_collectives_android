@@ -7,16 +7,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 
 @Composable
 fun NcCollectivesTheme(
     themeMode: ThemeMode = ThemeMode.System,
+    // Body-text size preference. Published through `LocalTextScale` for
+    // the page renderer and the two editors to read; the M3 typography
+    // itself is left alone so chrome keeps its own scale.
+    textScale: TextScale = TextScale.Default,
     // Material You on Android 12+; brand palette otherwise. Callers can
     // opt out via Settings (forces the brand scheme on all API levels).
     dynamicColor: Boolean = true,
@@ -53,6 +59,10 @@ fun NcCollectivesTheme(
         colorScheme = colorScheme,
         typography = NcCollectivesTypography,
         shapes = NcCollectivesShapes,
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(
+            LocalTextScale provides textScale.multiplier,
+            content = content,
+        )
+    }
 }

@@ -57,8 +57,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import kotlinx.coroutines.delay
 import timber.log.Timber
+import kotlin.math.roundToInt
 
 /**
  * Embedded Nextcloud Text editor backed by the Files `directediting` OCS
@@ -96,6 +98,11 @@ internal fun PageEditWebScreen(
     // diverge from the OS setting. Luminance < 0.5 is the standard
     // contrast-based dark/light split.
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // Text-size preference, translated into the WebView's own units. The
+    // app's typography can't reach inside the WebView — Text ships its
+    // own CSS — so `textZoom` is the only knob the two editors can share.
+    val textZoom = textZoomPercent(LocalTextScale.current)
 
     // Holds the WebView reference for back-press JS injection (30d).
     // Set from the AndroidView factory; read by the BackHandler.
@@ -215,6 +222,7 @@ internal fun PageEditWebScreen(
                         // we reach Interactive the load has already happened.
                         clearCacheFirst = (state as? PageEditWebUiState.Loaded)?.clearCacheFirst == true,
                         isDarkTheme = isDarkTheme,
+                        textZoom = textZoom,
                         onLoaded = viewModel::onEditorReady,
                         onCloseFromJs = viewModel::onClose,
                         onReloadFromJs = viewModel::onReloadRequested,
@@ -247,6 +255,7 @@ private fun EditorWebView(
     isInteractive: Boolean,
     clearCacheFirst: Boolean,
     isDarkTheme: Boolean,
+    textZoom: Int,
     onLoaded: () -> Unit,
     onCloseFromJs: () -> Unit,
     onReloadFromJs: () -> Unit,
@@ -334,6 +343,18 @@ private fun EditorWebView(
                         // `ServerVersionTracker` drops the cache when the
                         // server version changes (see `clearCacheFirst`).
                         userAgentString = "Mozilla/5.0 (Android) NCCollectives/${BuildConfig.VERSION_NAME} (Mobile)"
+                        // Text-size preference (issue #6). `textZoom`
+                        // rather than page zoom or a CSS `font-size`
+                        // override: it reflows text at the WebView's
+                        // width instead of making the user pan
+                        // sideways, and it doesn't fight Text's own
+                        // rem-based heading scale the way an injected
+                        // `.ProseMirror { font-size }` rule would.
+                        // Compounds with the OS font-size setting,
+                        // which WebView already folds into its default
+                        // — see `TextScale` for why the range stops
+                        // where it does.
+                        this.textZoom = textZoom
                         @Suppress("DEPRECATION")
                         allowFileAccess = false
                         useWideViewPort = true
@@ -392,6 +413,11 @@ private fun EditorWebView(
                     onWebViewCreated(this)
                 }
             },
+            // The WebView outlives the factory, and `textZoom` applies
+            // live without reloading the session, so re-apply it here
+            // rather than leaving the editor stuck at whatever the
+            // preference was when it opened.
+            update = { it.settings.textZoom = textZoom },
         )
     }
 }
@@ -631,6 +657,19 @@ internal fun shouldKeepInWebView(
     return targetScheme.equals("https", ignoreCase = true) &&
         targetHost.equals(allowedHost, ignoreCase = true)
 }
+
+/**
+ * Maps a [com.megamaced.nccollectives.data.prefs.TextScale] multiplier to
+ * the WebView's `textZoom` percentage. Extracted as a pure function so the
+ * clamp is unit-testable without a WebView.
+ *
+ * Clamped to 50–200: `textZoom` accepts anything, and a bad value is a
+ * silently unreadable editor rather than a crash. The app's own range
+ * (85–140) sits well inside that, so the clamp only ever catches a
+ * corrupted preference or a future step someone adds without reading
+ * [PageEditWebScreen]'s notes on Text's px-laid-out toolbar.
+ */
+internal fun textZoomPercent(scale: Float): Int = (scale * 100f).roundToInt().coerceIn(50, 200)
 
 /**
  * Routes a link the user tapped inside the editor out of the WebView.
