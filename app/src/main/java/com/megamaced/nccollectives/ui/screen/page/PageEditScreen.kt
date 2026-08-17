@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -140,7 +142,18 @@ internal fun PageEditScreen(
     }
 
     Scaffold(
-        modifier = Modifier.padding(innerPadding),
+        // The window is edge-to-edge (`enableEdgeToEdge()` in MainActivity),
+        // so the manifest's `adjustResize` never fires and the soft keyboard
+        // draws straight over the bottom of the text field. `imePadding`
+        // shrinks the editor viewport instead, which also gives Compose's
+        // cursor bring-into-view something to scroll against. `innerPadding`
+        // already carries the navigation-bar inset the IME inset also spans,
+        // so consume it first or the two stack into a dead strip above the
+        // keyboard.
+        modifier = Modifier
+            .padding(innerPadding)
+            .consumeWindowInsets(innerPadding)
+            .imePadding(),
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(

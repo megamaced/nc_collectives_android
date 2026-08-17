@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -315,7 +317,15 @@ private fun EditorWebView(
             // edge-to-edge window. Without this inset the WebView's
             // formatting toolbar slips behind the gesture indicator and
             // looks "squashed" against the bottom edge.
-            .windowInsetsPadding(WindowInsets.navigationBars),
+            //
+            // The IME inset joins it because an edge-to-edge window ignores
+            // the manifest's `adjustResize`: the WebView would keep its full
+            // height and Text's fixed-bottom toolbar would sit under the
+            // keyboard. Padding for it shrinks the WebView, and Text reflows
+            // the toolbar above the keyboard on its own. `union` takes the
+            // larger of the two rather than summing them — the IME inset
+            // already spans the navigation bar it covers.
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
     ) {
         if (!isInteractive) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

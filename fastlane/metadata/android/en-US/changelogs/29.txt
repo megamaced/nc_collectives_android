@@ -1,0 +1,1 @@
+The keyboard no longer covers the bottom of the editor. In the plain markdown editor the line you are typing stays above the keyboard instead of disappearing behind it, and in the collaborative editor the formatting buttons now sit above the keyboard rather than behind it. Both editors shrink to fit the keyboard as it opens and closes.
