@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.auth.TokenStore
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -41,19 +42,46 @@ class HostInterceptor
             }
 
             val original = chain.request()
-            val prefix = target.encodedPath.trimEnd('/')
-            val rewritten = original.url
-                .newBuilder()
-                .scheme(target.scheme)
-                .host(target.host)
-                .port(target.port)
-                .apply {
-                    if (prefix.isNotEmpty()) {
-                        // OkHttp's encodedPath setter expects a leading '/'.
-                        encodedPath(prefix + original.url.encodedPath)
-                    }
-                }.build()
+            return chain.proceed(original.newBuilder().url(retarget(original.url, target)).build())
+        }
 
-            return chain.proceed(original.newBuilder().url(rewritten).build())
+        internal companion object {
+            /**
+             * Point [original] at [target]'s scheme/host/port, splicing in
+             * [target]'s subdirectory prefix only when [original] doesn't
+             * already carry it.
+             *
+             * **B-60**: two kinds of URL reach this interceptor. Retrofit's
+             * are built on the `placeholder.invalid` base and carry a bare
+             * path (`/ocs/v2.php/...`), so the prefix has to be spliced in.
+             * The rest — WebDAV page bodies and the attachment URLs handed
+             * to Coil — are built from the stored host by
+             * [PageBodyService.resourceUrl] and already have it. Prefixing
+             * those a second time turned every body fetch on a
+             * `https://example.com/nextcloud` install into
+             * `/nextcloud/nextcloud/remote.php/dav/...`, so pages listed
+             * fine (OCS, correctly prefixed) but opening any one of them
+             * answered 404 (GH-8). The host is what tells the two apart: a
+             * URL already on the target host was built from the stored URL,
+             * prefix included.
+             */
+            fun retarget(
+                original: HttpUrl,
+                target: HttpUrl,
+            ): HttpUrl {
+                val prefix = target.encodedPath.trimEnd('/')
+                val alreadyOnTargetHost = original.host == target.host
+                return original
+                    .newBuilder()
+                    .scheme(target.scheme)
+                    .host(target.host)
+                    .port(target.port)
+                    .apply {
+                        if (prefix.isNotEmpty() && !alreadyOnTargetHost) {
+                            // OkHttp's encodedPath setter expects a leading '/'.
+                            encodedPath(prefix + original.encodedPath)
+                        }
+                    }.build()
+            }
         }
     }
