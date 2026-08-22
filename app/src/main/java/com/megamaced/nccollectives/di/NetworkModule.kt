@@ -28,7 +28,13 @@ object NetworkModule {
     // Retrofit needs a static base URL at construction time. HostInterceptor
     // rewrites scheme/host/port on every request to the user's Nextcloud
     // instance loaded from TokenStore.
-    private const val PLACEHOLDER_BASE_URL = "https://placeholder.invalid/"
+    //
+    // Built from `HostInterceptor.PLACEHOLDER_HOST` because that interceptor
+    // treats this host as the marker for "a URL Retrofit built from our own
+    // service interfaces" when it decides whether a request may carry
+    // credentials (S-23); a literal repeated here could drift out of step
+    // with it and quietly turn every API call into an unrecognised host.
+    private const val PLACEHOLDER_BASE_URL = "https://" + HostInterceptor.PLACEHOLDER_HOST + "/"
 
     @Provides
     @Singleton
@@ -58,6 +64,13 @@ object NetworkModule {
             // Keep TLS handshakes amortised across the rapid PROPFIND +
             // GET + ETag refresh sequence on a single page view (R-12).
             .connectionPool(ConnectionPool(maxIdleConnections = 5, keepAliveDuration = 5, TimeUnit.MINUTES))
+            // Order is load-bearing (S-23): `hostInterceptor` runs first
+            // because it is the one that decides whether a request's URL was
+            // built by this app at all, refuses it if not, and stamps the
+            // `RequestOrigin` tag that `authInterceptor` requires before it
+            // will attach Basic-auth. Registering them the other way round
+            // would hand credentials to a request before its provenance had
+            // been established.
             .addInterceptor(hostInterceptor)
             .addInterceptor(authInterceptor)
             .apply {

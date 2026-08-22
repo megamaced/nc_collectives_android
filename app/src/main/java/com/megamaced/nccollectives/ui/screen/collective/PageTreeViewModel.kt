@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -75,7 +76,14 @@ class PageTreeViewModel
         val nodes: StateFlow<List<PageNode>> =
             combine(
                 pagesFlow,
-                _uiState.map { it.expanded },
+                // R-43: `_uiState` is written for every unrelated field —
+                // isRefreshing on/off, each statusMessage set + clear,
+                // recentPages and parentChoices arriving — and each write
+                // re-emits the same `expanded` set. Without this filter
+                // `buildVisibleNodes` (groupBy + associateBy + recursive
+                // walk) re-runs 6+ times per screen entry on a large
+                // collective for no change in output.
+                _uiState.map { it.expanded }.distinctUntilChanged(),
                 favoritesFlow,
             ) { pages, expanded, favoriteIds ->
                 buildVisibleNodes(pages, expanded, favoriteIds)
@@ -97,8 +105,12 @@ class PageTreeViewModel
                 pagesFlow.collect { pages ->
                     // Every page is a valid parent — the server promotes a
                     // leaf parent to a folder when it gains a child (Batch
-                    // 18h / 18i OCS migration).
-                    val choices = pages.sortedBy { it.title.lowercase() }
+                    // 18h / 18i OCS migration). R-44: `pagesFlow` already
+                    // arrives in title order from the DAO, so this is a
+                    // near-sorted re-sort — kept (rather than dropped) only
+                    // to hold the ordering the comparator defines; see
+                    // [PAGE_TITLE_ORDER].
+                    val choices = pages.sortedWith(PAGE_TITLE_ORDER)
                     val landing = pages.firstOrNull { it.parentId == 0L }
                     _uiState.update { it.copy(parentChoices = choices, landingPage = landing) }
                 }
@@ -251,6 +263,23 @@ class PageTreeViewModel
     }
 
 /**
+ * Case-insensitive title order for sibling and parent-choice lists.
+ *
+ * R-44: the previous `sortedBy { it.title.lowercase() }` ran its selector
+ * on *every comparison*, allocating a lowercased copy of each title
+ * O(n log n) times per call — and this ran on every tree flatten. A shared
+ * comparator allocates nothing.
+ *
+ * Deliberately *not* removed in favour of the DAO's `ORDER BY title
+ * COLLATE NOCASE ASC`: `COLLATE NOCASE` folds ASCII only, so leaning on it
+ * would silently reorder non-ASCII titles, and [buildVisibleNodes] is a
+ * pure function that must not assume its input arrived pre-sorted. On the
+ * already-sorted input it does get, the sort is near-linear.
+ */
+private val PAGE_TITLE_ORDER: Comparator<Page> =
+    compareBy(String.CASE_INSENSITIVE_ORDER) { page: Page -> page.title }
+
+/**
  * Flattens the page list into the depth-first sequence of visible tree
  * rows: the children of the collective's landing page (the landing page's
  * own row is the card above the tree, Batch 21), recursing into expanded
@@ -286,14 +315,14 @@ internal fun buildVisibleNodes(
         if (children.isEmpty()) return children
         val orderHint = byId[parentId]?.subpageOrder.orEmpty().distinct()
         if (orderHint.isEmpty()) {
-            return children.sortedBy { it.title.lowercase() }
+            return children.sortedWith(PAGE_TITLE_ORDER)
         }
         val byChildId = children.associateBy { it.id }
         val hinted = orderHint.mapNotNull { byChildId[it] }
         val hintedIds = hinted.map { it.id }.toSet()
         val rest = children
             .filter { it.id !in hintedIds }
-            .sortedBy { it.title.lowercase() }
+            .sortedWith(PAGE_TITLE_ORDER)
         return hinted + rest
     }
 

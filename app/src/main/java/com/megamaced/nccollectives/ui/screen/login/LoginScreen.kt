@@ -23,7 +23,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -33,10 +32,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import timber.log.Timber
 
 @Composable
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -128,6 +129,16 @@ private fun launchCustomTab(
     context: Context,
     url: String,
 ) {
+    val uri = runCatching { Uri.parse(url) }.getOrNull()
+    // S-26: `launchUrl` resolves whatever scheme it is handed through the
+    // system, so a server-supplied `intent:` / custom-scheme URL would
+    // start another app rather than a browser tab. `LoginViewModel` already
+    // refuses a login URL that isn't https on the host the user typed; this
+    // gate is the scheme half, held locally where the launch happens.
+    if (uri == null || !uri.scheme.equals("https", ignoreCase = true)) {
+        Timber.w("Refusing to open a login URL with scheme=%s", uri?.scheme)
+        return
+    }
     val intent = CustomTabsIntent.Builder().build()
-    intent.launchUrl(context, Uri.parse(url))
+    intent.launchUrl(context, uri)
 }

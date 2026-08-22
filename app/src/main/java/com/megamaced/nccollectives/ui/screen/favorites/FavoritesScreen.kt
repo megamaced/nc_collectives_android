@@ -24,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.ui.components.EmptyState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,7 +42,7 @@ internal fun FavoritesScreen(
     onOpenPage: (Long) -> Unit,
     viewModel: FavoritesViewModel = hiltViewModel(),
 ) {
-    val favorites by viewModel.favorites.collectAsState()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),

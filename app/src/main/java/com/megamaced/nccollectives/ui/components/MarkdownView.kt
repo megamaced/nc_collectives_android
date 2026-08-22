@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.data.auth.serverHostOf
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import com.megamaced.nccollectives.util.AttachmentRef
 import com.megamaced.nccollectives.util.demoteNonImageEmbeds
@@ -43,6 +44,7 @@ import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.syntax.Prism4jThemeM3
 import io.noties.markwon.syntax.SyntaxHighlightPlugin
 import io.noties.prism4j.Prism4j
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
 /**
@@ -258,10 +260,10 @@ fun MarkdownView(
 
 /**
  * Rewrites every `![alt](relativeRef)` whose URL has no scheme + no leading
- * slash so it points at `imageBaseUrl/relativeRef`. Leaves `http(s)://`
- * URLs untouched; **drops** `data:`, `file://`, and other schemes by
- * resolving them as relative (S-8). Image references inside fenced code
- * blocks or inline code spans are left alone (B-4).
+ * slash so it points at `imageBaseUrl/relativeRef`. **Drops** `data:`,
+ * `file://`, and other schemes by resolving them as relative (S-8). Image
+ * references inside fenced code blocks or inline code spans are left alone
+ * (B-4).
  *
  * A ref that already names an attachment directory
  * (`![x](.attachments.12/x.png)` — the shape Nextcloud Text writes) is
@@ -269,6 +271,19 @@ fun MarkdownView(
  * already ends in `.attachments.<pageId>/`. Without that split the segment
  * would be doubled up (`…/.attachments.12/.attachments.12/x.png`) and the
  * image would 404.
+ *
+ * **S-24**: an absolute `http(s)` ref is only kept as an *image* when its
+ * host is the Nextcloud host — read off [imageBaseUrl], which is built from
+ * the stored credential, so a page body can't nominate its own allowed
+ * host. Off-host refs are demoted to plain links instead, the same shape
+ * `demoteNonImageEmbeds` uses, so the content stays visible and reachable
+ * but only via a Custom Tab the user opened deliberately. Rendering them
+ * inline would make merely *viewing* a shared page fire a request the page
+ * author chose: Markwon fetches image refs through the app's authenticated
+ * `OkHttpClient`, which is what turned a planted ref into a blind
+ * request-forgery / tracking-pixel primitive. `HostInterceptor` refuses
+ * off-host requests too (S-23) — this pass keeps the rendered page honest
+ * about it rather than leaving a broken image behind.
  */
 internal fun absolutizeImageRefs(
     markdown: String,
@@ -276,6 +291,7 @@ internal fun absolutizeImageRefs(
 ): String {
     val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
     val pageDirBase = pageDirectoryUrlFrom(base)
+    val allowedHost = serverHostOf(base)
     return IMAGE_REF_PATTERN.replace(markdown) { match ->
         val image = match.groups["image"]
         if (image == null) {
@@ -288,22 +304,50 @@ internal fun absolutizeImageRefs(
         val namesAttachmentDir = target
             .split('/')
             .any { isAttachmentDirSegment(it) }
+        val isAbsoluteHttp = target.startsWith("http://", ignoreCase = true) ||
+            target.startsWith("https://", ignoreCase = true)
+        if (isAbsoluteHttp && !isOnHost(target, allowedHost)) {
+            // S-24: demote rather than drop, so the ref is still visible and
+            // tappable. A blank alt would render an invisible link, so fall
+            // back to the ref's own host.
+            val label = alt.ifBlank { target.toHttpUrlOrNull()?.host ?: target }
+            return@replace "[$label]($target$trailing)"
+        }
         val resolved = when {
-            target.startsWith("http://", ignoreCase = true) ||
-                target.startsWith("https://", ignoreCase = true) ||
-                target.startsWith('/') -> target
+            isAbsoluteHttp || target.startsWith('/') -> {
+                target
+            }
+
             // Already directory-qualified — join against the page's own
             // directory. Falls back to `base` if the attachments URL
             // wasn't the expected shape, i.e. never worse than before.
-            namesAttachmentDir && pageDirBase != null ->
+            namesAttachmentDir && pageDirBase != null -> {
                 pageDirBase + target.removePrefix("./")
+            }
+
             // `data:`, `file://`, custom schemes — treat as relative so
             // they go through the authenticated OkHttp scheme handler,
             // which only knows about http(s) and will fail loudly.
-            else -> base + target.substringAfter("://")
+            else -> {
+                base + target.substringAfter("://")
+            }
         }
         "![$alt]($resolved$trailing)"
     }
+}
+
+/**
+ * True when [target] is an absolute URL whose host is [allowedHost]. Fails
+ * closed: an unparsable target, or a null [allowedHost] (the base URL
+ * wasn't the expected shape), is not on the host.
+ */
+private fun isOnHost(
+    target: String,
+    allowedHost: String?,
+): Boolean {
+    if (allowedHost.isNullOrEmpty()) return false
+    val host = target.toHttpUrlOrNull()?.host ?: return false
+    return host.equals(allowedHost, ignoreCase = true)
 }
 
 // Same alternation strategy as `WIKILINK_PATTERN` in `MarkdownLinkResolver.kt`:

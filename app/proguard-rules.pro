@@ -4,6 +4,16 @@
 -keepattributes AnnotationDefault
 
 # Hilt generated components
+# Hilt/Dagger generated component graph.
+#
+# Deliberately kept, though Hilt ships its own consumer rules and nothing in
+# this app reflects over `dagger.hilt`. Dropping it saves ~50 KB but changes
+# what R8 full mode strips: `…SingletonC$ActivityRetainedCBuilder` goes from
+# member-pruned to fully removed, and `ActivityCImpl`/`ActivityRetainedCImpl`
+# lose members. Those are on the live injection path (MainActivity is
+# @AndroidEntryPoint, the ViewModels are @HiltViewModel), and a wrong guess
+# there is a release-only crash at Activity creation, not a build failure.
+# Not worth 50 KB without an on-device check.
 -keep class dagger.hilt.** { *; }
 
 # Optional Markwon image-plugin transitive deps we don't pull in.

@@ -2,7 +2,7 @@
 
 Release-signing keys never live in this repository. Local signed builds and CI signed builds both pick up the keystore from environment variables (or generated env entries in CI). This document records how to create the upload key, store it as a GitHub Actions secret, and verify the signed APK.
 
-The signing setup is **optional**: if the env vars / CI secrets are absent, `assembleRelease` still produces an APK — it's just unsigned. Tag-driven releases without secrets will publish an unsigned APK to the GitHub release and emit a workflow warning.
+The signing setup is **optional for local and PR builds**: if the env vars / CI secrets are absent, `assembleRelease` still produces an APK — it's just unsigned. Tag-driven releases are different: a tag build with any of the four signing secrets missing **fails**, and the workflow additionally refuses to publish unless a signed `app-release.apk` is present. An unsigned APK can never reach a GitHub release, because F-Droid pins `AllowedAPKSigningKeys` and would reject it anyway.
 
 ## One-off keystore generation
 

@@ -67,8 +67,11 @@ internal object LenientStringMapSerializer : KSerializer<Map<String, String>> {
                     else -> v.toString()
                 }
             }
+
             is JsonArray -> emptyMap()
+
             JsonNull -> emptyMap()
+
             else -> emptyMap()
         }
     }

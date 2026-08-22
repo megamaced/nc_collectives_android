@@ -40,6 +40,7 @@ fun handleMarkdownLink(
             checkNotNull(uri)
             CustomTabsIntent.Builder().build().launchUrl(context, uri)
         }
+
         null -> {
             val attachment = pageId?.let { parseAttachmentRef(url, it) }
             if (attachment != null) {
@@ -48,7 +49,10 @@ fun handleMarkdownLink(
                 onWikiLink(decodeWikiTarget(url))
             }
         }
-        else -> Timber.d("Ignored markdown link with scheme=%s", scheme)
+
+        else -> {
+            Timber.d("Ignored markdown link with scheme=%s", scheme)
+        }
     }
 }
 

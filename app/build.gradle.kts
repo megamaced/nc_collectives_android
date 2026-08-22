@@ -43,8 +43,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 36
-        versionCode = 30
-        versionName = "2.7.2"
+        versionCode = 31
+        versionName = "2.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -207,7 +207,7 @@ dependencies {
 }
 
 ktlint {
-    version.set("1.5.0")
+    version.set("1.8.0")
     android.set(true)
     ignoreFailures.set(false)
     filter {

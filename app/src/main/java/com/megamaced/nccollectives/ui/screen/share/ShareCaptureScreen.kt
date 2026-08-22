@@ -42,7 +42,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
@@ -64,9 +64,9 @@ internal fun ShareCaptureScreen(
     onDismiss: () -> Unit,
     viewModel: ShareCaptureViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
-    val collectives by viewModel.collectives.collectAsState()
-    val pages by viewModel.pagesForCollective.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val collectives by viewModel.collectives.collectAsStateWithLifecycle()
+    val pages by viewModel.pagesForCollective.collectAsStateWithLifecycle()
 
     // Auto-pick the only collective if there's just one (the common case).
     LaunchedEffect(collectives) {
@@ -130,6 +130,7 @@ internal fun ShareCaptureScreen(
                     selectedParentId = ui.selectedParentPageId,
                     onParentChange = viewModel::selectParent,
                 )
+
                 ShareMode.APPEND -> AppendSection(
                     pages = pages,
                     selectedPageId = ui.selectedAppendPageId,

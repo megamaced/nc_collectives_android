@@ -28,6 +28,33 @@ class TokenStore
         private var prefs: SharedPreferences? = null
 
         /**
+         * R-42: memoised result of [getCredentials]. Each miss costs three
+         * Tink AEAD decrypts, and the getter sits on the hot path of every
+         * HTTP request — `HostInterceptor` and `AuthInterceptor` both call
+         * it, and `PageBodyService.buildWebDavUrl` calls it once per
+         * attachment row. `null` means "not cached", so a signed-out store
+         * is re-read rather than remembered; that path does no request work
+         * anyway. See also B-21 in `SettingsViewModel`, which pushed the
+         * (now-cached) read onto `Dispatchers.IO`.
+         *
+         * `@Volatile` on an immutable holder is enough for readers: an
+         * interceptor thread sees either the old reference or the new one,
+         * never a half-built object.
+         */
+        @Volatile
+        private var cachedCredentials: StoredCredentials? = null
+
+        /**
+         * Serialises cache *population* against the writers ([saveCredentials],
+         * [clear], and the wipe-and-retry recovery in [openPrefs]). Without
+         * it a reader that had already read the plaintext out of the store
+         * could publish it into the cache after a concurrent sign-out
+         * cleared both — leaving stale credentials live after logout. Reads
+         * that hit the cache never take the lock.
+         */
+        private val credentialsLock = Any()
+
+        /**
          * Open or reopen the encrypted prefs. On `AEADBadTagException`/
          * `KeyStoreException`/`SecurityException` — typically caused by a
          * Keystore reset (factory restore, OEM wipe) or a corrupted Tink
@@ -56,6 +83,9 @@ class TokenStore
                 // Catch broad: Tink wraps a wide cone of failures and the
                 // recovery is always the same — wipe + start over.
                 Timber.w(e, "Encrypted prefs unreadable; wiping and re-creating")
+                // R-42: the file we just wiped is the only source of truth
+                // for the cache, so anything memoised from it is now stale.
+                cachedCredentials = null
                 resetPrefsFile()
                 null
             }
@@ -70,15 +100,26 @@ class TokenStore
         }
 
         fun getCredentials(): StoredCredentials? {
+            // Fast path: no lock, no decrypt.
+            cachedCredentials?.let { return it }
+            return synchronized(credentialsLock) { readCredentialsLocked() }
+        }
+
+        /** Cache-miss half of [getCredentials]. Call with [credentialsLock] held. */
+        private fun readCredentialsLocked(): StoredCredentials? {
+            // Another thread may have populated the cache while this one
+            // waited for the lock.
+            cachedCredentials?.let { return it }
             val store = openPrefs() ?: return null
             return try {
                 val host = store.getString(KEY_HOST, null) ?: return null
                 val loginName = store.getString(KEY_LOGIN_NAME, null) ?: return null
                 val appPassword = store.getString(KEY_APP_PASSWORD, null) ?: return null
-                StoredCredentials(host, loginName, appPassword)
+                StoredCredentials(host, loginName, appPassword).also { cachedCredentials = it }
             } catch (e: Exception) {
                 Timber.w(e, "Reading credentials failed; resetting store")
                 prefs = null
+                cachedCredentials = null
                 resetPrefsFile()
                 null
             }
@@ -89,18 +130,27 @@ class TokenStore
             loginName: String,
             appPassword: String,
         ) {
-            val store = openPrefs() ?: return
-            store
-                .edit()
-                .putString(KEY_HOST, host)
-                .putString(KEY_LOGIN_NAME, loginName)
-                .putString(KEY_APP_PASSWORD, appPassword)
-                .apply()
+            synchronized(credentialsLock) {
+                // Drop first: if the write below can't open the store, the
+                // cache must not keep serving the previous account.
+                cachedCredentials = null
+                val store = openPrefs() ?: return
+                store
+                    .edit()
+                    .putString(KEY_HOST, host)
+                    .putString(KEY_LOGIN_NAME, loginName)
+                    .putString(KEY_APP_PASSWORD, appPassword)
+                    .apply()
+                cachedCredentials = StoredCredentials(host, loginName, appPassword)
+            }
         }
 
         fun clear() {
-            val store = openPrefs() ?: return
-            store.edit().clear().apply()
+            synchronized(credentialsLock) {
+                cachedCredentials = null
+                val store = openPrefs() ?: return
+                store.edit().clear().apply()
+            }
         }
 
         companion object {

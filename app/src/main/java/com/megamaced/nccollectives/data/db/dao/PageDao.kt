@@ -6,6 +6,16 @@ import androidx.room.Upsert
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Projection returned by [PageDao.collectiveIdsForPages] — the page-to-
+ * collective mapping with none of the row's body columns. Not an entity:
+ * a query projection carries no schema of its own.
+ */
+data class PageCollectiveRef(
+    val id: Long,
+    val collectiveId: Long,
+)
+
 @Dao
 interface PageDao {
     @Query(
@@ -24,6 +34,19 @@ interface PageDao {
      */
     @Query("SELECT * FROM pages WHERE collectiveId = :collectiveId")
     suspend fun listForCollective(collectiveId: Long): List<PageEntity>
+
+    /**
+     * R-46: which collective each of [ids] belongs to, in one query.
+     * Search-hit mapping needs nothing but that one column, and [getById]
+     * is a `SELECT *` that drags the whole cached markdown body along —
+     * a 20-result search meant 20 body-sized reads to fetch 20 Longs.
+     *
+     * Callers must skip the call on an empty [ids]: Room expands the
+     * binding to `IN ()`, which is a SQLite syntax error (same trap as
+     * B-42 in `AttachmentRepositoryImpl`).
+     */
+    @Query("SELECT id, collectiveId FROM pages WHERE id IN (:ids)")
+    suspend fun collectiveIdsForPages(ids: List<Long>): List<PageCollectiveRef>
 
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observeById(id: Long): Flow<PageEntity?>

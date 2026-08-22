@@ -36,13 +36,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.components.BacklinkChipRow
@@ -73,12 +72,12 @@ internal fun PageViewScreen(
     viewModel: PageViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val ui by viewModel.uiState.collectAsState()
-    val page by viewModel.page.collectAsState()
-    val isFavorite by viewModel.isFavorite.collectAsState()
-    val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
-    val backlinks by viewModel.backlinks.collectAsState()
-    val remoteAttachmentCount by viewModel.remoteAttachmentCount.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val page by viewModel.page.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
+    val imageBaseUrl by viewModel.imageBaseUrl.collectAsStateWithLifecycle()
+    val backlinks by viewModel.backlinks.collectAsStateWithLifecycle()
+    val remoteAttachmentCount by viewModel.remoteAttachmentCount.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val editScope = rememberCoroutineScope()
 
@@ -88,17 +87,18 @@ internal fun PageViewScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMoveSheet by remember { mutableStateOf(false) }
     var showTrashConfirm by remember { mutableStateOf(false) }
-    // Pre-commit undo for trash (Batch 18m). When the user confirms the
-    // dialog this flips true; the LaunchedEffect below shows the snackbar
-    // and either fires the server delete or quietly cancels.
-    //
-    // B-37: `rememberSaveable` so a configuration change (rotation, locale,
-    // theme) doesn't drop the pending-trash state on the floor. Without
-    // this the LaunchedEffect coroutine is cancelled on recomposition and
-    // `pendingTrash` resets to false — both the trash and the undo are
-    // silently swallowed. With it, the snackbar re-appears after rotation
-    // and either commits or undoes as before.
-    var pendingTrash by rememberSaveable { mutableStateOf(false) }
+    // B-76: disables the Edit button for the duration of the route lookup.
+    var resolvingEditRoute by remember { mutableStateOf(false) }
+
+    // Trashing drops the page's Room row, so `page` goes null while the undo
+    // snackbar is still up (B-75). Keep rendering the last version we had —
+    // swapping the body for a spinner under a "Moved to trash" message reads
+    // as a crash.
+    var lastLoadedPage by remember { mutableStateOf<Page?>(null) }
+    LaunchedEffect(page) {
+        page?.let { lastLoadedPage = it }
+    }
+    val visiblePage = page ?: lastLoadedPage
 
     LaunchedEffect(ui.statusMessage, ui.errorMessage) {
         val msg = ui.statusMessage ?: ui.errorMessage
@@ -141,20 +141,25 @@ internal fun PageViewScreen(
         }
     }
 
-    LaunchedEffect(pendingTrash) {
-        if (!pendingTrash) return@LaunchedEffect
+    // The page is already in the server's trash by the time this runs, so
+    // nothing is stranded if the screen is disposed mid-window (B-75) — the
+    // user simply loses the undo offer, which matches what they were told.
+    // The flag lives in the ViewModel, so a configuration change re-shows the
+    // snackbar rather than dropping it, and popping the screen takes the flag
+    // with it instead of leaving it armed for the next visit.
+    LaunchedEffect(ui.trashedAwaitingUndo) {
+        if (!ui.trashedAwaitingUndo) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             message = "Moved to trash",
             actionLabel = "Undo",
             duration = SnackbarDuration.Short,
         )
-        pendingTrash = false
-        if (result != SnackbarResult.ActionPerformed) {
-            // Snackbar dismissed (timeout or other) → commit the trash.
-            viewModel.trashPage(onTrashed = onBack)
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.restoreTrashed()
+        } else {
+            viewModel.acknowledgeTrashed()
+            onBack()
         }
-        // If `ActionPerformed`, the user tapped UNDO — no server call,
-        // no navigation. Page-view stays as-is.
     }
 
     Scaffold(
@@ -164,7 +169,7 @@ internal fun PageViewScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = page?.title.orEmpty(),
+                        text = visiblePage?.title.orEmpty(),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 },
@@ -182,20 +187,34 @@ internal fun PageViewScreen(
                             )
                         }
                         IconButton(
+                            // B-76: nothing on screen moves while the route is
+                            // being resolved, and the first lookup per session
+                            // is a network round trip — so a second tap used to
+                            // push a second editor destination, which for the
+                            // web editor means two `directediting` sessions on
+                            // the same page. `launchSingleTop` on both edit
+                            // navigations (NcCollectivesNavHost) is the other
+                            // half of this.
+                            enabled = !resolvingEditRoute,
                             onClick = {
                                 // Resolve EditorPreference + server capability,
                                 // then route. The decision is async because the
                                 // first capability lookup hits the network; once
                                 // memoised by DirectEditingRepository the call is
                                 // effectively instant.
+                                resolvingEditRoute = true
                                 editScope.launch {
-                                    val decision = viewModel.resolveEditRoute()
-                                    decision.fallbackMessage?.let { msg ->
-                                        snackbarHostState.showSnackbar(msg)
-                                    }
-                                    when (decision.route) {
-                                        EditRoute.Plain -> onEdit()
-                                        EditRoute.Web -> onEditWeb()
+                                    try {
+                                        val decision = viewModel.resolveEditRoute()
+                                        decision.fallbackMessage?.let { msg ->
+                                            snackbarHostState.showSnackbar(msg)
+                                        }
+                                        when (decision.route) {
+                                            EditRoute.Plain -> onEdit()
+                                            EditRoute.Web -> onEditWeb()
+                                        }
+                                    } finally {
+                                        resolvingEditRoute = false
                                     }
                                 }
                             },
@@ -285,25 +304,35 @@ internal fun PageViewScreen(
         },
     ) { scaffoldPadding ->
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
-            val currentPage = page
+            val currentPage = visiblePage
             when {
-                currentPage == null -> LoadingState()
-                currentPage.bodyMd == null && ui.isLoadingBody -> LoadingState()
-                currentPage.bodyMd == null && ui.errorMessage != null ->
+                currentPage == null -> {
+                    LoadingState()
+                }
+
+                currentPage.bodyMd == null && ui.isLoadingBody -> {
+                    LoadingState()
+                }
+
+                currentPage.bodyMd == null && ui.errorMessage != null -> {
                     ErrorState(message = ui.errorMessage!!, onRetry = viewModel::refreshBody)
-                else -> PageViewContent(
-                    page = currentPage,
-                    body = currentPage.bodyMd.orEmpty(),
-                    imageBaseUrl = imageBaseUrl,
-                    backlinks = backlinks,
-                    remoteAttachmentCount = remoteAttachmentCount,
-                    onReplaceWithDraft = viewModel::replaceWithDraft,
-                    onDiscardDraft = viewModel::discardDraft,
-                    onOpenPage = onOpenPage,
-                    onWikiLink = { target -> viewModel.resolveWikilink(target, onOpenPage) },
-                    onAttachmentLink = viewModel::openAttachment,
-                    onBrowseTag = { tagName -> onBrowseTag(currentPage.collectiveId, tagName) },
-                )
+                }
+
+                else -> {
+                    PageViewContent(
+                        page = currentPage,
+                        body = currentPage.bodyMd.orEmpty(),
+                        imageBaseUrl = imageBaseUrl,
+                        backlinks = backlinks,
+                        remoteAttachmentCount = remoteAttachmentCount,
+                        onReplaceWithDraft = viewModel::replaceWithDraft,
+                        onDiscardDraft = viewModel::discardDraft,
+                        onOpenPage = onOpenPage,
+                        onWikiLink = { target -> viewModel.resolveWikilink(target, onOpenPage) },
+                        onAttachmentLink = viewModel::openAttachment,
+                        onBrowseTag = { tagName -> onBrowseTag(currentPage.collectiveId, tagName) },
+                    )
+                }
             }
         }
     }
@@ -357,7 +386,7 @@ internal fun PageViewScreen(
     }
 
     if (showTrashConfirm) {
-        val target = page
+        val target = visiblePage
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showTrashConfirm = false },
             title = { Text("Move to trash?") },
@@ -370,10 +399,9 @@ internal fun PageViewScreen(
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     showTrashConfirm = false
-                    // Stage the trash — the LaunchedEffect on `pendingTrash`
-                    // shows the snackbar and decides whether to commit based
-                    // on whether the user taps UNDO.
-                    pendingTrash = true
+                    // Commits straight away; the "Moved to trash" snackbar
+                    // that follows offers a restore (B-75).
+                    viewModel.trashPage()
                 }) { Text("Move to trash") }
             },
             dismissButton = {

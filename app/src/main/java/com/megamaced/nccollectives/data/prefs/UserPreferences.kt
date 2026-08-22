@@ -106,9 +106,10 @@ data class UserPrefs(
 )
 
 /**
- * State for the on-startup GitHub update check (see [UpdateChecker]).
- * Persisted in DataStore so the network call only runs once per 24h and
- * each release tag is surfaced at most once.
+ * State for the manual GitHub update check (see [UpdateChecker]), which runs
+ * only when the user taps Settings → About → "Check for updates". Persisted
+ * in DataStore so the Settings screen can show when the last check happened
+ * and which release tag has already been surfaced.
  */
 data class UpdateCheckState(
     val lastCheckedAt: Long,

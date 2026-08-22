@@ -107,6 +107,7 @@ class SearchViewModel
                             results = result.data,
                             errorMessage = null,
                         )
+
                         else -> state.copy(
                             isSearching = false,
                             results = emptyList(),

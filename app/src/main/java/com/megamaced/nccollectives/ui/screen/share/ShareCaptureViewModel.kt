@@ -65,12 +65,35 @@ class ShareCaptureViewModel
         val uiState: StateFlow<ShareCaptureUiState> = _uiState.asStateFlow()
 
         init {
-            val payload = sharePayloadHolder.payload.value
-            _uiState.update {
-                it.copy(
-                    payload = payload,
-                    title = defaultTitle(payload),
-                )
+            // B-77: collected, not read once. The old `payload.value` snapshot
+            // in `init` meant a second share arriving while this screen was
+            // alive changed nothing here — the navigation effect in
+            // `NcCollectivesScaffold` keys on whether a payload *exists*, not
+            // on which one, so no re-navigation happened either and the user
+            // ended up saving the first share's content under the second
+            // share's expectations.
+            //
+            // Nulls are ignored: `consume()` clears the holder as part of a
+            // successful save, and blanking the payload out from under the
+            // screen mid-finish would only strand it.
+            viewModelScope.launch {
+                sharePayloadHolder.payload.collect { payload ->
+                    if (payload == null) return@collect
+                    _uiState.update { state ->
+                        if (state.payload == payload) {
+                            state
+                        } else {
+                            // New content: the derived title goes back to the
+                            // new payload's default rather than keeping a title
+                            // the user typed for something else.
+                            state.copy(
+                                payload = payload,
+                                title = defaultTitle(payload),
+                                errorMessage = null,
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -134,6 +157,7 @@ class ShareCaptureViewModel
                         payload = payload,
                         title = state.title,
                     )
+
                     ShareMode.APPEND -> handleAppend(
                         pageId = state.selectedAppendPageId,
                         payload = payload,

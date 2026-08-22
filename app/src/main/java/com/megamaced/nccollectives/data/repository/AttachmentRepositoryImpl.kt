@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
+import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
@@ -41,7 +42,19 @@ class AttachmentRepositoryImpl
     ) : AttachmentRepository {
         override fun observeForPage(pageId: Long): Flow<List<Attachment>> =
             attachmentDao.observeForPage(pageId).map { rows ->
-                rows.map { entity -> entity.toDomain(remoteUrlFor(entity)) }
+                if (rows.isEmpty()) {
+                    emptyList<Attachment>()
+                } else {
+                    // R-41: every row in this flow belongs to `pageId`, so the
+                    // page row and its attachments directory are constant for
+                    // the whole emission. Resolving them here instead of inside
+                    // `remoteUrlFor` collapses one `SELECT *` on `pages` per
+                    // attachment — each dragging the full cached markdown body
+                    // along — into a single read per emission.
+                    val page = pageDao.getById(pageId)
+                    val dir = attachmentsDirectoryFor(pageId)
+                    rows.map { entity -> entity.toDomain(remoteUrlFor(entity, page, dir)) }
+                }
             }
 
         override suspend fun refresh(pageId: Long): ApiResult<Unit> {
@@ -114,7 +127,10 @@ class AttachmentRepositoryImpl
                     }
                     ApiResult.Success(Unit)
                 }
-                else -> mapNonSuccess(result)
+
+                else -> {
+                    mapNonSuccess(result)
+                }
             }
         }
 
@@ -238,11 +254,21 @@ class AttachmentRepositoryImpl
         ): String? {
             val page = pageDao.getById(pageId) ?: return null
             val dir = attachmentsDirectoryFor(pageId)
-            return bodyService.resourceUrl(
-                collectivePath = page.collectivePath,
-                filePath = combinePath(page.filePath, dir),
-                fileName = fileName,
-            )
+            // `resourceUrl` throws on a segment that fails validation or when
+            // credentials have gone (sign-out racing an open screen). Both
+            // read as "no URL for this attachment" — the nullable return the
+            // callers already handle — not as a reason to crash the caller's
+            // scope, which is what an escaping IllegalStateException did.
+            // Matches [remoteUrlFor]'s deliberate non-throwing contract.
+            return try {
+                bodyService.resourceUrl(
+                    collectivePath = page.collectivePath,
+                    filePath = combinePath(page.filePath, dir),
+                    fileName = fileName,
+                )
+            } catch (_: Exception) {
+                null
+            }
         }
 
         override suspend fun downloadForViewing(
@@ -320,22 +346,41 @@ class AttachmentRepositoryImpl
         override suspend fun attachmentsBaseUrl(pageId: Long): String? {
             val page = pageDao.getById(pageId) ?: return null
             val dir = attachmentsDirectoryFor(pageId)
-            val withDummy = bodyService.resourceUrl(
-                collectivePath = page.collectivePath,
-                filePath = combinePath(page.filePath, dir),
-                fileName = "_",
-            )
-            return withDummy.removeSuffix("_")
-        }
-
-        private suspend fun remoteUrlFor(entity: AttachmentEntity): String? {
-            if (entity.status != AttachmentEntity.STATUS_REMOTE) return null
-            val page = pageDao.getById(entity.pageId) ?: return null
-            return try {
-                val dir = attachmentsDirectoryFor(entity.pageId)
+            // Same non-throwing contract as [urlFor]: a null base URL makes
+            // `absolutizeImageRefs` leave refs relative rather than crashing
+            // the page view.
+            val withDummy = try {
                 bodyService.resourceUrl(
                     collectivePath = page.collectivePath,
                     filePath = combinePath(page.filePath, dir),
+                    fileName = "_",
+                )
+            } catch (_: Exception) {
+                return null
+            }
+            return withDummy.removeSuffix("_")
+        }
+
+        /**
+         * Remote URL for a REMOTE-status row, given the already-resolved
+         * page row and attachments directory (R-41 — the caller hoists both
+         * out of the per-row loop).
+         *
+         * Stays deliberately non-throwing: a malformed server-supplied path
+         * must degrade to "no remote url" for that one attachment rather
+         * than tear down the whole observing flow.
+         */
+        private fun remoteUrlFor(
+            entity: AttachmentEntity,
+            page: PageEntity?,
+            attachmentsDir: String,
+        ): String? {
+            if (entity.status != AttachmentEntity.STATUS_REMOTE) return null
+            if (page == null) return null
+            return try {
+                bodyService.resourceUrl(
+                    collectivePath = page.collectivePath,
+                    filePath = combinePath(page.filePath, attachmentsDir),
                     fileName = entity.fileName,
                 )
             } catch (_: Exception) {

@@ -6,7 +6,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -15,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.megamaced.nccollectives.data.auth.AuthState
@@ -60,8 +60,14 @@ internal class AuthGateViewModel
             val wanted = userPreferences.flow.first().defaultCollectiveId
             val cachedIds = if (wanted == null) emptyList() else collectiveRepository.cachedCollectives().map { it.id }
             return when (val route = resolveStartupRoute(wanted, cachedIds)) {
-                is StartupRoute.OpenCollective -> route.collectiveId
-                StartupRoute.CollectiveList -> null
+                is StartupRoute.OpenCollective -> {
+                    route.collectiveId
+                }
+
+                StartupRoute.CollectiveList -> {
+                    null
+                }
+
                 StartupRoute.StaleDefault -> {
                     Timber.i("Default collective %d no longer exists; clearing the setting", wanted)
                     userPreferences.setDefaultCollectiveId(null)
@@ -73,8 +79,8 @@ internal class AuthGateViewModel
 
 @Composable
 internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel()) {
-    val authState by viewModel.authState.collectAsState()
-    val sharePayload by viewModel.sharePayload.collectAsState()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val sharePayload by viewModel.sharePayload.collectAsStateWithLifecycle()
 
     when (authState) {
         AuthState.Unknown -> {
@@ -85,25 +91,37 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
                 CircularProgressIndicator()
             }
         }
-        AuthState.Unauthenticated -> LoginScreen()
-        AuthState.Authenticated -> AuthenticatedHost(
-            hasSharePayload = sharePayload != null,
-            resolveStartupCollective = viewModel::resolveStartupCollective,
-        )
+
+        AuthState.Unauthenticated -> {
+            LoginScreen()
+        }
+
+        AuthState.Authenticated -> {
+            AuthenticatedHost(
+                sharePayload = sharePayload,
+                resolveStartupCollective = viewModel::resolveStartupCollective,
+            )
+        }
     }
 }
 
 @Composable
 private fun AuthenticatedHost(
-    hasSharePayload: Boolean,
+    sharePayload: SharePayload?,
     resolveStartupCollective: suspend () -> Long?,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    LaunchedEffect(hasSharePayload) {
-        if (hasSharePayload && currentRoute != Destination.ShareCapture.route) {
+    // Keyed on the payload *identity*, not on `!= null` (B-80): a second
+    // share arriving while the first is still unconsumed leaves presence
+    // unchanged, so a boolean key never re-fires and the new payload is
+    // silently dropped. When the capture screen is already on top no
+    // navigation is needed — `ShareCaptureViewModel` observes the holder
+    // and swaps its own state.
+    LaunchedEffect(sharePayload) {
+        if (sharePayload != null && currentRoute != Destination.ShareCapture.route) {
             navController.navigate(Destination.ShareCapture.route) {
                 launchSingleTop = true
             }
@@ -120,13 +138,15 @@ private fun AuthenticatedHost(
     // which is exactly when we *do* want to route again. (Same reasoning as
     // B-37 on `PageViewScreen.pendingTrash`.)
     var startupRouted by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(hasSharePayload) {
+    // Presence, not identity: this must fire at most once per launch, so a
+    // second share must not re-run it (it is `startupRouted`-guarded too).
+    LaunchedEffect(sharePayload != null) {
         if (startupRouted) return@LaunchedEffect
         // A share intent is the whole reason the app was opened — it wins,
         // and we mark startup handled so the default doesn't land on top of
         // the capture screen once the payload is consumed.
         startupRouted = true
-        if (hasSharePayload) return@LaunchedEffect
+        if (sharePayload != null) return@LaunchedEffect
         val collectiveId = resolveStartupCollective() ?: return@LaunchedEffect
         // Reading DataStore + Room takes a moment; if the user has already
         // tapped a collective (or anything else) in that window, don't yank

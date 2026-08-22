@@ -38,7 +38,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +51,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
@@ -71,10 +71,10 @@ internal fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
-    val updateCheck by viewModel.updateCheck.collectAsState()
-    val syncStatus by viewModel.syncStatus.collectAsState()
-    val manualSync by viewModel.manualSync.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val updateCheck by viewModel.updateCheck.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
+    val manualSync by viewModel.manualSync.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showSignOutConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,17 +89,22 @@ internal fun SettingsScreen(
                 CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(state.htmlUrl))
                 viewModel.dismissUpdateCheck()
             }
+
             is UpdateCheckUiState.UpToDate -> {
                 snackbarHostState.showSnackbar(
                     "You're on the latest version (${BuildConfig.VERSION_NAME}).",
                 )
                 viewModel.dismissUpdateCheck()
             }
+
             is UpdateCheckUiState.Failed -> {
                 snackbarHostState.showSnackbar(state.message)
                 viewModel.dismissUpdateCheck()
             }
-            UpdateCheckUiState.Checking, UpdateCheckUiState.Idle -> Unit
+
+            UpdateCheckUiState.Checking, UpdateCheckUiState.Idle -> {
+                Unit
+            }
         }
     }
 
@@ -112,11 +117,15 @@ internal fun SettingsScreen(
                 snackbarHostState.showSnackbar("Sync complete")
                 viewModel.dismissManualSync()
             }
+
             is ManualSyncUiState.Failed -> {
                 snackbarHostState.showSnackbar(state.message)
                 viewModel.dismissManualSync()
             }
-            ManualSyncUiState.Syncing, ManualSyncUiState.Idle -> Unit
+
+            ManualSyncUiState.Syncing, ManualSyncUiState.Idle -> {
+                Unit
+            }
         }
     }
 

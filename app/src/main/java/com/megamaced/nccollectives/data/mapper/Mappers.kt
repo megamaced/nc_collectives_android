@@ -46,13 +46,22 @@ internal fun CollectiveEntity.toDomain(): Collective =
         favoritePageIds = userFavoritePagesCsv.toLongCsvSet(),
     )
 
+/**
+ * [tagNamesById] resolves the numeric tag ids the server sends into names.
+ * B-69: null means the tag lookup *failed*, which is a different thing from
+ * a collective that has no tags — see the `tagsCsv` assignment below.
+ * [existingTagsCsv] is then what the row keeps, so it is threaded through
+ * from the cached row exactly like [existingBody] / [existingEtag] /
+ * [existingDraft].
+ */
 internal fun PageDto.toEntity(
     collectiveId: Long,
     now: Long,
     existingBody: String?,
     existingEtag: String?,
     existingDraft: String?,
-    tagNamesById: Map<Long, String> = emptyMap(),
+    existingTagsCsv: String? = null,
+    tagNamesById: Map<Long, String>? = null,
 ): PageEntity =
     PageEntity(
         id = id,
@@ -68,7 +77,17 @@ internal fun PageDto.toEntity(
         // Server returns tag IDs only; resolve to names via the per-collective
         // tag map. Unknown IDs (newly created tag we haven't refreshed yet) are
         // dropped rather than rendered as bare numbers.
-        tagsCsv = joinTags(tags.mapNotNull { tagNamesById[it] }),
+        //
+        // B-69: a null map means we never got the tag list. Resolving against
+        // an empty one instead would write `tagsCsv = ""` for every page in
+        // the collective — one 500 from the tags endpoint and Tag Browse is
+        // empty for the whole account until a later refresh happens to
+        // succeed. Keep what the row already had.
+        tagsCsv = if (tagNamesById == null) {
+            existingTagsCsv.orEmpty()
+        } else {
+            joinTags(tags.mapNotNull { tagNamesById[it] })
+        },
         subpageOrderCsv = subpageOrder.toLongCsv(),
         isFullWidth = isFullWidth,
         trashTimestamp = trashTimestamp,

@@ -103,16 +103,19 @@ class AttachmentsViewModel
                 val result = repository.downloadForViewing(pageId, relativePath)
                 _uiState.update { state ->
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             state.copy(
                                 downloadingAttachment = null,
                                 attachmentToOpen = result.data,
                             )
-                        else ->
+                        }
+
+                        else -> {
                             state.copy(
                                 downloadingAttachment = null,
                                 statusMessage = result.userMessage() ?: "Couldn't open $fileName",
                             )
+                        }
                     }
                 }
             }

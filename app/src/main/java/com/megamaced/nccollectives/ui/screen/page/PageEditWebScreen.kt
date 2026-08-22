@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
+import android.view.ViewGroup
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -17,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,7 +46,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,8 +55,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.megamaced.nccollectives.BuildConfig
@@ -91,7 +94,7 @@ internal fun PageEditWebScreen(
     onClose: () -> Unit,
     viewModel: PageEditWebViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Detect "is the rendered theme dark?" from the resolved M3 surface
@@ -150,6 +153,14 @@ internal fun PageEditWebScreen(
     }
 
     BackHandler {
+        // B-47: a close is already in flight. Swallow the press rather than
+        // letting it fall through and pop the screen out from under the
+        // in-flight refresh — `viewModelScope` would cancel it and Room
+        // would keep the pre-edit body.
+        if (ui is PageEditWebUiState.Closing) {
+            Timber.tag(TAG).d("Back-press ignored while closing")
+            return@BackHandler
+        }
         val now = System.currentTimeMillis()
         val current = webView
         if (current == null || now - lastBackPressMs < DOUBLE_BACK_WINDOW_MS) {
@@ -188,7 +199,13 @@ internal fun PageEditWebScreen(
             TopAppBar(
                 title = { Text("Edit (collaborative)", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.onClose() }) {
+                    // Disabled while closing (B-47) so the only affordance
+                    // that can re-enter `onClose` is visibly inert while the
+                    // two refresh round-trips are in flight.
+                    IconButton(
+                        onClick = { viewModel.onClose() },
+                        enabled = ui !is PageEditWebUiState.Closing,
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
                     }
                 },
@@ -211,11 +228,13 @@ internal fun PageEditWebScreen(
                 .fillMaxSize(),
         ) {
             when (val state = ui) {
-                is PageEditWebUiState.Loading ->
+                is PageEditWebUiState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                is PageEditWebUiState.Loaded, is PageEditWebUiState.Interactive ->
+                }
+
+                is PageEditWebUiState.Loaded, is PageEditWebUiState.Interactive -> {
                     EditorWebView(
                         url = (state as? PageEditWebUiState.Loaded)?.url
                             ?: (state as PageEditWebUiState.Interactive).url,
@@ -225,6 +244,7 @@ internal fun PageEditWebScreen(
                         clearCacheFirst = (state as? PageEditWebUiState.Loaded)?.clearCacheFirst == true,
                         isDarkTheme = isDarkTheme,
                         textZoom = textZoom,
+                        allowedHost = viewModel.allowedHost,
                         onLoaded = viewModel::onEditorReady,
                         onCloseFromJs = viewModel::onClose,
                         onReloadFromJs = viewModel::onReloadRequested,
@@ -234,12 +254,45 @@ internal fun PageEditWebScreen(
                             )
                         },
                         onWebViewCreated = { webView = it },
+                        // Identity-checked rather than an unconditional
+                        // `webView = null`: Compose gives no ordering
+                        // guarantee between the old node's release and the
+                        // new node's factory when the editor is remounted
+                        // (B-46 reload path), and clearing the *new*
+                        // instance would leave the back-press handler with
+                        // nothing to inject Text's close into.
+                        onWebViewReleased = { released ->
+                            if (webView === released) webView = null
+                        },
                     )
-                is PageEditWebUiState.Failed ->
+                }
+
+                is PageEditWebUiState.Failed -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(state.message, style = MaterialTheme.typography.bodyMedium)
                     }
-                PageEditWebUiState.Closed -> Unit
+                }
+
+                // B-47: the editor used to sit fully interactive-looking for
+                // the length of two network round-trips after the user asked
+                // to close. Replacing it with progress both tells the user
+                // something is happening and takes the WebView (and its
+                // back-press affordances) out of reach.
+                PageEditWebUiState.Closing -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            CircularProgressIndicator()
+                            Text("Saving and closing…", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+
+                PageEditWebUiState.Closed -> {
+                    Unit
+                }
             }
         }
     }
@@ -258,11 +311,13 @@ private fun EditorWebView(
     clearCacheFirst: Boolean,
     isDarkTheme: Boolean,
     textZoom: Int,
+    allowedHost: String?,
     onLoaded: () -> Unit,
     onCloseFromJs: () -> Unit,
     onReloadFromJs: () -> Unit,
     onSslError: () -> Unit,
     onWebViewCreated: (WebView) -> Unit,
+    onWebViewReleased: (WebView) -> Unit,
 ) {
     val context = LocalContext.current
     val bridge: DirectEditingMobileInterface =
@@ -281,9 +336,14 @@ private fun EditorWebView(
     // down the edit session. Only same-host https navigations stay in the
     // WebView; everything else is routed out to the system. Mirrors
     // nextcloud/notes-android `NoteDirectEditFragment` (commit 398abd51,
-    // merged 2026-07-09). `allowedHost` is the host of the directediting
-    // URL we opened — i.e. the user's own Nextcloud.
-    val allowedHost = remember(url) { Uri.parse(url).host }
+    // merged 2026-07-09).
+    //
+    // S-22: `allowedHost` is the host of the user's *stored* credentials,
+    // passed down from the ViewModel. It used to be parsed back out of
+    // [url] — i.e. out of server-supplied data — which let the allowlist
+    // self-adjust to whatever host a hostile server named. `url` itself is
+    // validated against the same stored host by
+    // `DirectEditingRepositoryImpl` before it ever gets here.
     val openExternally: (Uri) -> Unit = remember(context) {
         { uri -> openExternalLink(context, uri) }
     }
@@ -367,6 +427,11 @@ private fun EditorWebView(
                         this.textZoom = textZoom
                         @Suppress("DEPRECATION")
                         allowFileAccess = false
+                        // Nothing ever loads a `content://` URL in here — the
+                        // only document is the server-hosted editor — so deny
+                        // the WebView reach into other apps' content
+                        // providers rather than leaving the default `true`.
+                        allowContentAccess = false
                         useWideViewPort = true
                         loadWithOverviewMode = true
                     }
@@ -428,6 +493,29 @@ private fun EditorWebView(
             // rather than leaving the editor stuck at whatever the
             // preference was when it opened.
             update = { it.settings.textZoom = textZoom },
+            // B-46: the WebView has to be torn down explicitly when the
+            // editor leaves composition — popped after `Closed`, or replaced
+            // by the Loading arm when the JS bridge asks for a fresh session.
+            // Without this its JS keeps running, so a reload leaves *two*
+            // live Nextcloud Text sessions on the same document, and the
+            // bridge's hard reference to the nav-scoped ViewModel leaks a
+            // WebView plus a ViewModel per visit.
+            //
+            // `onRelease` is the right hook: it fires only when the view has
+            // left the hierarchy for good, never on recomposition or
+            // re-layout (reuse would go through `onReset`, which we don't
+            // opt into). Order matters — drop the bridge and the chrome
+            // client first so no late callback can reach a cleared
+            // ViewModel, detach before destroying (the view system must not
+            // be left holding a destroyed native instance), then destroy.
+            onRelease = { view ->
+                view.stopLoading()
+                view.removeJavascriptInterface(DirectEditingMobileInterface.NAME)
+                view.webChromeClient = null
+                (view.parent as? ViewGroup)?.removeView(view)
+                view.destroy()
+                onWebViewReleased(view)
+            },
         )
     }
 }
@@ -466,17 +554,50 @@ private class StripChromeWebViewClient(
      * user taps would navigate the editor WebView away from the edit
      * session and break it. Mirrors nextcloud/notes-android
      * `NoteDirectEditFragment.shouldOverrideUrlLoading` (398abd51).
+     *
+     * **S-23**: routing out is gated on the request being a *user-driven
+     * main-frame* navigation. Consulting only `request.url` let a hostile
+     * page auto-launch a Custom Tab or an implicit `ACTION_VIEW` with no
+     * interaction at all — from a cross-origin iframe or a scripted
+     * `location` assignment. Those are cancelled outright instead.
      */
     override fun shouldOverrideUrlLoading(
         view: WebView?,
         request: WebResourceRequest?,
     ): Boolean {
-        val target = request?.url ?: return false
-        return if (shouldKeepInWebView(target.host, target.scheme, allowedHost)) {
-            false // let the WebView load it — it's part of the edit session
-        } else {
-            onExternalLink(target)
-            true // consumed — don't navigate the editor away
+        // Explicit null check rather than a safe call: the gesture and
+        // main-frame flags below need `request` itself, and relying on a
+        // smart cast through `request?.url ?: return` would be fragile.
+        if (request == null) return false
+        val target = request.url ?: return false
+        val decision = decideNavigation(
+            targetHost = target.host,
+            targetScheme = target.scheme,
+            allowedHost = allowedHost,
+            isForMainFrame = request.isForMainFrame,
+            hasGesture = request.hasGesture(),
+        )
+        return when (decision) {
+            NavigationDecision.KeepInWebView -> {
+                false
+            }
+
+            // let the WebView load it — it's part of the edit session
+            NavigationDecision.RouteToSystem -> {
+                onExternalLink(target)
+                true // consumed — don't navigate the editor away
+            }
+
+            NavigationDecision.Block -> {
+                // Host and scheme only: the session URL carries a one-shot
+                // token we don't want in logcat.
+                Timber.tag(TAG).d(
+                    "Blocked un-gestured/subframe navigation to %s://%s",
+                    target.scheme,
+                    target.host,
+                )
+                true
+            }
         }
     }
 
@@ -654,9 +775,16 @@ private class ImagePickingChromeClient(
  * `https`. Anything else — a different host, a non-https scheme (`mailto:`,
  * `tel:`, `geo:`, `intent:`), or a null host — is routed out to the system.
  *
- * `allowedHost` null (couldn't parse a host from the session URL) fails
- * closed: nothing is kept in the WebView, so links always leave rather than
- * risk hijacking the session.
+ * `allowedHost` null (no stored credentials, S-22) fails closed: nothing is
+ * kept in the WebView, so links always leave rather than risk hijacking the
+ * session.
+ *
+ * Host matching here is exact, deliberately narrower than the subdomain
+ * tolerance `isSameServerHttpsUrl` applies to the session URL itself. A
+ * server that hands back a session URL on a *subdomain* of the stored host
+ * still opens — `loadUrl` isn't gated, and Text's subresources and XHRs
+ * never reach this function — the only effect is that a tapped link back to
+ * that subdomain opens in a Custom Tab instead of in the editor.
  */
 internal fun shouldKeepInWebView(
     targetHost: String?,
@@ -667,6 +795,47 @@ internal fun shouldKeepInWebView(
     return targetScheme.equals("https", ignoreCase = true) &&
         targetHost.equals(allowedHost, ignoreCase = true)
 }
+
+/** Outcome of [decideNavigation]. */
+internal enum class NavigationDecision {
+    /** Part of the edit session — let the WebView load it. */
+    KeepInWebView,
+
+    /** Hand it to the system (Custom Tab / `ACTION_VIEW`). */
+    RouteToSystem,
+
+    /** Cancel silently: neither the WebView nor the system sees it. */
+    Block,
+}
+
+/**
+ * Full navigation decision for
+ * [StripChromeWebViewClient.shouldOverrideUrlLoading], pure so it is
+ * unit-testable without a WebView. Layers S-23's gesture requirement over
+ * [shouldKeepInWebView]'s host gate:
+ *
+ *  - in-session navigations ([shouldKeepInWebView]) stay in the WebView
+ *    whatever fired them — Text redirects and loads subframes of its own,
+ *    and none of that involves a touch;
+ *  - anything else leaves for the system **only** when the user actually
+ *    tapped it in the main frame;
+ *  - everything remaining is cancelled. Without that last rule a hostile
+ *    page could open a Custom Tab, or hand an arbitrary scheme to
+ *    [openExternalLink]'s `ACTION_VIEW`, with no interaction — a
+ *    cross-origin iframe or a scripted `location` assignment was enough.
+ */
+internal fun decideNavigation(
+    targetHost: String?,
+    targetScheme: String?,
+    allowedHost: String?,
+    isForMainFrame: Boolean,
+    hasGesture: Boolean,
+): NavigationDecision =
+    when {
+        shouldKeepInWebView(targetHost, targetScheme, allowedHost) -> NavigationDecision.KeepInWebView
+        isForMainFrame && hasGesture -> NavigationDecision.RouteToSystem
+        else -> NavigationDecision.Block
+    }
 
 /**
  * Maps a [com.megamaced.nccollectives.data.prefs.TextScale] multiplier to
@@ -682,18 +851,38 @@ internal fun shouldKeepInWebView(
 internal fun textZoomPercent(scale: Float): Int = (scale * 100f).roundToInt().coerceIn(50, 200)
 
 /**
+ * Schemes the editor is allowed to hand to the system (S-23). Everything
+ * else — `intent:`, `content:`, `file:`, `javascript:`, an app's private
+ * deep-link scheme — is dropped: handing an arbitrary scheme to an
+ * implicit `ACTION_VIEW` lets a page in the editor reach any exported
+ * component on the device that claims it.
+ */
+private val EXTERNAL_LINK_SCHEMES = setOf("http", "https", "mailto", "tel", "geo")
+
+/**
+ * True when [scheme] is one the editor may route out to the system.
+ * Pure so the allowlist is unit-testable.
+ */
+internal fun isAllowedExternalScheme(scheme: String?): Boolean = scheme != null && scheme.lowercase() in EXTERNAL_LINK_SCHEMES
+
+/**
  * Routes a link the user tapped inside the editor out of the WebView.
  * `http(s)` opens in Chrome Custom Tabs (same as the rest of the app —
- * see [com.megamaced.nccollectives.util.handleMarkdownLink]); other
- * schemes (`mailto:`, `tel:`, `geo:`, …) go through a plain `ACTION_VIEW`.
- * Both are wrapped so a device with no handler for the scheme logs and
- * no-ops rather than crashing — matching notes-android's try/catch.
+ * see [com.megamaced.nccollectives.util.handleMarkdownLink]); the other
+ * allowlisted schemes (`mailto:`, `tel:`, `geo:`) go through a plain
+ * `ACTION_VIEW`. Both are wrapped so a device with no handler for the
+ * scheme logs and no-ops rather than crashing — matching notes-android's
+ * try/catch.
  */
 private fun openExternalLink(
     context: Context,
     uri: Uri,
 ) {
     val scheme = uri.scheme?.lowercase()
+    if (!isAllowedExternalScheme(scheme)) {
+        Timber.tag(TAG).d("Refusing to hand scheme '%s' to the system", scheme)
+        return
+    }
     try {
         if (scheme == "http" || scheme == "https") {
             CustomTabsIntent.Builder().build().launchUrl(context, uri)

@@ -29,32 +29,52 @@ class SearchRepositoryImpl
                     .searchPages(trimmed, limit)
                     .ocs.data.entries
             }
-            // .map { } can't be used here because toHit() is suspend; collapse
-            // every non-Success arm with a single cast.
+            // Collapse every non-Success arm with a single cast.
             return if (raw is ApiResult.Success) {
-                ApiResult.Success(raw.data.map { it.toHit() })
+                ApiResult.Success(toHits(raw.data))
             } else {
                 raw as ApiResult<List<SearchHit>>
             }
         }
 
-        private suspend fun SearchEntryDto.toHit(): SearchHit {
-            val pageIdFromAttr = attributes["fileId"]?.toLongOrNull()
-            val pageIdFromUrl = resourceUrl?.let { extractFileIdFromQuery(it) }
-            // No cross-collective title fallback (B-17). Two collectives can
-            // hold same-titled pages, and a global `findIdByTitle` lookup
-            // would navigate to the wrong one. If the server didn't give us
-            // a file id we just leave [SearchHit.pageId] null — the result
-            // still shows title + snippet but isn't tappable.
-            val pageId = pageIdFromAttr ?: pageIdFromUrl
-            val collectiveId = pageId?.let { pageDao.getById(it)?.collectiveId }
-            return SearchHit(
-                title = title,
-                snippet = subline?.takeIf { it.isNotBlank() },
-                pageId = pageId,
-                collectiveId = collectiveId,
-            )
+        /**
+         * R-46: resolve every hit's collective in ONE projection query.
+         * This used to be a `pageDao.getById(pageId)?.collectiveId` per
+         * entry — a `SELECT *` that read the full cached markdown body of
+         * every result just to pull one Long out of it.
+         */
+        private suspend fun toHits(entries: List<SearchEntryDto>): List<SearchHit> {
+            val pageIds = entries.map { it.pageId() }
+            val known = pageIds.filterNotNull().distinct()
+            // Room expands an empty list to `IN ()`, a SQLite syntax error.
+            val collectiveIds = if (known.isEmpty()) {
+                emptyMap()
+            } else {
+                pageDao
+                    .collectiveIdsForPages(known)
+                    .associate { it.id to it.collectiveId }
+            }
+            return entries.mapIndexed { index, entry ->
+                val pageId = pageIds[index]
+                SearchHit(
+                    title = entry.title,
+                    snippet = entry.subline?.takeIf { it.isNotBlank() },
+                    pageId = pageId,
+                    collectiveId = pageId?.let { collectiveIds[it] },
+                )
+            }
         }
+
+        /**
+         * No cross-collective title fallback (B-17). Two collectives can
+         * hold same-titled pages, and a global `findIdByTitle` lookup
+         * would navigate to the wrong one. If the server didn't give us a
+         * file id we just leave [SearchHit.pageId] null — the result still
+         * shows title + snippet but isn't tappable.
+         */
+        private fun SearchEntryDto.pageId(): Long? =
+            attributes["fileId"]?.toLongOrNull()
+                ?: resourceUrl?.let { extractFileIdFromQuery(it) }
 
         private fun extractFileIdFromQuery(url: String): Long? {
             // B-47: route the parse through `Uri.parse` so query lookup

@@ -1,6 +1,9 @@
 package com.megamaced.nccollectives.ui.screen.page
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -46,16 +50,21 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
+import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
@@ -67,9 +76,11 @@ internal fun PageEditScreen(
     onClose: () -> Unit,
     viewModel: PageEditViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
-    val imageBaseUrl by viewModel.imageBaseUrl.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val draftBody by viewModel.draftBody.collectAsStateWithLifecycle()
+    val imageBaseUrl by viewModel.imageBaseUrl.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // Same preference the rendered page and the collaborative editor
     // read, so switching between edit, preview, and view doesn't change
@@ -85,19 +96,51 @@ internal fun PageEditScreen(
         )
     }
 
-    var fieldValue by remember { mutableStateOf(TextFieldValue("")) }
-    var previewing by remember { mutableStateOf(false) }
-    var showDiscardPrompt by remember { mutableStateOf(false) }
-    var showAttachmentPicker by remember { mutableStateOf(false) }
+    // The caret is a view concern, so the `TextFieldValue` lives here — but
+    // the text inside it is only a cache of the ViewModel's draft (B-71).
+    // `TextFieldValue.Saver` carries the caret through a configuration
+    // change; after process death the draft comes back from the ViewModel and
+    // the effect below reconciles the two.
+    var fieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(draftBody))
+    }
+    var previewing by rememberSaveable { mutableStateOf(false) }
+    var showDiscardPrompt by rememberSaveable { mutableStateOf(false) }
+    // B-73: `rememberSaveable` — the activity is routinely destroyed while
+    // the camera app is in front, and a plain `remember` brought the sheet
+    // back closed with a capture still in flight.
+    var showAttachmentPicker by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(ui.initialBody) {
-        if (ui.initialBody != null && fieldValue.text.isEmpty()) {
-            fieldValue = TextFieldValue(ui.initialBody.orEmpty())
+    LaunchedEffect(draftBody) {
+        if (fieldValue.text != draftBody) {
+            // The ViewModel wins: either the seeding pass has just run, or
+            // this is a fresh composable whose restored caret was measured
+            // against an older text. Keep the caret where it was when it
+            // still fits inside the draft.
+            fieldValue = TextFieldValue(
+                text = draftBody,
+                selection = TextRange(fieldValue.selection.start.coerceIn(0, draftBody.length)),
+            )
         }
     }
 
+    // Every edit goes through here so the ViewModel's draft — the copy that
+    // survives the activity — never lags behind what's on screen.
+    val updateField: (TextFieldValue) -> Unit = { next ->
+        fieldValue = next
+        viewModel.onBodyChanged(next.text)
+    }
+
     LaunchedEffect(ui.saveSucceeded) {
-        if (ui.saveSucceeded) onClose()
+        if (!ui.saveSucceeded) return@LaunchedEffect
+        // B-79: the conflict outcome still counts as saved (the edit is kept
+        // as a draft on the page) but the user has to be told, and this
+        // screen's snackbar host dies with the screen — so hold the close
+        // until the notice has actually been on screen.
+        ui.saveNotice?.let { notice ->
+            snackbarHostState.showSnackbar(notice, duration = SnackbarDuration.Long)
+        }
+        onClose()
     }
 
     LaunchedEffect(ui.saveError) {
@@ -107,19 +150,60 @@ internal fun PageEditScreen(
         }
     }
 
-    val hasUnsavedChanges = ui.initialBody != null && fieldValue.text != ui.initialBody
+    val hasUnsavedChanges = ui.initialBody != null && draftBody != ui.initialBody
     val tryClose: () -> Unit = {
         if (hasUnsavedChanges) showDiscardPrompt = true else onClose()
     }
 
     BackHandler(enabled = true, onBack = tryClose)
 
+    // B-73: the upload launchers are registered at screen level, not inside
+    // the picker sheet. `rememberLauncherForActivityResult` holds its
+    // registration only while it is composed; the system kills the activity
+    // freely while the camera app is foregrounded, and the conditionally
+    // composed sheet meant nothing re-registered the key on the way back —
+    // the pending `TakePicture` result was delivered to nobody and the photo
+    // was lost, `rememberSaveable` in `rememberCameraCapture` (B-31)
+    // notwithstanding, because the composable holding it no longer existed.
+    // `AttachmentsScreen` has always hoisted these; the two paths now match.
+    val cameraCapture = rememberCameraCapture { uri, displayName ->
+        viewModel.enqueueAttachment(uri, displayName, "image/jpeg")
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            // B-29: no `takePersistableUriPermission` — photo-picker URIs
+            // aren't persistable and we copy the bytes into our own cache
+            // in AttachmentRepositoryImpl.enqueueUpload anyway.
+            val name = uriDisplayName(context, uri) ?: "image.jpg"
+            viewModel.enqueueAttachment(uri, name, context.contentResolver.getType(uri))
+        }
+    }
+    // `OpenDocument` reaches every document provider, not just the media
+    // store — the only way to attach a PDF / spreadsheet from the editor.
+    val fileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val name = uriDisplayName(context, uri) ?: "attachment"
+            viewModel.enqueueAttachment(uri, name, context.contentResolver.getType(uri))
+        }
+    }
+
     if (showAttachmentPicker) {
         AttachmentPickerSheet(
             onPick = { fileName ->
-                fieldValue = MarkdownToolbarActions.insertAttachment(fieldValue, fileName)
+                updateField(MarkdownToolbarActions.insertAttachment(fieldValue, fileName))
                 showAttachmentPicker = false
             },
+            onCamera = { cameraCapture.launch() },
+            onGallery = {
+                galleryLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            onFile = { fileLauncher.launch(arrayOf("*/*")) },
             onDismiss = { showAttachmentPicker = false },
         )
     }
@@ -173,7 +257,7 @@ internal fun PageEditScreen(
                         )
                     }
                     IconButton(
-                        onClick = { viewModel.save(fieldValue.text) },
+                        onClick = viewModel::save,
                         enabled = !ui.isSaving && !ui.isLoadingBody,
                     ) {
                         if (ui.isSaving) {
@@ -198,8 +282,11 @@ internal fun PageEditScreen(
     ) { scaffoldPadding ->
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
             when {
-                ui.isLoadingBody -> LoadingState()
-                previewing ->
+                ui.isLoadingBody -> {
+                    LoadingState()
+                }
+
+                previewing -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -208,16 +295,18 @@ internal fun PageEditScreen(
                     ) {
                         MarkdownView(markdown = fieldValue.text, imageBaseUrl = imageBaseUrl)
                     }
-                else ->
+                }
+
+                else -> {
                     Column(modifier = Modifier.fillMaxSize()) {
                         MarkdownToolbar(
-                            onAction = { fieldValue = it(fieldValue) },
+                            onAction = { action -> updateField(action(fieldValue)) },
                             onInsertImage = { showAttachmentPicker = true },
                         )
                         HorizontalDivider()
                         BasicTextField(
                             value = fieldValue,
-                            onValueChange = { fieldValue = it },
+                            onValueChange = updateField,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(16.dp),
@@ -226,6 +315,7 @@ internal fun PageEditScreen(
                             keyboardActions = KeyboardActions.Default,
                         )
                     }
+                }
             }
         }
     }

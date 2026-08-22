@@ -30,7 +30,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -43,6 +42,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.ui.components.EmptyState
@@ -55,9 +55,9 @@ internal fun SearchScreen(
     onOpenPage: (Long) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
-    val recents by viewModel.recents.collectAsState()
-    val collectives by viewModel.collectives.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val recents by viewModel.recents.collectAsStateWithLifecycle()
+    val collectives by viewModel.collectives.collectAsStateWithLifecycle()
 
     val filteredResults = remember(ui.results, ui.selectedCollectiveIds) {
         if (ui.selectedCollectiveIds.isEmpty()) {
@@ -120,32 +120,41 @@ internal fun SearchScreen(
             }
 
             when {
-                ui.isSearching -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+                ui.isSearching -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
-                ui.errorMessage != null -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = ui.errorMessage!!,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(24.dp),
-                    )
+
+                ui.errorMessage != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = ui.errorMessage!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(24.dp),
+                        )
+                    }
                 }
-                filteredResults.isEmpty() && ui.query.isNotBlank() ->
+
+                filteredResults.isEmpty() && ui.query.isNotBlank() -> {
                     EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
-                filteredResults.isNotEmpty() ->
+                }
+
+                filteredResults.isNotEmpty() -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(filteredResults, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
                             SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
                             HorizontalDivider()
                         }
                     }
+                }
             }
         }
     }

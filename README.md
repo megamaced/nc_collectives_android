@@ -40,7 +40,7 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 - Pages revalidate their content against the server on open (`If-None-Match`, so an unchanged page costs a 304), which is what keeps edits made elsewhere from staying invisible
 - Adaptive launcher icon with a monochrome layer for Android 13+ themed icons
 - Splash screen via `androidx.core:core-splashscreen`
-- In-app update check: on startup, polls the GitHub Releases API at most once per 24 hours and posts a notification when a newer version is published. Tapping the notification opens the release page in your browser. Distribution is sideload-only, so this is how you hear about updates.
+- Manual update check under **Settings → About → Check for updates**: queries the GitHub Releases API only when you tap it, and opens the release page in your browser if a newer version is out. Nothing is checked at launch or in the background, and the result is shown in the app rather than as a notification.
 
 ## Requirements
 
@@ -56,9 +56,9 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ### Updates
 
-The app checks `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at most once every 24 hours on launch and posts a notification when a newer non-pre-release tag is available. Tap the notification to open the release page in your browser and download the new APK; install it over the existing app (same signing key from `v1.0.0` onwards, so it's an in-place upgrade). No notification is shown if the request fails, if you're already on the latest version, or if you've already been notified about that tag. On Android 13+ the notification needs `POST_NOTIFICATIONS` granted to your app under **Settings → Apps → NC Collectives → Notifications**.
+Update checks are user-initiated only. **Settings → About → Check for updates** queries `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at the moment you tap it, then either opens the release page in your browser (newer non-pre-release tag available), reports that you're on the latest version, or reports that GitHub couldn't be reached. Download the new APK from the page it opens and install it over the existing app — same signing key from `v1.0.0` onwards, so it's an in-place upgrade.
 
-You can also force a check at any time via **Settings → About → Check for updates** — that bypasses the 24h throttle, opens the release page directly if an update exists, or shows a "you're on the latest version" toast if not.
+The app makes no launch-time or background request to GitHub, and it posts no notifications: results appear in the Settings screen, so no `POST_NOTIFICATIONS` permission is declared or needed.
 
 ## Authentication
 
@@ -66,7 +66,7 @@ Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/ser
 
 ## Privacy & security
 
-- The app talks **only** to the Nextcloud server you configure, plus one third-party request to `api.github.com` on launch (at most once per 24 hours) for the in-app update check. The GitHub call uses a separate OkHttp client so it never carries your Nextcloud credentials. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
+- The app talks **only** to the Nextcloud server you configure. The single third-party request — `api.github.com`, for the update check — is made when you tap **Check for updates** in Settings and at no other time; there is no launch-time or background call to GitHub. That call uses a separate OkHttp client so it never carries your Nextcloud credentials. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
 - No Google Play Services dependencies; no Firebase; no advertising IDs.
 - Plaintext (`http://`) Nextcloud server URLs are refused at login; the app ships with `cleartextTrafficPermitted="false"` in the network-security config.
 - The device-scoped app password is stored in `EncryptedSharedPreferences` (Tink-backed). Sign-out wipes the keystore entry along with every Room table and DataStore value.

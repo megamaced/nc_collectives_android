@@ -56,9 +56,10 @@ class PageBodyService
             filePath: String,
             fileName: String,
         ): ApiResult<PageBody> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
             val request = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .url(url)
                 .get()
                 .build()
             return webDavCall(request) { response ->
@@ -86,9 +87,10 @@ class PageBodyService
             fileName: String,
             knownEtag: String,
         ): ApiResult<ConditionalBody> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
             val request = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .url(url)
                 .header("If-None-Match", "\"$knownEtag\"")
                 .get()
                 .build()
@@ -118,9 +120,10 @@ class PageBodyService
             body: String,
             baseEtag: String?,
         ): ApiResult<String?> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
             val builder = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .url(url)
                 .put(body.toRequestBody(MARKDOWN.toMediaType()))
             if (baseEtag != null) {
                 builder.header("If-Match", "\"$baseEtag\"")
@@ -138,9 +141,11 @@ class PageBodyService
             filePath: String,
             directoryName: String,
         ): ApiResult<Unit> {
+            val url = buildWebDavUrl(collectivePath, filePath, directoryName, asCollection = true)
+                ?: return unbuildableUrl()
             val request = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, directoryName, asCollection = true))
+                .url(url)
                 .method("MKCOL", null)
                 .build()
             return webDavCall(request, extraSuccessCodes = setOf(405)) { }
@@ -157,9 +162,10 @@ class PageBodyService
             fileName: String,
             body: RequestBody,
         ): ApiResult<String?> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
             val request = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .url(url)
                 .put(body)
                 .build()
             return webDavCall(request) { response -> normaliseEtag(response.header("ETag")) }
@@ -183,9 +189,10 @@ class PageBodyService
             fileName: String,
             target: java.io.File,
         ): ApiResult<String?> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
             val request = Request
                 .Builder()
-                .url(buildWebDavUrl(collectivePath, filePath, fileName))
+                .url(url)
                 .get()
                 .build()
             return webDavCall(request) { response ->
@@ -219,11 +226,21 @@ class PageBodyService
                 try {
                     client.newCall(request).execute().use { response ->
                         when {
-                            response.code in 200..299 || response.code in extraSuccessCodes ->
+                            response.code in 200..299 || response.code in extraSuccessCodes -> {
                                 ApiResult.Success(onSuccess(response))
-                            response.code == 401 -> ApiResult.Unauthorised
-                            response.code == 412 -> ApiResult.Conflict
-                            else -> ApiResult.HttpError(response.code, response.message)
+                            }
+
+                            response.code == 401 -> {
+                                ApiResult.Unauthorised
+                            }
+
+                            response.code == 412 -> {
+                                ApiResult.Conflict
+                            }
+
+                            else -> {
+                                ApiResult.HttpError(response.code, response.message)
+                            }
                         }
                     }
                 } catch (e: java.io.IOException) {
@@ -243,18 +260,50 @@ class PageBodyService
             collectivePath: String,
             filePath: String,
             fileName: String,
-        ): String = buildWebDavUrl(collectivePath, filePath, fileName)
+        ): String =
+            buildWebDavUrl(collectivePath, filePath, fileName)
+                // Keeps the throwing contract, unlike the `ApiResult`
+                // entry points above: this returns a bare `String` for Coil
+                // and `AttachmentRepositoryImpl.remoteUrlFor` already
+                // try/catches it into "no remote url". The other two callers
+                // there (`urlFor`, `attachmentsBaseUrl`) return `String?`
+                // and would be the natural place to absorb it too.
+                ?: throw IllegalStateException("Refusing to build a WebDAV URL from unvalidated inputs")
 
+        /**
+         * B-68: every WebDAV entry point maps an unbuildable URL to this
+         * instead of throwing.
+         *
+         * The URL is assembled from server-supplied strings and the stored
+         * credentials, so it can legitimately fail: signed out mid-call, a
+         * stored host that no longer parses, or a `PageDto.fileName` that
+         * fails S-14′ validation (it defaults to `""`, and
+         * `cleanPathSegment("")` returns null — so this is reachable from
+         * ordinary bad data, not just a hostile server). Because every call
+         * site built its `Request` *before* [webDavCall]'s try block, the
+         * previous `IllegalStateException` sailed past all of the
+         * `ApiResult` error handling and out through
+         * `PageRepositoryImpl.fetchBody`/`refreshBodyIfChanged`/`saveBody`,
+         * neither of which wraps in `apiCall` — i.e. straight into
+         * `viewModelScope` and a process crash. Same posture as
+         * `AttachmentRepositoryImpl.remoteUrlFor` and
+         * `DirectEditingRepositoryImpl.serverPathFor`, which already treat
+         * this failure as data rather than an exception.
+         */
+        private fun unbuildableUrl(): ApiResult<Nothing> =
+            ApiResult.Unexpected(
+                IllegalStateException("Couldn't build the WebDAV URL: no credentials, or a rejected path segment"),
+            )
+
+        /** Null when the URL can't be built — see [unbuildableUrl]. */
         private fun buildWebDavUrl(
             collectivePath: String,
             filePath: String,
             fileName: String,
             asCollection: Boolean = false,
-        ): String {
-            val credentials = tokenStore.getCredentials()
-                ?: throw IllegalStateException("Not authenticated")
-            val base = credentials.host.toHttpUrlOrNull()
-                ?: throw IllegalStateException("Stored host is not a valid URL")
+        ): String? {
+            val credentials = tokenStore.getCredentials() ?: return null
+            val base = credentials.host.toHttpUrlOrNull() ?: return null
             val builder = base
                 .newBuilder()
                 .addPathSegment("remote.php")
@@ -266,12 +315,9 @@ class PageBodyService
             // an embedded `/` but leaves `..` intact — without this gate a
             // compromised server returning `collectivePath="../../"` would
             // walk the WebDAV request up the user's Files tree.
-            appendSegments(builder, collectivePath)
-            if (filePath.isNotEmpty()) {
-                appendSegments(builder, filePath)
-            }
-            val finalSegment = ServerStringValidation.cleanPathSegment(fileName)
-                ?: throw IllegalStateException("Refusing to build WebDAV URL with hostile fileName")
+            if (!appendSegments(builder, collectivePath)) return null
+            if (filePath.isNotEmpty() && !appendSegments(builder, filePath)) return null
+            val finalSegment = ServerStringValidation.cleanPathSegment(fileName) ?: return null
             builder.addPathSegment(finalSegment)
             val result = builder.build().toString()
             // OkHttp's HttpUrl trims trailing slashes; WebDAV PROPFIND/MKCOL
@@ -280,21 +326,20 @@ class PageBodyService
             return if (asCollection && !result.endsWith('/')) "$result/" else result
         }
 
+        /** False when any segment of [raw] fails validation; [builder] is then unusable. */
         private fun appendSegments(
             builder: okhttp3.HttpUrl.Builder,
             raw: String,
-        ) {
+        ): Boolean {
             raw
                 .trim('/')
                 .split('/')
                 .filter { it.isNotEmpty() }
                 .forEach { segment ->
-                    val clean = ServerStringValidation.cleanPathSegment(segment)
-                        ?: throw IllegalStateException(
-                            "Refusing to build WebDAV URL with hostile path segment",
-                        )
+                    val clean = ServerStringValidation.cleanPathSegment(segment) ?: return false
                     builder.addPathSegment(clean)
                 }
+            return true
         }
 
         /**

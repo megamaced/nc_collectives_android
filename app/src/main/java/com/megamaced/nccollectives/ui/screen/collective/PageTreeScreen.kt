@@ -48,7 +48,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +61,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
@@ -80,8 +80,8 @@ internal fun PageTreeScreen(
     onOpenFavorites: () -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
-    val nodes by viewModel.nodes.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val nodes by viewModel.nodes.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // `null` means closed. A `Long` value means "show the new-page dialog with
@@ -156,28 +156,37 @@ internal fun PageTreeScreen(
             modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
         ) {
             when {
-                ui.isRefreshing && nodes.isEmpty() && ui.landingPage == null -> LoadingState()
-                ui.errorMessage != null && nodes.isEmpty() && ui.landingPage == null ->
+                ui.isRefreshing && nodes.isEmpty() && ui.landingPage == null -> {
+                    LoadingState()
+                }
+
+                ui.errorMessage != null && nodes.isEmpty() && ui.landingPage == null -> {
                     ErrorState(message = ui.errorMessage!!, onRetry = viewModel::refresh)
-                nodes.isEmpty() && ui.landingPage == null ->
+                }
+
+                nodes.isEmpty() && ui.landingPage == null -> {
                     EmptyState(
                         title = "No pages",
                         message = "This collective doesn't have any pages yet.",
                     )
-                else -> PageTreeList(
-                    nodes = nodes,
-                    expanded = ui.expanded,
-                    landingPage = ui.landingPage,
-                    collectiveName = ui.collectiveName,
-                    collectiveEmoji = ui.collectiveEmoji,
-                    recentPages = ui.recentPages,
-                    showLandingCard = isCompactWidth,
-                    onToggle = viewModel::toggleExpanded,
-                    onPageClick = onPageClick,
-                    onToggleFavorite = viewModel::toggleFavorite,
-                    onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
-                    onReorder = viewModel::onReorderDrop,
-                )
+                }
+
+                else -> {
+                    PageTreeList(
+                        nodes = nodes,
+                        expanded = ui.expanded,
+                        landingPage = ui.landingPage,
+                        collectiveName = ui.collectiveName,
+                        collectiveEmoji = ui.collectiveEmoji,
+                        recentPages = ui.recentPages,
+                        showLandingCard = isCompactWidth,
+                        onToggle = viewModel::toggleExpanded,
+                        onPageClick = onPageClick,
+                        onToggleFavorite = viewModel::toggleFavorite,
+                        onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
+                        onReorder = viewModel::onReorderDrop,
+                    )
+                }
             }
         }
     }
@@ -392,6 +401,7 @@ private fun NewPageDialog(
         mutableStateOf(
             when (mode) {
                 is NewPageMode.FixedParent -> mode.parentId
+
                 NewPageMode.PickParent -> parentChoices.firstOrNull { it.parentId == 0L }?.id
                     ?: parentChoices.firstOrNull()?.id
             },

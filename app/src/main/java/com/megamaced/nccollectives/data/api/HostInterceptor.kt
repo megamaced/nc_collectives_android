@@ -20,6 +20,19 @@ import javax.inject.Singleton
  * prefix every OCS / WebDAV call hits the bare domain and 404s. We now
  * concatenate the stored URL's `encodedPath` in front of the request's
  * own path before forwarding.
+ *
+ * **S-23**: only two URL shapes are legitimate here — Retrofit's
+ * `placeholder.invalid` base and a URL already built from the stored host
+ * ([PageBodyService.resourceUrl]). Anything else arrived as *content*: a
+ * page body is shared, so a co-member with write access can plant
+ * `![](https://anything/index.php/apps/x/y?z)` and Markwon hands that
+ * absolute URL straight to this client. Retargeting it would preserve the
+ * attacker's path and query while swapping in the victim's own host, and
+ * [AuthInterceptor] would then attach Basic-auth to it — a blind
+ * request-forgery primitive against the victim's server. Such requests are
+ * refused outright rather than retargeted, and every request this
+ * interceptor does vouch for carries a [RequestOrigin] tag that
+ * [AuthInterceptor] requires before it will attach credentials.
  */
 @Singleton
 class HostInterceptor
@@ -42,10 +55,40 @@ class HostInterceptor
             }
 
             val original = chain.request()
-            return chain.proceed(original.newBuilder().url(retarget(original.url, target)).build())
+            val origin = originOf(original.url, target)
+                ?: throw IOException(
+                    "Refusing to send a request to an unrecognised host (${original.url.host}); " +
+                        "only the app's own base URL and the stored Nextcloud host are routed here",
+                )
+            return chain.proceed(
+                original
+                    .newBuilder()
+                    .url(retarget(original.url, target))
+                    .tag(RequestOrigin::class.java, origin)
+                    .build(),
+            )
         }
 
         internal companion object {
+            /**
+             * Classify [original]'s provenance, or `null` when it has none we
+             * recognise — see the S-23 note on the class.
+             *
+             * The host is the only signal available: a URL on the target host
+             * was built from the stored credential ([PageBodyService]), and a
+             * URL on [PLACEHOLDER_HOST] was built by Retrofit from our own
+             * service interfaces. A URL on any other host came from data.
+             */
+            fun originOf(
+                original: HttpUrl,
+                target: HttpUrl,
+            ): RequestOrigin? =
+                when {
+                    original.host.equals(target.host, ignoreCase = true) -> RequestOrigin.StoredHost
+                    original.host.equals(PLACEHOLDER_HOST, ignoreCase = true) -> RequestOrigin.AppBaseUrl
+                    else -> null
+                }
+
             /**
              * Point [original] at [target]'s scheme/host/port, splicing in
              * [target]'s subdirectory prefix only when [original] doesn't
@@ -83,5 +126,29 @@ class HostInterceptor
                         }
                     }.build()
             }
+
+            /**
+             * Host half of Retrofit's base URL. `NetworkModule` builds
+             * `PLACEHOLDER_BASE_URL` from this constant rather than
+             * repeating the literal, so the base URL and this
+             * security-relevant check can't drift apart.
+             */
+            const val PLACEHOLDER_HOST = "placeholder.invalid"
         }
     }
+
+/**
+ * Provenance of an outgoing request's URL, stamped by [HostInterceptor] and
+ * required by [AuthInterceptor] before credentials are attached (S-23).
+ *
+ * Both values are equally trusted — the tag's job is to distinguish "a URL
+ * this app constructed" from "a URL that arrived in a server response",
+ * which carries no tag at all because [HostInterceptor] refuses it.
+ */
+internal enum class RequestOrigin {
+    /** Built by Retrofit on the placeholder base URL. */
+    AppBaseUrl,
+
+    /** Built from the stored Nextcloud host — WebDAV bodies, attachments. */
+    StoredHost,
+}

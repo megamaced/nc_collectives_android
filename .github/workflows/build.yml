@@ -7,8 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only by default. Only the `release` job publishes anything, and it
+# raises its own scope to `contents: write`; PR and main builds never hold it.
 permissions:
-  contents: write   # needed for the release step on tag pushes
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +26,132 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Release metadata is hand-maintained across four files. On a tag build
+      # they must all agree, or F-Droid builds the wrong commit / 404s on the
+      # binary. Runs before the toolchain setup so a mismatch fails in seconds.
+      - name: Check release metadata matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          sha = os.environ["GITHUB_SHA"]
+          expected_version = tag[1:] if tag.startswith("v") else tag
+          failures = []
+          warnings = []
+
+          gradle = pathlib.Path("app/build.gradle.kts").read_text()
+          code_match = re.search(r"^\s*versionCode\s*=\s*(\d+)", gradle, re.M)
+          name_match = re.search(r'^\s*versionName\s*=\s*"([^"]+)"', gradle, re.M)
+          if not code_match or not name_match:
+              print("::error::could not read versionCode/versionName from app/build.gradle.kts")
+              sys.exit(1)
+          version_code = int(code_match.group(1))
+          version_name = name_match.group(1)
+          print(f"gradle: versionName={version_name} versionCode={version_code}")
+
+          if version_name != expected_version:
+              failures.append(
+                  f'app/build.gradle.kts versionName "{version_name}" does not match tag '
+                  f'{tag} (expected "{expected_version}")'
+              )
+
+          recipe_path = pathlib.Path("docs/fdroid/com.megamaced.nccollectives.yml")
+          current_version = None
+          current_code = None
+          builds = []
+          entry = None
+          in_builds = False
+          for line in recipe_path.read_text().splitlines():
+              if line.startswith("CurrentVersion:"):
+                  current_version, in_builds = line.split(":", 1)[1].strip(), False
+                  continue
+              if line.startswith("CurrentVersionCode:"):
+                  current_code, in_builds = line.split(":", 1)[1].strip(), False
+                  continue
+              if line.startswith("Builds:"):
+                  in_builds = True
+                  continue
+              if line and not line[0].isspace():
+                  in_builds = False
+                  continue
+              if not in_builds:
+                  continue
+              new_entry = re.match(r"\s*-\s*versionName:\s*(\S+)", line)
+              if new_entry:
+                  entry = {"versionName": new_entry.group(1).strip("\"'")}
+                  builds.append(entry)
+                  continue
+              if entry is None:
+                  continue
+              for key in ("versionCode", "commit"):
+                  found = re.match(rf"\s+{key}:\s*(\S+)", line)
+                  if found:
+                      entry[key] = found.group(1).strip("\"'")
+
+          # The docs/fdroid/ mirror is EXPECTED to lag at tag time. This package
+          # is merged into fdroiddata with `AutoUpdateMode: Version` +
+          # `UpdateCheckMode: Tags`, so F-Droid's checkupdates bot bumps the
+          # recipe itself once the tag exists, and the mirror is re-synced from
+          # upstream master in a follow-up `fdroid recipe: sync to vX.Y.Z`
+          # commit. Asserting equality here would fail every release and force
+          # a moved tag — which for a bot-driven package means burning a
+          # version instead. So: warn, never fail, on recipe/gradle skew.
+          if current_version != version_name:
+              warnings.append(
+                  f"{recipe_path}: CurrentVersion {current_version!r} != gradle versionName "
+                  f"{version_name!r} — expected pre-sync; re-sync the mirror after this release"
+              )
+          if current_code != str(version_code):
+              warnings.append(
+                  f"{recipe_path}: CurrentVersionCode {current_code!r} != gradle versionCode {version_code}"
+              )
+
+          if not builds:
+              failures.append(f"{recipe_path}: no Builds entries found")
+          else:
+              last = builds[-1]
+              print(f"recipe last Builds entry: {last}")
+              if last.get("versionName") != version_name:
+                  warnings.append(
+                      f"{recipe_path}: last Builds entry versionName {last.get('versionName')!r} "
+                      f"!= gradle versionName {version_name!r} — expected pre-sync"
+                  )
+              if last.get("versionCode") != str(version_code):
+                  warnings.append(
+                      f"{recipe_path}: last Builds entry versionCode {last.get('versionCode')!r} "
+                      f"!= gradle versionCode {version_code} — expected pre-sync"
+                  )
+              # WARNING, not a failure. The established release flow syncs
+              # the recipe in a follow-up commit *after* the tag (the recipe
+              # references the tagged commit, so it cannot be written before
+              # that SHA exists). Failing here would block every release.
+              # Warn so a genuinely forgotten sync is still visible in the
+              # build log without gating the publish.
+              if last.get("commit") != sha:
+                  warnings.append(
+                      f"{recipe_path}: last Builds entry commit {last.get('commit')!r} != the tagged "
+                      f"commit {sha}. Expected if the recipe is synced in a follow-up commit; "
+                      f"make sure that sync lands before F-Droid next scans."
+                  )
+
+          changelog = pathlib.Path(f"fastlane/metadata/android/en-US/changelogs/{version_code}.txt")
+          if not changelog.is_file():
+              failures.append(f"{changelog} is missing")
+          elif not changelog.read_text().strip():
+              failures.append(f"{changelog} is empty")
+
+          for warning in warnings:
+              print(f"::warning::{warning}")
+          for failure in failures:
+              print(f"::error::{failure}")
+          sys.exit(1 if failures else 0)
+          PY
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -33,32 +161,76 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
+      # On a tag the signing material is mandatory: an unsigned APK cannot be
+      # installed as an upgrade and F-Droid's AllowedAPKSigningKeys rejects it.
+      # Off a tag (and on fork PRs, where secrets are unavailable) an unsigned
+      # release build is fine and wanted — it is the same path F-Droid's own
+      # builder takes.
       - name: Decode release keystore
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            {
-              echo "ANDROID_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
-              echo "ANDROID_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
-              echo "ANDROID_RELEASE_KEY_ALIAS=$KEY_ALIAS"
-              echo "ANDROID_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::ANDROID_RELEASE_KEYSTORE_BASE64 secret not set — release APK will be unsigned"
+          is_tag=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            is_tag=true
           fi
 
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            if [ "$is_tag" = true ]; then
+              echo "::error::ANDROID_RELEASE_KEYSTORE_BASE64 is not set, so this tag build would produce an unsigned APK. Set the four ANDROID_RELEASE_* repository secrets (see docs/SIGNING.md) and re-run."
+              exit 1
+            fi
+            echo "ANDROID_RELEASE_KEYSTORE_BASE64 not set — assembleRelease will produce an unsigned APK (expected off tag builds)."
+            exit 0
+          fi
+
+          if [ "$is_tag" = true ]; then
+            missing=""
+            [ -n "$STORE_PASSWORD" ] || missing="$missing ANDROID_RELEASE_STORE_PASSWORD"
+            [ -n "$KEY_ALIAS" ] || missing="$missing ANDROID_RELEASE_KEY_ALIAS"
+            [ -n "$KEY_PASSWORD" ] || missing="$missing ANDROID_RELEASE_KEY_PASSWORD"
+            if [ -n "$missing" ]; then
+              echo "::error::keystore present but these secrets are unset:$missing — the release APK would be unsigned."
+              exit 1
+            fi
+          fi
+
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          {
+            echo "ANDROID_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
+            echo "ANDROID_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "ANDROID_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      # assembleRelease/lintRelease run on every ref, not just tags, so R8 keep
+      # rules and resource shrinking are exercised on the PR that breaks them
+      # rather than during the release.
       - name: Build
+        run: >
+          ./gradlew --no-daemon
+          ktlintCheck
+          lintDebug lintRelease
+          testDebugUnitTest
+          assembleDebug assembleRelease
+
+      # Guards against the failure mode where signing silently degrades and an
+      # uninstallable app-release-unsigned.apk gets published.
+      - name: Verify the release APK is signed
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            ./gradlew --no-daemon ktlintCheck lintDebug testDebugUnitTest assembleDebug assembleRelease
-          else
-            ./gradlew --no-daemon ktlintCheck lintDebug testDebugUnitTest assembleDebug
+          out=app/build/outputs/apk/release
+          if [ ! -f "$out/app-release.apk" ]; then
+            echo "::error::$out/app-release.apk was not produced — the release build was not signed."
+            ls -l "$out" || true
+            exit 1
+          fi
+          if [ -f "$out/app-release-unsigned.apk" ]; then
+            echo "::error::$out/app-release-unsigned.apk exists — the signing config was skipped."
+            exit 1
           fi
 
       - name: Upload debug APK
@@ -69,18 +241,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Exact filename, never a glob: app-release-unsigned.apk must not be able
+      # to ride along into the artifact the release job publishes.
       - name: Upload release APK
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: nc_collectives_android-release-${{ github.sha }}
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach release APK to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # create the GitHub release and upload the APK to it
+      actions: read    # download this run's release-APK artifact
+    steps:
+      - name: Download the signed release APK
+        uses: actions/download-artifact@v4
         with:
-          files: app/build/outputs/apk/release/*.apk
+          name: nc_collectives_android-release-${{ github.sha }}
+          path: dist
+
+      - name: Attach release APK to GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: dist/app-release.apk
+          fail_on_unmatched_files: true
           generate_release_notes: true

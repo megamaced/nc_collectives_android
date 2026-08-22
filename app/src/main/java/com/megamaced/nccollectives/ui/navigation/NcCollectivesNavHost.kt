@@ -97,8 +97,21 @@ internal fun NcCollectivesNavHost(
             PageViewScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
-                onEdit = { navController.navigate(Destination.PageEdit.route(pageId)) },
-                onEditWeb = { navController.navigate(Destination.PageEditWeb.route(pageId)) },
+                // B-76: `launchSingleTop` — resolving the edit route is async
+                // (a server-capability probe on the first call per session), so
+                // two taps can both reach here. A duplicate editor entry is bad
+                // enough on its own; for the web editor it opens a second
+                // `directediting` session on the same page.
+                onEdit = {
+                    navController.navigate(Destination.PageEdit.route(pageId)) {
+                        launchSingleTop = true
+                    }
+                },
+                onEditWeb = {
+                    navController.navigate(Destination.PageEditWeb.route(pageId)) {
+                        launchSingleTop = true
+                    }
+                },
                 onAttachments = { navController.navigate(Destination.Attachments.route(pageId)) },
                 onOpenPage = { target ->
                     if (target != pageId) navController.navigate(Destination.PageView.route(target))

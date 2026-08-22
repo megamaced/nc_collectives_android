@@ -52,6 +52,20 @@ class NcCollectivesApplication :
         )
     }
 
+    /**
+     * Coil is deliberately wired to the *shared, authenticated*
+     * `OkHttpClient`: every image the app loads over the network is an
+     * attachment on the user's own Nextcloud, served from WebDAV, which
+     * 401s without Basic-auth. A separate unauthenticated loader would
+     * therefore break inline images and attachment thumbnails outright.
+     *
+     * What keeps that safe is the pair of guards on the client itself, not
+     * the loader: `HostInterceptor` refuses any request whose URL this app
+     * didn't build (S-23), and `MarkdownView.absolutizeImageRefs` demotes
+     * off-host image refs in a page body to plain links before Coil or
+     * Markwon ever sees them (S-24). Removing either one turns this shared
+     * client back into an authenticated fetcher aimed by page content.
+     */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader
             .Builder(context)

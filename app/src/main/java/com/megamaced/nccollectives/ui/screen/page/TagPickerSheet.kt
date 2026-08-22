@@ -65,11 +65,13 @@ fun TagPickerSheet(
             Text("Tags", style = MaterialTheme.typography.titleMedium)
             when {
                 isLoading -> CircularProgressIndicator()
+
                 available.isEmpty() -> Text(
                     text = "No tags defined for this collective yet. Create one below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
                 else -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     // One row per tag: FilterChip toggles membership on the
                     // current page (existing behaviour); the trailing

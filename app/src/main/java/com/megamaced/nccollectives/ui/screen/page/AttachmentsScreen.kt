@@ -47,7 +47,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
@@ -74,8 +74,8 @@ internal fun AttachmentsScreen(
     viewModel: AttachmentsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val attachments by viewModel.attachments.collectAsState()
-    val ui by viewModel.uiState.collectAsState()
+    val attachments by viewModel.attachments.collectAsStateWithLifecycle()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showUploadSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
@@ -162,11 +162,13 @@ internal fun AttachmentsScreen(
     ) { scaffoldPadding ->
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
             when {
-                ui.isRefreshing && attachments.isEmpty() ->
+                ui.isRefreshing && attachments.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                attachments.isEmpty() ->
+                }
+
+                attachments.isEmpty() -> {
                     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text(
                             text = "No attachments yet. Tap Add to upload a photo or file.",
@@ -174,7 +176,9 @@ internal fun AttachmentsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                else ->
+                }
+
+                else -> {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 112.dp),
                         contentPadding = PaddingValues(12.dp),
@@ -189,6 +193,7 @@ internal fun AttachmentsScreen(
                             )
                         }
                     }
+                }
             }
         }
     }
@@ -264,20 +269,25 @@ private fun AttachmentTile(
             contentAlignment = Alignment.Center,
         ) {
             when {
-                attachment.status != Attachment.Status.REMOTE ->
+                attachment.status != Attachment.Status.REMOTE -> {
                     CircularProgressIndicator(strokeWidth = 2.dp)
-                attachment.isImage && attachment.remoteUrl != null ->
+                }
+
+                attachment.isImage && attachment.remoteUrl != null -> {
                     AsyncImage(
                         model = attachment.remoteUrl,
                         contentDescription = attachment.fileName,
                         modifier = Modifier.fillMaxSize(),
                     )
-                else ->
+                }
+
+                else -> {
                     Icon(
                         Icons.AutoMirrored.Filled.InsertDriveFile,
                         contentDescription = null,
                         modifier = Modifier.padding(16.dp),
                     )
+                }
             }
         }
         Row(

@@ -8,10 +8,13 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -20,7 +23,6 @@ import javax.inject.Inject
 data class CollectiveListUiState(
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
-    val statusMessage: String? = null,
     val isCreating: Boolean = false,
     /**
      * Set to the new collective id after a successful create so the UI
@@ -45,6 +47,21 @@ class CollectiveListViewModel
 
         private val _uiState = MutableStateFlow(CollectiveListUiState())
         val uiState: StateFlow<CollectiveListUiState> = _uiState.asStateFlow()
+
+        /**
+         * One-shot user messages, deliberately *not* part of [uiState].
+         *
+         * B-79: a `statusMessage` field can't work on this screen. Creating a
+         * collective sets the message and `createdCollectiveId` in the same
+         * update, and the navigation that follows disposes the composition
+         * while `showSnackbar` is still suspended — so the `dismissStatus()`
+         * after it never ran, and the message sat in this (surviving) ViewModel
+         * until the user pressed Back, when "Collective created" popped up
+         * again apropos of nothing. A channel message is consumed on receipt:
+         * shown once, or not at all.
+         */
+        private val _messages = Channel<String>(Channel.BUFFERED)
+        val messages: Flow<String> = _messages.receiveAsFlow()
 
         /**
          * When the last refresh *started*. Seeded by the `init` refresh so
@@ -88,8 +105,10 @@ class CollectiveListViewModel
             _uiState.update { it.copy(errorMessage = null) }
         }
 
-        fun dismissStatus() {
-            _uiState.update { it.copy(statusMessage = null) }
+        /** Queue a snackbar message; nulls (a result with nothing to say) are dropped. */
+        private fun postMessage(message: String?) {
+            if (message == null) return
+            _messages.trySend(message)
         }
 
         fun acknowledgeCreated() {
@@ -104,21 +123,9 @@ class CollectiveListViewModel
             _uiState.update { it.copy(isCreating = true) }
             viewModelScope.launch {
                 val result = repository.createCollective(name, emoji)
-                _uiState.update {
-                    when (result) {
-                        is ApiResult.Success ->
-                            it.copy(
-                                isCreating = false,
-                                createdCollectiveId = result.data.id,
-                                statusMessage = "Collective created",
-                            )
-                        else ->
-                            it.copy(
-                                isCreating = false,
-                                statusMessage = result.userMessage(),
-                            )
-                    }
-                }
+                val createdId = if (result is ApiResult.Success) result.data.id else null
+                postMessage(if (result is ApiResult.Success) "Collective created" else result.userMessage())
+                _uiState.update { it.copy(isCreating = false, createdCollectiveId = createdId) }
             }
         }
 
@@ -129,7 +136,7 @@ class CollectiveListViewModel
             viewModelScope.launch {
                 val result = repository.setCollectiveEmoji(collectiveId, emoji)
                 if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                    postMessage(result.userMessage())
                 }
             }
         }
@@ -137,14 +144,7 @@ class CollectiveListViewModel
         fun trash(collectiveId: Long) {
             viewModelScope.launch {
                 val result = repository.trashCollective(collectiveId)
-                _uiState.update {
-                    when (result) {
-                        is ApiResult.Success ->
-                            it.copy(statusMessage = "Moved to trash")
-                        else ->
-                            it.copy(statusMessage = result.userMessage())
-                    }
-                }
+                postMessage(if (result is ApiResult.Success) "Moved to trash" else result.userMessage())
             }
         }
 

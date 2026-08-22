@@ -48,10 +48,13 @@ class TrashViewModel
                 val result = repository.listTrashedPages(collectiveId)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(isLoading = false, items = result.data, errorMessage = null)
-                        else ->
+                        }
+
+                        else -> {
                             it.copy(isLoading = false, errorMessage = result.userMessage())
+                        }
                     }
                 }
             }
@@ -62,12 +65,16 @@ class TrashViewModel
                 val result = repository.restorePage(collectiveId, pageId)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(
                                 statusMessage = "Page restored",
                                 items = it.items.filter { p -> p.id != pageId },
                             )
-                        else -> it.copy(statusMessage = result.userMessage())
+                        }
+
+                        else -> {
+                            it.copy(statusMessage = result.userMessage())
+                        }
                     }
                 }
             }
@@ -78,12 +85,16 @@ class TrashViewModel
                 val result = repository.purgePage(collectiveId, pageId)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(
                                 statusMessage = "Page permanently deleted",
                                 items = it.items.filter { p -> p.id != pageId },
                             )
-                        else -> it.copy(statusMessage = result.userMessage())
+                        }
+
+                        else -> {
+                            it.copy(statusMessage = result.userMessage())
+                        }
                     }
                 }
             }

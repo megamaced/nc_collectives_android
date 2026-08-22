@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
+import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
@@ -26,10 +27,13 @@ import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +45,7 @@ class PageRepositoryImpl
         private val bodyService: PageBodyService,
         private val pageDao: PageDao,
         private val editQueueDao: EditQueueDao,
+        private val attachmentDao: AttachmentDao,
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
     ) : PageRepository {
@@ -60,8 +65,16 @@ class PageRepositoryImpl
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
             apiCall {
                 val now = System.currentTimeMillis()
-                val tagNames = fetchTagNamesById(collectiveId)
-                val response = api.listPages(collectiveId)
+                // R-48: the tag lookup and the page list are independent
+                // requests, so they go out together. Sequentially they
+                // doubled the latency of a path `FullSync` walks once per
+                // collective and that every create / move / rename / copy /
+                // restore triggers again.
+                val (tagNames, response) = coroutineScope {
+                    val tags = async { fetchTagNamesById(collectiveId) }
+                    val pages = async { api.listPages(collectiveId) }
+                    tags.await() to pages.await()
+                }
                 // R-27: bulk-load existing rows for the collective in one
                 // query, then look up locally in the map. The previous
                 // `pageDao.getById(dto.id)` per DTO was a Room round-trip
@@ -76,6 +89,7 @@ class PageRepositoryImpl
                         existingBody = existing?.bodyMd,
                         existingEtag = existing?.bodyEtag,
                         existingDraft = existing?.draftBodyMd,
+                        existingTagsCsv = existing?.tagsCsv,
                         tagNamesById = tagNames,
                     )
                 }
@@ -89,6 +103,12 @@ class PageRepositoryImpl
                 database.withTransaction {
                     pageDao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
+                    val keepSet = keepIds.toSet()
+                    // B-66: the rows about to be dropped have to be cascaded
+                    // by hand — see [cascadeForPages]. Read the ids after the
+                    // upsert so a page the server just added isn't mistaken
+                    // for one going away.
+                    cascadeForPages(pageDao.idsForCollective(collectiveId).filterNot { it in keepSet })
                     if (keepIds.isEmpty()) {
                         pageDao.deleteForCollective(collectiveId)
                     } else {
@@ -100,11 +120,17 @@ class PageRepositoryImpl
         /**
          * Server returns `PageDto.tags` as numeric IDs; we resolve them to
          * names at mapping time by pulling the per-collective tag list. A
-         * failure here returns an empty map so a tag-service blip doesn't
-         * break the page list — affected pages will display with no tag chips
-         * until the next refresh.
+         * failure here doesn't break the page list — the refresh carries on
+         * against the tags already cached.
+         *
+         * B-69: null, not an empty map, on failure. `PageDto.toEntity` writes
+         * whatever it resolves straight into `tagsCsv`, so the old empty-map
+         * fallback meant one 500 from the tags endpoint blanked the tags on
+         * every page of the collective — and Tag Browse with them — until a
+         * later refresh happened to succeed. Null lets the mapper tell "no
+         * tags" from "don't know".
          */
-        private suspend fun fetchTagNamesById(collectiveId: Long): Map<Long, String> {
+        private suspend fun fetchTagNamesById(collectiveId: Long): Map<Long, String>? {
             val result = apiCall {
                 api
                     .listTags(collectiveId)
@@ -113,8 +139,28 @@ class PageRepositoryImpl
             return if (result is ApiResult.Success) {
                 result.data.associate { it.id to it.name }
             } else {
-                emptyMap()
+                Timber.w("Tag lookup failed for collective %d; keeping the cached tags", collectiveId)
+                null
             }
+        }
+
+        /**
+         * Delete everything keyed to [pageIds] that Room won't.
+         *
+         * B-66: no entity in this schema declares a foreign key (verified
+         * against `app/schemas/…/7.json`), so `ON DELETE CASCADE` doesn't
+         * exist here — a dropped `pages` row leaves its `attachments` rows
+         * behind for good, including staged-upload rows that
+         * `AttachmentUploadWorker.pendingUploads()` keeps selecting, and its
+         * `edit_queue` row, which the flush worker only clears the next time
+         * it happens to run.
+         *
+         * Caller must already hold a transaction.
+         */
+        private suspend fun cascadeForPages(pageIds: List<Long>) {
+            if (pageIds.isEmpty()) return
+            attachmentDao.deleteForPageIds(pageIds)
+            editQueueDao.deleteForPageIds(pageIds)
         }
 
         override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain()
@@ -132,11 +178,26 @@ class PageRepositoryImpl
                     pageDao.updateBody(pageId, result.data.markdown, result.data.etag, System.currentTimeMillis())
                     ApiResult.Success(result.data.markdown)
                 }
-                is ApiResult.NetworkError -> result
-                is ApiResult.HttpError -> result
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> result
+
+                is ApiResult.NetworkError -> {
+                    result
+                }
+
+                is ApiResult.HttpError -> {
+                    result
+                }
+
+                ApiResult.Unauthorised -> {
+                    ApiResult.Unauthorised
+                }
+
+                ApiResult.Conflict -> {
+                    ApiResult.Conflict
+                }
+
+                is ApiResult.Unexpected -> {
+                    result
+                }
             }
         }
 
@@ -154,9 +215,12 @@ class PageRepositoryImpl
                 knownEtag = plan.etag,
             )
             return when (result) {
-                is ApiResult.Success ->
+                is ApiResult.Success -> {
                     when (val body = result.data) {
-                        ConditionalBody.NotModified -> ApiResult.Success(false)
+                        ConditionalBody.NotModified -> {
+                            ApiResult.Success(false)
+                        }
+
                         is ConditionalBody.Modified -> {
                             // Deliberately unconditional on the edit queue: a
                             // queued offline edit lives in `edit_queue`, not on
@@ -175,11 +239,27 @@ class PageRepositoryImpl
                             ApiResult.Success(true)
                         }
                     }
-                is ApiResult.NetworkError -> result
-                is ApiResult.HttpError -> result
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> result
+                }
+
+                is ApiResult.NetworkError -> {
+                    result
+                }
+
+                is ApiResult.HttpError -> {
+                    result
+                }
+
+                ApiResult.Unauthorised -> {
+                    ApiResult.Unauthorised
+                }
+
+                ApiResult.Conflict -> {
+                    ApiResult.Conflict
+                }
+
+                is ApiResult.Unexpected -> {
+                    result
+                }
             }
         }
 
@@ -203,6 +283,7 @@ class PageRepositoryImpl
                     editQueueDao.deleteForPage(pageId)
                     SaveOutcome.Saved
                 }
+
                 is ApiResult.NetworkError -> {
                     // If a prior save lost an etag race and is still
                     // CONFLICTED, refuse to queue a fresh edit on top — the
@@ -227,13 +308,72 @@ class PageRepositoryImpl
                         SaveOutcome.Queued
                     }
                 }
+
                 ApiResult.Conflict -> {
-                    pageDao.updateDraft(pageId, newBody)
+                    // B-67: leave exactly the state `EditFlushWorker`'s
+                    // conflict path leaves, not just the draft.
+                    //
+                    // Two things were missing. Without a `CONFLICTED` queue
+                    // row the B-19 guard above never arms for this path, so
+                    // the next offline save on this page queues happily —
+                    // with the stale `baseEtag` — and its flush overwrites
+                    // the draft this branch just kept. And leaving `bodyEtag`
+                    // at the value the server has already rejected guarantees
+                    // the next online save is another 412; refetching the
+                    // body is also what lets the user see what they're
+                    // conflicting with.
+                    val fresh = when (
+                        val server = bodyService.fetchBody(
+                            collectivePath = entity.collectivePath,
+                            filePath = entity.filePath,
+                            fileName = entity.fileName,
+                        )
+                    ) {
+                        is ApiResult.Success -> server.data
+
+                        // Offline again already, or the refetch failed: the
+                        // draft and the conflict marker still land, and the
+                        // next revalidation on open advances the body.
+                        else -> null
+                    }
+                    database.withTransaction {
+                        if (fresh != null) {
+                            pageDao.updateBody(
+                                pageId,
+                                fresh.markdown,
+                                fresh.etag,
+                                System.currentTimeMillis(),
+                            )
+                        }
+                        pageDao.updateDraft(pageId, newBody)
+                        editQueueDao.upsert(
+                            EditQueueEntity(
+                                pageId = pageId,
+                                // The etag the draft would have to be written
+                                // against, as far as we know it. Only used if
+                                // the row is ever re-armed — a CONFLICTED row
+                                // is never picked up by `pendingEntries`.
+                                baseEtag = fresh?.etag ?: entity.bodyEtag,
+                                newBodyMd = newBody,
+                                queuedAt = System.currentTimeMillis(),
+                                status = "CONFLICTED",
+                            ),
+                        )
+                    }
                     SaveOutcome.Conflict
                 }
-                ApiResult.Unauthorised -> SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
-                is ApiResult.HttpError -> SaveOutcome.Error(result.userMessage() ?: "Server error")
-                is ApiResult.Unexpected -> SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+
+                ApiResult.Unauthorised -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
+                }
+
+                is ApiResult.HttpError -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Server error")
+                }
+
+                is ApiResult.Unexpected -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+                }
             }
         }
 
@@ -258,6 +398,7 @@ class PageRepositoryImpl
                     editQueueDao.deleteForPage(pageId)
                     SaveOutcome.Saved
                 }
+
                 is ApiResult.NetworkError -> {
                     // B-38: the previous "return Queued without queuing"
                     // path left the draft sitting on the page row indefinitely.
@@ -278,15 +419,34 @@ class PageRepositoryImpl
                     syncScheduler.flushEditsWhenOnline()
                     SaveOutcome.Queued
                 }
-                ApiResult.Conflict -> SaveOutcome.Conflict
-                ApiResult.Unauthorised -> SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
-                is ApiResult.HttpError -> SaveOutcome.Error(result.userMessage() ?: "Server error")
-                is ApiResult.Unexpected -> SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+
+                ApiResult.Conflict -> {
+                    SaveOutcome.Conflict
+                }
+
+                ApiResult.Unauthorised -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
+                }
+
+                is ApiResult.HttpError -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Server error")
+                }
+
+                is ApiResult.Unexpected -> {
+                    SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+                }
             }
         }
 
         override suspend fun discardDraft(pageId: Long) {
-            pageDao.updateDraft(pageId, null)
+            // B-67: the queue row goes with the draft. The user has thrown
+            // the text away, and a `CONFLICTED` row left behind would keep
+            // the B-19 guard armed forever — every later offline save on this
+            // page would report a conflict for a draft that no longer exists.
+            database.withTransaction {
+                pageDao.updateDraft(pageId, null)
+                editQueueDao.deleteForPage(pageId)
+            }
         }
 
         override suspend fun setEmoji(
@@ -444,6 +604,10 @@ class PageRepositoryImpl
                         existingBody = null,
                         existingEtag = null,
                         existingDraft = null,
+                        // B-69: explicitly "resolved against no tags", not
+                        // "lookup failed" — a page the server just created
+                        // has none. The `refresh` below re-resolves anyway.
+                        tagNamesById = emptyMap(),
                     ),
                 ),
             )
@@ -490,15 +654,28 @@ class PageRepositoryImpl
                 // Drop the local row directly. The previous keep-list dance
                 // (observe → first → filter → deleteMissingForCollective)
                 // raced against parallel syncs and could drop unrelated rows
-                // — see B-9 in the audit findings.
-                pageDao.deleteById(pageId)
+                // — see B-9 in the audit findings. B-66: with the page row
+                // gone, its attachments and any queued edit are unreachable
+                // rows nothing will ever clean up, so cascade by hand. The
+                // page is recoverable from the server-side trash; a queued
+                // local edit to it isn't, but it couldn't have been flushed
+                // either — the file has moved out from under its WebDAV path.
+                database.withTransaction {
+                    cascadeForPages(listOf(pageId))
+                    pageDao.deleteById(pageId)
+                }
             }
             return result
         }
 
-        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> {
-            val tagNames = fetchTagNamesById(collectiveId)
-            return apiCall { api.listTrashedPages(collectiveId) }.mapSuccess { envelope ->
+        override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> =
+            apiCall {
+                // R-48: same two independent requests as `refresh`, same fix.
+                val (tagNames, envelope) = coroutineScope {
+                    val tags = async { fetchTagNamesById(collectiveId) }
+                    val pages = async { api.listTrashedPages(collectiveId) }
+                    tags.await() to pages.await()
+                }
                 val now = System.currentTimeMillis()
                 envelope.ocs.data.pages.map { dto ->
                     dto
@@ -508,11 +685,14 @@ class PageRepositoryImpl
                             existingBody = null,
                             existingEtag = null,
                             existingDraft = null,
+                            // These rows are never cached — they exist to
+                            // render the trash screen — so there is no
+                            // existing `tagsCsv` to preserve. A failed tag
+                            // lookup shows the entries without chips.
                             tagNamesById = tagNames,
                         ).toDomain()
                 }
             }
-        }
 
         override suspend fun restorePage(
             collectiveId: Long,
@@ -661,6 +841,10 @@ class PageRepositoryImpl
                     existingBody = null,
                     existingEtag = null,
                     existingDraft = null,
+                    // B-69: as in `createPage` — the copy carries no resolved
+                    // tags yet, which is different from an unknown tag list.
+                    // The `refresh` below picks up whatever the server copied.
+                    tagNamesById = emptyMap(),
                 )
                 pageDao.upsertAll(listOf(entity))
                 // Refresh the collective so the parent's `subpageOrder` and

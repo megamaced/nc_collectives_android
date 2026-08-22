@@ -41,10 +41,13 @@ class CollectiveTrashViewModel
                 val result = repository.listTrashedCollectives()
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(isLoading = false, items = result.data, errorMessage = null)
-                        else ->
+                        }
+
+                        else -> {
                             it.copy(isLoading = false, errorMessage = result.userMessage())
+                        }
                     }
                 }
             }
@@ -55,12 +58,16 @@ class CollectiveTrashViewModel
                 val result = repository.restoreTrashedCollective(collectiveId)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(
                                 statusMessage = "Collective restored",
                                 items = it.items.filter { c -> c.id != collectiveId },
                             )
-                        else -> it.copy(statusMessage = result.userMessage())
+                        }
+
+                        else -> {
+                            it.copy(statusMessage = result.userMessage())
+                        }
                     }
                 }
             }
@@ -71,12 +78,16 @@ class CollectiveTrashViewModel
                 val result = repository.permanentlyDeleteCollective(collectiveId)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(
                                 statusMessage = "Collective permanently deleted",
                                 items = it.items.filter { c -> c.id != collectiveId },
                             )
-                        else -> it.copy(statusMessage = result.userMessage())
+                        }
+
+                        else -> {
+                            it.copy(statusMessage = result.userMessage())
+                        }
                     }
                 }
             }

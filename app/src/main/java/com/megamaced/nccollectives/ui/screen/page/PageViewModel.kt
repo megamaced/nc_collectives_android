@@ -68,6 +68,13 @@ data class PageViewUiState(
     /** Filename of an attachment currently being downloaded for viewing. */
     val downloadingAttachment: String? = null,
     /**
+     * True while the "Moved to trash" snackbar is owed to the user. The page
+     * has already been trashed by then (B-75) — the snackbar's action calls
+     * [PageViewModel.restoreTrashed], its timeout
+     * [PageViewModel.acknowledgeTrashed].
+     */
+    val trashedAwaitingUndo: Boolean = false,
+    /**
      * Attachment staged and ready to hand off. The screen fires the
      * `ACTION_VIEW` intent (a ViewModel has no business starting
      * activities) and clears this via [acknowledgeAttachmentOpened].
@@ -133,6 +140,13 @@ class PageViewModel
 
         private val _uiState = MutableStateFlow(PageViewUiState())
         val uiState: StateFlow<PageViewUiState> = _uiState.asStateFlow()
+
+        /**
+         * Collective the page was trashed out of. Captured before the commit
+         * because trashing drops the local row, and `restorePage` is keyed on
+         * the collective as well as the page.
+         */
+        private var trashedFromCollectiveId: Long? = null
 
         init {
             viewModelScope.launch {
@@ -203,6 +217,7 @@ class PageViewModel
                     Timber.tag(TAG).d("Edit route: plain (preference=PreferPlain)")
                     EditRouteDecision(EditRoute.Plain, fallbackMessage = null)
                 }
+
                 EditorPreference.PreferCollaborative -> {
                     val available = directEditingRepository.isAvailable()
                     if (available) {
@@ -302,8 +317,11 @@ class PageViewModel
                         // doesn't have to click again.
                         togglePageTag(created, add = true)
                     }
-                    else -> _uiState.update {
-                        it.copy(statusMessage = createResult.userMessage() ?: "Couldn't create tag")
+
+                    else -> {
+                        _uiState.update {
+                            it.copy(statusMessage = createResult.userMessage() ?: "Couldn't create tag")
+                        }
                     }
                 }
             }
@@ -361,10 +379,13 @@ class PageViewModel
                 val result = pageRepository.copyPage(current.collectiveId, current.id)
                 _uiState.update {
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             it.copy(copiedPageId = result.data.id)
-                        else ->
+                        }
+
+                        else -> {
                             it.copy(statusMessage = result.userMessage())
+                        }
                     }
                 }
             }
@@ -374,15 +395,65 @@ class PageViewModel
             _uiState.update { it.copy(copiedPageId = null) }
         }
 
-        fun trashPage(onTrashed: () -> Unit) {
+        /**
+         * Move the page to the collective's trash, now, and offer an undo
+         * afterwards.
+         *
+         * B-75: the commit used to run *after* `showSnackbar` returned inside
+         * a `LaunchedEffect` on the screen — a coroutine that dies with the
+         * composition. Confirming the trash and immediately pressing Back
+         * cancelled it before the server was ever told, so the user saw
+         * "Moved to trash" over a page that was still there; meanwhile the
+         * `rememberSaveable` flag that armed it survived, re-fired on the next
+         * visit, and trashed the page 4s later out of nowhere. A delayed
+         * commit can't live in a composition, and it can't live in
+         * `viewModelScope` either — popping the nav entry clears this
+         * ViewModel just as fast. So the trash is committed here and the
+         * snackbar's action puts the page back.
+         */
+        fun trashPage() {
+            if (_uiState.value.trashedAwaitingUndo) return
+            // Read while the row is still cached: `trashPage` drops it, and
+            // `restorePage` needs the collective.
+            val collectiveId = page.value?.collectiveId
             viewModelScope.launch {
                 val result = pageRepository.trashPage(pageId)
                 if (result is ApiResult.Success) {
-                    onTrashed()
+                    trashedFromCollectiveId = collectiveId
+                    _uiState.update { it.copy(trashedAwaitingUndo = true) }
                 } else {
                     _uiState.update { it.copy(statusMessage = result.userMessage()) }
                 }
             }
+        }
+
+        /** Undo tapped — restore the page and stay on it. */
+        fun restoreTrashed() {
+            _uiState.update { it.copy(trashedAwaitingUndo = false) }
+            val collectiveId = trashedFromCollectiveId
+            if (collectiveId == null) {
+                _uiState.update { it.copy(statusMessage = "Couldn't restore the page") }
+                return
+            }
+            viewModelScope.launch {
+                val result = pageRepository.restorePage(collectiveId, pageId)
+                trashedFromCollectiveId = null
+                _uiState.update {
+                    it.copy(
+                        statusMessage = if (result is ApiResult.Success) {
+                            "Page restored"
+                        } else {
+                            result.userMessage() ?: "Couldn't restore the page"
+                        },
+                    )
+                }
+            }
+        }
+
+        /** Undo window closed without a tap — the trash stands. */
+        fun acknowledgeTrashed() {
+            trashedFromCollectiveId = null
+            _uiState.update { it.copy(trashedAwaitingUndo = false) }
         }
 
         fun replaceWithDraft() {
@@ -394,7 +465,12 @@ class PageViewModel
         }
 
         fun discardDraft() {
-            viewModelScope.launch { pageRepository.discardDraft(pageId) }
+            viewModelScope.launch {
+                pageRepository.discardDraft(pageId)
+                // B-78: confirm the destruction actually happened. The banner
+                // simply vanishing left no trace of an irreversible action.
+                _uiState.update { it.copy(statusMessage = "Draft discarded") }
+            }
         }
 
         fun dismissStatus() {
@@ -440,17 +516,20 @@ class PageViewModel
                 val result = attachmentRepository.downloadForViewing(pageId, ref.relativePath)
                 _uiState.update { state ->
                     when (result) {
-                        is ApiResult.Success ->
+                        is ApiResult.Success -> {
                             state.copy(
                                 downloadingAttachment = null,
                                 attachmentToOpen = result.data,
                             )
-                        else ->
+                        }
+
+                        else -> {
                             state.copy(
                                 downloadingAttachment = null,
                                 statusMessage = result.userMessage()
                                     ?: "Couldn't open ${ref.fileName}",
                             )
+                        }
                     }
                 }
             }

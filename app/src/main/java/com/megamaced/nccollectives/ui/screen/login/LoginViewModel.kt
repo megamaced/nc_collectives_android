@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.auth.LoginFlowInitResponse
 import com.megamaced.nccollectives.data.auth.LoginFlowStatus
 import com.megamaced.nccollectives.data.auth.NextcloudLoginFlow
 import com.megamaced.nccollectives.data.auth.SessionManager
+import com.megamaced.nccollectives.data.auth.isSameServerHttpsUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -82,6 +83,24 @@ class LoginViewModel
             initResponse: LoginFlowInitResponse,
             expectedHost: String,
         ) {
+            // S-26: `login` goes to a Custom Tab and `poll.endpoint` is
+            // POSTed to, both server-supplied and both used before `poll()`
+            // gets to apply its own S-17 check to the returned `server`
+            // field — by which point the user has already been shown a login
+            // page and typed a password into it. Hold them to the same rule
+            // as `server`, and fail before the tab opens.
+            val serverSuppliedUrls = listOf(initResponse.login, initResponse.poll.endpoint)
+            if (serverSuppliedUrls.any { !isSameServerHttpsUrl(it, expectedHost) }) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Server returned a different host than the one you entered " +
+                            "($expectedHost). Refusing to continue.",
+                    )
+                }
+                return
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = false,
@@ -108,11 +127,13 @@ class LoginViewModel
                         )
                         _uiState.update { it.copy(isPolling = false, loginSuccess = true) }
                     }
+
                     is LoginFlowStatus.Error -> {
                         _uiState.update {
                             it.copy(isPolling = false, error = status.message)
                         }
                     }
+
                     LoginFlowStatus.Polling -> {
                         // Unreachable: poll() only returns terminal states.
                     }

@@ -32,7 +32,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
@@ -54,7 +54,7 @@ internal fun TrashScreen(
     onBack: () -> Unit,
     viewModel: TrashViewModel = hiltViewModel(),
 ) {
-    val ui by viewModel.uiState.collectAsState()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var pendingPurge by remember { mutableStateOf<Page?>(null) }
 
@@ -84,15 +84,22 @@ internal fun TrashScreen(
     ) { scaffoldPadding ->
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
             when {
-                ui.isLoading && ui.items.isEmpty() -> LoadingState()
-                ui.errorMessage != null && ui.items.isEmpty() ->
+                ui.isLoading && ui.items.isEmpty() -> {
+                    LoadingState()
+                }
+
+                ui.errorMessage != null && ui.items.isEmpty() -> {
                     ErrorState(message = ui.errorMessage!!, onRetry = viewModel::refresh)
-                ui.items.isEmpty() ->
+                }
+
+                ui.items.isEmpty() -> {
                     EmptyState(
                         title = "Trash is empty",
                         message = "Pages you delete from this collective will appear here.",
                     )
-                else ->
+                }
+
+                else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(ui.items, key = { it.id }) { page ->
                             TrashRow(
@@ -103,6 +110,7 @@ internal fun TrashScreen(
                             HorizontalDivider()
                         }
                     }
+                }
             }
             if (ui.isLoading && ui.items.isNotEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {

@@ -1,8 +1,5 @@
 package com.megamaced.nccollectives.ui.screen.page
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -30,19 +27,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Attachment
-import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
-import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 
 /**
  * Picker the editor opens when the user taps the attachment toolbar action.
@@ -53,6 +47,13 @@ import com.megamaced.nccollectives.ui.attachment.uriDisplayName
  * uploads — the upload runs in the background and the sheet stays open so
  * the user can pick it once the row turns REMOTE.
  *
+ * B-73: the three upload sources arrive as callbacks rather than being
+ * launched from here. Activity-result launchers only hold their
+ * registration while composed, and this sheet is composed conditionally —
+ * a capture in progress while the activity was recreated came back to a
+ * closed sheet, so the result had nowhere to be delivered. `PageEditScreen`
+ * owns the launchers, the same way `AttachmentsScreen` does.
+ *
  * Reuses [AttachmentsViewModel] — both this sheet and the standalone
  * `AttachmentsScreen` resolve `pageId` from the same `{pageId}` path arg.
  */
@@ -60,39 +61,14 @@ import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 @Composable
 internal fun AttachmentPickerSheet(
     onPick: (fileName: String) -> Unit,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onFile: () -> Unit,
     onDismiss: () -> Unit,
     viewModel: AttachmentsViewModel = hiltViewModel(),
 ) {
-    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val attachments by viewModel.attachments.collectAsState()
-
-    val cameraCapture = rememberCameraCapture { uri, displayName ->
-        viewModel.enqueueUpload(uri, displayName, "image/jpeg")
-    }
-    val galleryLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) {
-            // B-29: no `takePersistableUriPermission` — photo-picker URIs
-            // aren't persistable and we copy the bytes into our own cache
-            // in AttachmentRepositoryImpl.enqueueUpload anyway.
-            val name = uriDisplayName(context, uri) ?: "image.jpg"
-            val type = context.contentResolver.getType(uri)
-            viewModel.enqueueUpload(uri, name, type)
-        }
-    }
-    // `OpenDocument` reaches every document provider, not just the media
-    // store — the only way to attach a PDF / spreadsheet from the editor.
-    val fileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            val name = uriDisplayName(context, uri) ?: "attachment"
-            val type = context.contentResolver.getType(uri)
-            viewModel.enqueueUpload(uri, name, type)
-        }
-    }
+    val attachments by viewModel.attachments.collectAsStateWithLifecycle()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -109,23 +85,19 @@ internal fun AttachmentPickerSheet(
                 UploadChip(
                     icon = Icons.Filled.PhotoCamera,
                     label = "Camera",
-                    onClick = { cameraCapture.launch() },
+                    onClick = onCamera,
                     modifier = Modifier.weight(1f),
                 )
                 UploadChip(
                     icon = Icons.Filled.PhotoLibrary,
                     label = "Gallery",
-                    onClick = {
-                        galleryLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                        )
-                    },
+                    onClick = onGallery,
                     modifier = Modifier.weight(1f),
                 )
                 UploadChip(
                     icon = Icons.AutoMirrored.Filled.InsertDriveFile,
                     label = "File",
-                    onClick = { fileLauncher.launch(arrayOf("*/*")) },
+                    onClick = onFile,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -198,16 +170,21 @@ private fun AttachmentRow(
             contentAlignment = Alignment.Center,
         ) {
             when {
-                attachment.status != Attachment.Status.REMOTE ->
+                attachment.status != Attachment.Status.REMOTE -> {
                     CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
-                attachment.isImage && attachment.remoteUrl != null ->
+                }
+
+                attachment.isImage && attachment.remoteUrl != null -> {
                     AsyncImage(
                         model = attachment.remoteUrl,
                         contentDescription = attachment.fileName,
                         modifier = Modifier.size(56.dp),
                     )
-                else ->
+                }
+
+                else -> {
                     Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null)
+                }
             }
         }
         Column(modifier = Modifier.padding(start = 12.dp)) {

@@ -50,19 +50,17 @@ package com.megamaced.nccollectives.util
 internal fun rewriteCallouts(markdown: String): String {
     if (markdown.isEmpty()) return markdown
     val out = StringBuilder(markdown.length)
-    var inFence = false
+    val fence = FenceTracker()
     // Track \n preservation explicitly — `lines()` drops trailing
     // newlines and we don't want to add or remove blanks that affect
     // CommonMark block parsing downstream.
     val keepTrailingNewline = markdown.endsWith('\n')
     val sourceLines = markdown.lines()
     sourceLines.forEachIndexed { index, line ->
-        val trimmed = line.trimStart()
-        val isFenceMarker = trimmed.startsWith("```") || trimmed.startsWith("~~~")
-        if (isFenceMarker) {
-            inFence = !inFence
+        val isFenceDelimiter = fence.accept(line)
+        if (isFenceDelimiter || fence.inFence) {
             out.append(line)
-        } else if (!inFence) {
+        } else {
             val match = CALLOUT_REGEX.matchEntire(line)
             if (match != null) {
                 val type = match.groupValues[1].uppercase()
@@ -82,8 +80,6 @@ internal fun rewriteCallouts(markdown: String): String {
             } else {
                 out.append(line)
             }
-        } else {
-            out.append(line)
         }
         // `lines()` splits on every `\n`, including the implicit
         // trailing one; re-emit a `\n` between every pair so the
@@ -110,13 +106,22 @@ internal fun rewriteHighlights(markdown: String): String {
     if (markdown.isEmpty() || "==" !in markdown) return markdown
     return HIGHLIGHT_PATTERN.replace(markdown) { match ->
         when {
-            match.groups["fence"] != null -> match.value
-            match.groups["code"] != null -> match.value
+            match.groups["fence"] != null -> {
+                match.value
+            }
+
+            match.groups["code"] != null -> {
+                match.value
+            }
+
             match.groups["mark"] != null -> {
                 val text = match.groups["text"]!!.value
                 "<mark>$text</mark>"
             }
-            else -> match.value
+
+            else -> {
+                match.value
+            }
         }
     }
 }
@@ -165,17 +170,15 @@ internal fun rewriteFootnotes(markdown: String): String {
     // the body. Kotlin forbids local data classes, so a Pair suffices.
     val defs = mutableListOf<Pair<String, String>>()
     val dropped = BooleanArray(sourceLines.size)
-    var inFence = false
+    val fence = FenceTracker()
     var i = 0
     while (i < sourceLines.size) {
         val line = sourceLines[i]
-        val trimmed = line.trimStart()
-        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-            inFence = !inFence
+        if (fence.accept(line)) {
             i++
             continue
         }
-        val match = if (!inFence) FOOTNOTE_DEF_REGEX.matchEntire(line) else null
+        val match = if (!fence.inFence) FOOTNOTE_DEF_REGEX.matchEntire(line) else null
         if (match != null) {
             val id = match.groupValues[1]
             val text = StringBuilder(match.groupValues[2].trim())
@@ -219,13 +222,22 @@ internal fun rewriteFootnotes(markdown: String): String {
     // leaving fences / inline code / orphan refs untouched.
     val withRefs = FOOTNOTE_REF_PATTERN.replace(body) { m ->
         when {
-            m.groups["fence"] != null -> m.value
-            m.groups["code"] != null -> m.value
+            m.groups["fence"] != null -> {
+                m.value
+            }
+
+            m.groups["code"] != null -> {
+                m.value
+            }
+
             m.groups["ref"] != null -> {
                 val n = numberById[m.groups["id"]!!.value]
                 if (n != null) "<sup>$n</sup>" else m.value
             }
-            else -> m.value
+
+            else -> {
+                m.value
+            }
         }
     }
 
@@ -237,6 +249,67 @@ internal fun rewriteFootnotes(markdown: String): String {
     }
     val result = withRefs + section
     return if (keepTrailingNewline) result else result.trimEnd('\n')
+}
+
+/**
+ * Tracks whether a line-by-line walk is currently inside a fenced code
+ * block.
+ *
+ * B-70: the fence character that *opened* the block is remembered, because
+ * CommonMark closes a fence only on a run of the same character. A single
+ * `inFence` boolean flipped by any line starting with ` ``` ` or `~~~`
+ * desyncs on the first `~~~` that appears as content inside a ` ``` ` block
+ * (a markdown sample about fences is the obvious case): prose is then treated
+ * as code and code as prose for the rest of the document, so every
+ * transform below silently mis-classifies the tail of the page.
+ *
+ * Deliberately not a full CommonMark fence parser — the opening run's
+ * length and the "closing run must be at least as long" rule are ignored,
+ * as is the info string. Those matter for pathological input only, and the
+ * transforms this feeds are display sugar.
+ */
+internal class FenceTracker {
+    private var openedBy: Char? = null
+
+    /** True while the walk sits inside a fenced code block. */
+    val inFence: Boolean get() = openedBy != null
+
+    /**
+     * Feed the next [line], returning true when it is a fence delimiter
+     * (opening or closing) rather than ordinary content. A delimiter and
+     * fenced content are both passed through verbatim by callers; the
+     * distinction exists so an opening delimiter isn't also offered to the
+     * content transforms.
+     */
+    fun accept(line: String): Boolean {
+        val marker = fenceCharOf(line)
+        val current = openedBy
+        return when {
+            current == null && marker != null -> {
+                openedBy = marker
+                true
+            }
+
+            current != null && marker == current -> {
+                openedBy = null
+                true
+            }
+
+            else -> {
+                false
+            }
+        }
+    }
+}
+
+/** The fence character [line] opens or closes with, or null if it isn't a fence line. */
+private fun fenceCharOf(line: String): Char? {
+    val trimmed = line.trimStart()
+    return when {
+        trimmed.startsWith("```") -> '`'
+        trimmed.startsWith("~~~") -> '~'
+        else -> null
+    }
 }
 
 private fun labelFor(type: String): Pair<String, String> =

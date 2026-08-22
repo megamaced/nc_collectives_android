@@ -14,6 +14,13 @@ import com.megamaced.nccollectives.util.isImageFileName
  *    line touched by the selection
  *
  * No Compose APIs, no side effects — pure functions, easy to unit-test.
+ *
+ * B-72: every action here indexes into the buffer, and an off-by-one is a
+ * `StringIndexOutOfBoundsException` that takes the user's unsaved page with
+ * it. Two rules hold throughout: offsets come from [clampedSelection] (a
+ * selection can outlive the text it was measured against), and the line
+ * block comes from [lineBounds] rather than open-coded `lastIndexOf`
+ * arithmetic.
  */
 internal object MarkdownToolbarActions {
     fun bold(value: TextFieldValue): TextFieldValue = wrap(value, "**")
@@ -23,11 +30,12 @@ internal object MarkdownToolbarActions {
     fun inlineCode(value: TextFieldValue): TextFieldValue = wrap(value, "`")
 
     fun link(value: TextFieldValue): TextFieldValue {
-        val (text, selection) = value.text to value.selection
-        val selected = text.substring(selection.min, selection.max)
+        val text = value.text
+        val (min, max) = value.clampedSelection()
+        val selected = text.substring(min, max)
         val replacement = "[${selected.ifEmpty { "link" }}](https://)"
-        val newText = text.replaceRange(selection.min, selection.max, replacement)
-        val cursor = selection.min + replacement.length - 1 // place cursor inside the URL parens
+        val newText = text.replaceRange(min, max, replacement)
+        val cursor = min + replacement.length - 1 // place cursor inside the URL parens
         return value.copy(text = newText, selection = TextRange(cursor))
     }
 
@@ -49,8 +57,11 @@ internal object MarkdownToolbarActions {
     fun numbered(value: TextFieldValue): TextFieldValue {
         // For multi-line selections, number sequentially starting from 1.
         return lineMutateIndexed(value) { idx, line ->
-            val pattern = Regex("^\\d+\\.\\s")
-            if (pattern.containsMatchIn(line)) line.replaceFirst(pattern, "") else "${idx + 1}. $line"
+            if (NUMBERED_PREFIX.containsMatchIn(line)) {
+                line.replaceFirst(NUMBERED_PREFIX, "")
+            } else {
+                "${idx + 1}. $line"
+            }
         }
     }
 
@@ -70,16 +81,16 @@ internal object MarkdownToolbarActions {
         fileName: String,
     ): TextFieldValue {
         val text = value.text
-        val sel = value.selection
-        val before = text.substring(0, sel.min)
-        val after = text.substring(sel.max)
+        val (min, max) = value.clampedSelection()
+        val before = text.substring(0, min)
+        val after = text.substring(max)
         val snippet = if (isImageFileName(fileName)) {
             "![$fileName]($fileName)"
         } else {
             "[$fileName]($fileName)"
         }
         val newText = before + snippet + after
-        return value.copy(text = newText, selection = TextRange(sel.min + snippet.length))
+        return value.copy(text = newText, selection = TextRange(min + snippet.length))
     }
 
     fun checklist(value: TextFieldValue): TextFieldValue =
@@ -91,17 +102,60 @@ internal object MarkdownToolbarActions {
             }
         }
 
+    /**
+     * Selection offsets, in ascending order, guaranteed to be valid indices
+     * into `text`.
+     *
+     * A [TextFieldValue]'s selection can outlive the text it was measured
+     * against — the editor restores a saved cursor onto a body that arrives
+     * separately from the ViewModel (B-71), and the toolbar can fire on that
+     * first frame. `substring` throws on a stale offset, so nothing in here
+     * reads `value.selection` directly.
+     */
+    private fun TextFieldValue.clampedSelection(): Pair<Int, Int> {
+        val min = selection.min.coerceIn(0, text.length)
+        val max = selection.max.coerceIn(min, text.length)
+        return min to max
+    }
+
+    /**
+     * Offsets of the block of whole lines the selection [selMin]..[selMax]
+     * touches — start inclusive, end exclusive.
+     *
+     * B-72: `selMin == 0` has to short-circuit. The previous
+     * `lastIndexOf('\n', (selMin - 1).coerceAtLeast(0))` coerced -1 up to 0,
+     * which made `lastIndexOf` search *from* index 0 — so a buffer starting
+     * with a newline reported the line as starting at 1 while its end was
+     * still 0, and `substring(1, 0)` threw. Every line-prefix action
+     * (heading, bullet, numbered, checklist) came through here, so the crash
+     * took the whole unsaved buffer with it.
+     */
+    internal fun lineBounds(
+        text: String,
+        selMin: Int,
+        selMax: Int,
+    ): Pair<Int, Int> {
+        val min = selMin.coerceIn(0, text.length)
+        val max = selMax.coerceIn(min, text.length)
+        // `lastIndexOf` returning -1 (no preceding newline) already yields 0.
+        val start = if (min == 0) 0 else text.lastIndexOf('\n', min - 1) + 1
+        val end = text.indexOf('\n', max).let { if (it < 0) text.length else it }
+        // `end` can't precede `start` for an in-range selection; the coerce
+        // is the belt to the argument's braces.
+        return start to end.coerceAtLeast(start)
+    }
+
     private fun wrap(
         value: TextFieldValue,
         sigil: String,
     ): TextFieldValue {
         val text = value.text
-        val sel = value.selection
-        val before = text.substring(0, sel.min)
-        val middle = text.substring(sel.min, sel.max)
-        val after = text.substring(sel.max)
+        val (min, max) = value.clampedSelection()
+        val before = text.substring(0, min)
+        val middle = text.substring(min, max)
+        val after = text.substring(max)
         val newText = before + sigil + middle + sigil + after
-        val newSelection = TextRange(sel.min + sigil.length, sel.max + sigil.length)
+        val newSelection = TextRange(min + sigil.length, max + sigil.length)
         return value.copy(text = newText, selection = newSelection)
     }
 
@@ -115,9 +169,8 @@ internal object MarkdownToolbarActions {
         mutate: (Int, String) -> String,
     ): TextFieldValue {
         val text = value.text
-        val sel = value.selection
-        val startLine = text.lastIndexOf('\n', (sel.min - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
-        val endLine = text.indexOf('\n', sel.max).let { if (it < 0) text.length else it }
+        val (min, max) = value.clampedSelection()
+        val (startLine, endLine) = lineBounds(text, min, max)
         val block = text.substring(startLine, endLine)
         val newBlock = block.split('\n').mapIndexed(mutate).joinToString("\n")
         val newText = text.substring(0, startLine) + newBlock + text.substring(endLine)
@@ -129,3 +182,6 @@ internal object MarkdownToolbarActions {
         )
     }
 }
+
+/** Hoisted out of [MarkdownToolbarActions.numbered] so the toolbar doesn't recompile it per line. */
+private val NUMBERED_PREFIX = Regex("^\\d+\\.\\s")

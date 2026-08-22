@@ -169,10 +169,17 @@ class SettingsViewModel
             _updateCheck.value = UpdateCheckUiState.Checking
             viewModelScope.launch {
                 _updateCheck.value = when (val result = updateChecker.checkNow()) {
-                    ManualCheckResult.UpToDate -> UpdateCheckUiState.UpToDate
-                    is ManualCheckResult.UpdateAvailable ->
+                    ManualCheckResult.UpToDate -> {
+                        UpdateCheckUiState.UpToDate
+                    }
+
+                    is ManualCheckResult.UpdateAvailable -> {
                         UpdateCheckUiState.UpdateAvailable(tag = result.tag, htmlUrl = result.htmlUrl)
-                    is ManualCheckResult.Failed -> UpdateCheckUiState.Failed(result.message)
+                    }
+
+                    is ManualCheckResult.Failed -> {
+                        UpdateCheckUiState.Failed(result.message)
+                    }
                 }
             }
         }

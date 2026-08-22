@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.page
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,13 +25,24 @@ data class PageEditUiState(
     val isSaving: Boolean = false,
     val saveError: String? = null,
     val saveSucceeded: Boolean = false,
+    /**
+     * Message that has to be seen *before* the editor closes — currently
+     * only the conflict-became-a-draft case.
+     *
+     * B-79: this used to travel in [saveError] alongside `saveSucceeded =
+     * true`, and the `saveSucceeded` effect (declared first) called
+     * `onClose()` before the snackbar effect ever ran, so the one message
+     * the user actually needed was the one message they never saw. The
+     * screen now holds the close until this has been shown.
+     */
+    val saveNotice: String? = null,
 )
 
 @HiltViewModel
 class PageEditViewModel
     @Inject
     constructor(
-        savedStateHandle: SavedStateHandle,
+        private val savedStateHandle: SavedStateHandle,
         private val repository: PageRepository,
         private val attachmentRepository: AttachmentRepository,
     ) : ViewModel() {
@@ -43,6 +55,26 @@ class PageEditViewModel
 
         private val _imageBaseUrl = MutableStateFlow<String?>(null)
         val imageBaseUrl: StateFlow<String?> = _imageBaseUrl.asStateFlow()
+
+        /**
+         * The editor's live text — the authoritative copy of what the user
+         * has typed.
+         *
+         * B-71: it used to be a `remember { mutableStateOf(TextFieldValue()) }`
+         * inside `PageEditScreen`. `MainActivity` declares no
+         * `android:configChanges`, so a rotation — or a dark-mode toggle, a
+         * font-size change, a multi-window resize — destroyed the activity and
+         * reset the field to "", while this ViewModel (scoped to the nav
+         * entry) survived holding the original `initialBody`; the seeding pass
+         * then re-applied the *pre-edit* body over the top. The user's typing
+         * was gone silently, and because the field matched `initialBody`
+         * again, `hasUnsavedChanges` reported nothing to discard.
+         *
+         * `SavedStateHandle` rather than a plain `MutableStateFlow` so the
+         * draft also survives process death, which is routine while the
+         * camera app is in front.
+         */
+        val draftBody: StateFlow<String> = savedStateHandle.getStateFlow(KEY_DRAFT, "")
 
         init {
             viewModelScope.launch {
@@ -69,6 +101,7 @@ class PageEditViewModel
                     page
                 }
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
+                seedDraft(current?.bodyMd)
                 _uiState.update {
                     it.copy(
                         title = current?.title.orEmpty(),
@@ -86,23 +119,83 @@ class PageEditViewModel
             }
         }
 
-        fun save(body: String) {
-            if (_uiState.value.isSaving) return
-            _uiState.update { it.copy(isSaving = true, saveError = null) }
+        /**
+         * Fill the editor with the loaded body, once.
+         *
+         * The old guard was `fieldValue.text.isEmpty()`, which isn't a
+         * seeded/not-seeded test at all: a user who selected everything and
+         * deleted it looks exactly like a screen that has never been seeded,
+         * and got the pre-edit body poured back in. Only an explicit flag can
+         * tell the two apart, and it is persisted next to the draft so it
+         * survives the same restarts the draft does.
+         *
+         * Nothing is seeded until there is a body to seed with — a failed
+         * fetch with no cached copy leaves the editor untouched, as before.
+         */
+        private fun seedDraft(body: String?) {
+            if (body == null) return
+            if (savedStateHandle.get<Boolean>(KEY_SEEDED) == true) return
+            savedStateHandle[KEY_DRAFT] = body
+            savedStateHandle[KEY_SEEDED] = true
+        }
+
+        /**
+         * Stage an attachment captured or picked from the editor. The transfer
+         * itself is `AttachmentUploadWorker`'s job; the row appears in the
+         * picker sheet as PENDING straight away.
+         *
+         * B-73: this lives here rather than being reached through
+         * `AttachmentsViewModel` so that `PageEditScreen` can register its
+         * activity-result launchers unconditionally without constructing that
+         * ViewModel — which refreshes the attachment list over the network in
+         * its `init` — on every editor open. The sheet still builds it, lazily,
+         * for the listing.
+         */
+        fun enqueueAttachment(
+            uri: Uri,
+            suggestedName: String,
+            contentType: String?,
+        ) {
             viewModelScope.launch {
-                val outcome = repository.saveBody(pageId, body)
+                attachmentRepository.enqueueUpload(pageId, uri, suggestedName, contentType)
+            }
+        }
+
+        /** The user edited the buffer (typing, or a toolbar action). */
+        fun onBodyChanged(body: String) {
+            // Typing is itself proof the editor is live, so latch the flag: if
+            // the body fetch is still in flight it must not overwrite what the
+            // user has already put in.
+            savedStateHandle[KEY_SEEDED] = true
+            savedStateHandle[KEY_DRAFT] = body
+        }
+
+        fun save() {
+            if (_uiState.value.isSaving) return
+            _uiState.update { it.copy(isSaving = true, saveError = null, saveNotice = null) }
+            viewModelScope.launch {
+                // The draft is the single source of truth — the screen no
+                // longer passes a copy of the text in, so there is nothing to
+                // drift out of sync with a toolbar action that forgot to
+                // report its result.
+                val outcome = repository.saveBody(pageId, draftBody.value)
                 _uiState.update {
                     when (outcome) {
-                        SaveOutcome.Saved, SaveOutcome.Queued ->
+                        SaveOutcome.Saved, SaveOutcome.Queued -> {
                             it.copy(isSaving = false, saveSucceeded = true)
-                        SaveOutcome.Conflict ->
+                        }
+
+                        SaveOutcome.Conflict -> {
                             it.copy(
                                 isSaving = false,
-                                saveError = "Page changed on the server. Your edits were saved as a draft you can resolve on the page.",
+                                saveNotice = "Page changed on the server. Your edits were saved as a draft you can resolve on the page.",
                                 saveSucceeded = true,
                             )
-                        is SaveOutcome.Error ->
+                        }
+
+                        is SaveOutcome.Error -> {
                             it.copy(isSaving = false, saveError = outcome.message)
+                        }
                     }
                 }
             }
@@ -110,5 +203,13 @@ class PageEditViewModel
 
         fun dismissError() {
             _uiState.update { it.copy(saveError = null) }
+        }
+
+        private companion object {
+            /** Editor text, persisted across configuration change + process death. */
+            const val KEY_DRAFT = "pageEdit.draftBody"
+
+            /** Whether [KEY_DRAFT] has been filled from the loaded body yet. */
+            const val KEY_SEEDED = "pageEdit.seeded"
         }
     }

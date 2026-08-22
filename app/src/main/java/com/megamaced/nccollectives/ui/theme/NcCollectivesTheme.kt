@@ -38,8 +38,14 @@ fun NcCollectivesTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> NcCollectivesDarkColorScheme
-        else -> NcCollectivesLightColorScheme
+
+        darkTheme -> {
+            NcCollectivesDarkColorScheme
+        }
+
+        else -> {
+            NcCollectivesLightColorScheme
+        }
     }
 
     val view = LocalView.current

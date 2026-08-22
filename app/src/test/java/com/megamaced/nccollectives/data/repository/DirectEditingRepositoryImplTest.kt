@@ -13,24 +13,28 @@ import org.junit.Test
  * are about *composition*, not validation rules.
  */
 class DirectEditingRepositoryImplTest {
-    private val repo = DirectEditingRepositoryImpl(service = ThrowingService)
-
     @Test
     fun serverPathFor_typicalPage_buildsSlashJoinedPath() {
-        val path = repo.serverPathFor(pageOf(collectivePath = ".Collectives/Wiki", filePath = "Some Folder", fileName = "Page.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = ".Collectives/Wiki", filePath = "Some Folder", fileName = "Page.md"),
+        )
         assertEquals(".Collectives/Wiki/Some Folder/Page.md", path)
     }
 
     @Test
     fun serverPathFor_emptyFilePath_stillBuildsValidPath() {
         // Landing pages live at the collective root with empty filePath.
-        val path = repo.serverPathFor(pageOf(collectivePath = ".Collectives/Wiki", filePath = "", fileName = "Readme.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = ".Collectives/Wiki", filePath = "", fileName = "Readme.md"),
+        )
         assertEquals(".Collectives/Wiki/Readme.md", path)
     }
 
     @Test
     fun serverPathFor_trimsLeadingAndTrailingSlashes() {
-        val path = repo.serverPathFor(pageOf(collectivePath = "/.Collectives/Wiki/", filePath = "/Some Folder/", fileName = "Page.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = "/.Collectives/Wiki/", filePath = "/Some Folder/", fileName = "Page.md"),
+        )
         assertEquals(".Collectives/Wiki/Some Folder/Page.md", path)
     }
 
@@ -38,25 +42,31 @@ class DirectEditingRepositoryImplTest {
     fun serverPathFor_traversalInCollectivePath_returnsNull() {
         // S-14′: a compromised server feeding us `..` segments must not
         // be allowed to escape the user's Files root.
-        val path = repo.serverPathFor(pageOf(collectivePath = "../..", filePath = "x", fileName = "Page.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(pageOf(collectivePath = "../..", filePath = "x", fileName = "Page.md"))
         assertNull(path)
     }
 
     @Test
     fun serverPathFor_traversalInFilePath_returnsNull() {
-        val path = repo.serverPathFor(pageOf(collectivePath = ".Collectives/Wiki", filePath = "../escape", fileName = "Page.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = ".Collectives/Wiki", filePath = "../escape", fileName = "Page.md"),
+        )
         assertNull(path)
     }
 
     @Test
     fun serverPathFor_traversalInFileName_returnsNull() {
-        val path = repo.serverPathFor(pageOf(collectivePath = ".Collectives/Wiki", filePath = "Folder", fileName = ".."))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = ".Collectives/Wiki", filePath = "Folder", fileName = ".."),
+        )
         assertNull(path)
     }
 
     @Test
     fun serverPathFor_controlCharInFileName_returnsNull() {
-        val path = repo.serverPathFor(pageOf(collectivePath = ".Collectives/Wiki", filePath = "Folder", fileName = "Page\nName.md"))
+        val path = DirectEditingRepositoryImpl.serverPathFor(
+            pageOf(collectivePath = ".Collectives/Wiki", filePath = "Folder", fileName = "Page\nName.md"),
+        )
         assertNull(path)
     }
 
@@ -85,13 +95,4 @@ class DirectEditingRepositoryImplTest {
             bodyMd = null,
             draftBodyMd = null,
         )
-
-    private object ThrowingService : com.megamaced.nccollectives.data.api.DirectEditingService {
-        override suspend fun getCapability() = error("Network not used in path-building tests")
-
-        override suspend fun openSession(
-            path: String,
-            editorId: String?,
-        ) = error("Network not used in path-building tests")
-    }
 }

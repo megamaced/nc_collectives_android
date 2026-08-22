@@ -34,6 +34,7 @@ data class SharePayload(
                     }
                     listOfNotNull(stream)
                 }
+
                 Intent.ACTION_SEND_MULTIPLE -> {
                     if (Build.VERSION.SDK_INT >= 33) {
                         intent
@@ -43,7 +44,10 @@ data class SharePayload(
                         intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
                     }
                 }
-                else -> emptyList()
+
+                else -> {
+                    emptyList()
+                }
             }
             // Some senders pack extras into ClipData (e.g. Chrome). Honour
             // those if EXTRA_STREAM is empty.

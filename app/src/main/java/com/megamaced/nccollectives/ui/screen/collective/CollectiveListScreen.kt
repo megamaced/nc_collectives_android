@@ -38,7 +38,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +49,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ErrorState
@@ -67,18 +67,22 @@ internal fun CollectiveListScreen(
     onOpenTrash: () -> Unit,
     viewModel: CollectiveListViewModel = hiltViewModel(),
 ) {
-    val collectives by viewModel.collectives.collectAsState()
-    val ui by viewModel.uiState.collectAsState()
+    val collectives by viewModel.collectives.collectAsStateWithLifecycle()
+    val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showCreateSheet by remember { mutableStateOf(false) }
     var emojiTarget by remember { mutableStateOf<Collective?>(null) }
     var pendingTrash by remember { mutableStateOf<Collective?>(null) }
 
-    LaunchedEffect(ui.statusMessage) {
-        ui.statusMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.dismissStatus()
+    // Keyed on `Unit`, and collecting a channel rather than watching a state
+    // field: keying on the message would cancel `showSnackbar` the instant the
+    // message was cleared, and a message left in the state outlives the
+    // composition the create-and-navigate path disposes (B-79). Each message
+    // here is consumed as it arrives — shown once, never re-shown on return.
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect { message ->
+            snackbarHostState.showSnackbar(message)
         }
     }
 
@@ -140,18 +144,25 @@ internal fun CollectiveListScreen(
             modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
         ) {
             when {
-                ui.isRefreshing && collectives.isEmpty() -> LoadingState()
-                ui.errorMessage != null && collectives.isEmpty() ->
+                ui.isRefreshing && collectives.isEmpty() -> {
+                    LoadingState()
+                }
+
+                ui.errorMessage != null && collectives.isEmpty() -> {
                     ErrorState(
                         message = ui.errorMessage!!,
                         onRetry = viewModel::refresh,
                     )
-                collectives.isEmpty() ->
+                }
+
+                collectives.isEmpty() -> {
                     EmptyState(
                         title = "No collectives",
                         message = "Tap the + button to create one.",
                     )
-                else ->
+                }
+
+                else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(collectives, key = { it.id }) { collective ->
                             CollectiveRow(
@@ -163,6 +174,7 @@ internal fun CollectiveListScreen(
                             HorizontalDivider()
                         }
                     }
+                }
             }
         }
     }

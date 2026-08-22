@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -116,7 +117,14 @@ internal fun LandingPageCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val snippet = landing.bodyMd?.let { plainTextPreview(it) }.orEmpty()
+    // R-45: [plainTextPreview] runs a chain of regexes over the landing
+    // body to fill a two-line snippet. Key it on the body so it runs once
+    // per fetched body rather than on every recomposition — `updateBody`
+    // from `primeLandingBody` recomposes this card, as does every
+    // unrelated `PageTreeUiState` write.
+    val snippet = remember(landing.bodyMd) {
+        landing.bodyMd?.let { plainTextPreview(it) }.orEmpty()
+    }
     val displayName = collectiveName.ifBlank { landing.title }
     val displayEmoji = collectiveEmoji?.takeIf { it.isNotBlank() }
         ?: landing.emoji?.takeIf { it.isNotBlank() }
@@ -181,25 +189,80 @@ private fun relativeTime(serverTimestampSeconds: Long): String {
     return span.toString()
 }
 
+// R-45: hoisted out of [plainTextPreview] so the seven patterns compile
+// once at class-init instead of once per call — the preview sits on the
+// landing card's recomposition path.
+private val FENCED_CODE = Regex("```[\\s\\S]*?```")
+private val INLINE_CODE = Regex("`[^`]*`")
+private val IMAGE_REF = Regex("!\\[([^\\]]*)\\]\\([^)]*\\)")
+private val TEXT_LINK = Regex("\\[([^\\]]*)\\]\\([^)]*\\)")
+private val LINE_LEAD_MARKERS = Regex("(?m)^[#>*\\-+\\s]{1,6}")
+private val EMPHASIS_MARKERS = Regex("[*_~]{1,3}")
+private val WHITESPACE_RUN = Regex("\\s+")
+
+private const val CODE_FENCE = "```"
+
+/**
+ * Longest prefix of the body [plainTextPreview] scans (R-45). The snippet
+ * feeds a `maxLines = 2` `Text`, roughly 80 characters — scanning a
+ * multi-kilobyte wiki page to fill it is pure waste.
+ */
+private const val PREVIEW_SCAN_LIMIT = 1500
+
 /**
  * Strip common markdown markers for a short preview snippet — not a full
  * renderer, just enough to avoid showing `## Heading`, `**bold**`, or
  * `[text](url)` literal syntax in the card. Collapses whitespace.
+ *
+ * `internal` for `LandingPreviewTest`, which pins the output against the
+ * R-45 rewrite.
  */
-private fun plainTextPreview(markdown: String): String {
+internal fun plainTextPreview(markdown: String): String {
+    val capped = capForPreview(markdown)
+    val preview = stripMarkdown(capped)
+    // The cap can swallow the lot when a body opens with a code block
+    // longer than [PREVIEW_SCAN_LIMIT] — the text after it is what the
+    // uncapped scan would have shown. Rare enough to pay for a full scan.
+    return if (preview.isEmpty() && capped.length < markdown.length) {
+        stripMarkdown(markdown)
+    } else {
+        preview
+    }
+}
+
+private fun stripMarkdown(markdown: String): String {
     var s = markdown
     // Drop fenced code blocks entirely.
-    s = s.replace(Regex("```[\\s\\S]*?```"), " ")
+    s = s.replace(FENCED_CODE, " ")
     // Drop inline code.
-    s = s.replace(Regex("`[^`]*`"), " ")
+    s = s.replace(INLINE_CODE, " ")
     // Replace [text](url) with text.
-    s = s.replace(Regex("!\\[([^\\]]*)\\]\\([^)]*\\)"), " ")
-    s = s.replace(Regex("\\[([^\\]]*)\\]\\([^)]*\\)"), "$1")
+    s = s.replace(IMAGE_REF, " ")
+    s = s.replace(TEXT_LINK, "$1")
     // Strip leading heading hashes / bullets / blockquote markers.
-    s = s.replace(Regex("(?m)^[#>*\\-+\\s]{1,6}"), "")
+    s = s.replace(LINE_LEAD_MARKERS, "")
     // Bold / italic / strike markers.
-    s = s.replace(Regex("[*_~]{1,3}"), "")
+    s = s.replace(EMPHASIS_MARKERS, "")
     // Collapse whitespace.
-    s = s.replace(Regex("\\s+"), " ").trim()
+    s = s.replace(WHITESPACE_RUN, " ").trim()
     return s
+}
+
+/**
+ * Trim the body to [PREVIEW_SCAN_LIMIT] without leaving a half-written
+ * markdown construct behind for [stripMarkdown] to miss.
+ *
+ * Two guards: cut back to the last line break (a truncated `[text](url`
+ * or `**bold` would otherwise survive as literal syntax), and drop a
+ * dangling code fence — an odd fence count means the cap landed inside a
+ * code block whose opener no longer has a closer for [FENCED_CODE] to
+ * pair with, so the code itself would leak into the snippet.
+ */
+private fun capForPreview(markdown: String): String {
+    if (markdown.length <= PREVIEW_SCAN_LIMIT) return markdown
+    val head = markdown.take(PREVIEW_SCAN_LIMIT)
+    val lastBreak = head.lastIndexOf('\n')
+    val whole = if (lastBreak > 0) head.substring(0, lastBreak) else head
+    val fences = whole.split(CODE_FENCE).size - 1
+    return if (fences % 2 == 1) whole.substringBeforeLast(CODE_FENCE) else whole
 }

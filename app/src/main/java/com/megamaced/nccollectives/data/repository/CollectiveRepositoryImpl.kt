@@ -48,6 +48,20 @@ class CollectiveRepositoryImpl
                 database.withTransaction {
                     dao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
+                    val keepSet = keepIds.toSet()
+                    // B-65: a collective that stopped being shared with the
+                    // user just isn't in the response any more, so this is the
+                    // path that fires — and it has to cascade. Work out what
+                    // is going away before deleting it, since neither
+                    // `deleteMissing` nor `clear` can tell us afterwards.
+                    //
+                    // `dao.list()` only returns non-trashed rows. That covers
+                    // the table in practice: `listCollectives` returns active
+                    // collectives, `listTrashedCollectives` never caches, so
+                    // nothing ever writes a row with a `trashTimestamp`. If
+                    // that ever changes, a trashed row would be deleted here
+                    // without its pages — as it already was before this fix.
+                    cascadeForCollectives(dao.list().map { it.id }.filterNot { it in keepSet })
                     if (keepIds.isEmpty()) {
                         dao.clear()
                     } else {
@@ -132,7 +146,20 @@ class CollectiveRepositoryImpl
                 // trashTimestamp IS NULL), so the simplest reconciliation
                 // is to remove the row — the user can find it from the
                 // collective-trash screen if they want to restore it.
-                dao.deleteById(collectiveId)
+                //
+                // B-65: and take its pages with it, or they're orphans no
+                // path will ever clean up — and a surviving `pages` row is
+                // what lets `EditFlushWorker` keep retrying an edit against
+                // a collective the user has thrown away. Restoring pulls the
+                // pages back from the server on next open; an unflushed
+                // queued edit for one of them does go, which is the honest
+                // trade: it could never have been written anyway, since its
+                // WebDAV path moved into the server-side trash with the
+                // collective.
+                database.withTransaction {
+                    cascadeForCollectives(listOf(collectiveId))
+                    dao.deleteById(collectiveId)
+                }
             }
             return result.mapSuccess { }
         }
@@ -159,22 +186,40 @@ class CollectiveRepositoryImpl
                 api.permanentlyDeleteCollective(collectiveId, circle = true)
             }
             if (result is ApiResult.Success) {
-                // Cascade every locally-cached row tied to the collective so
-                // the user doesn't see stale pages / attachments / queued
-                // edits if they happen to come back to a re-created
-                // collective that re-uses the same id (unlikely but cheap
-                // insurance) — and more importantly so we don't keep blob
-                // rows around indefinitely.
                 database.withTransaction {
-                    val pageIds = pageDao.idsForCollective(collectiveId)
-                    if (pageIds.isNotEmpty()) {
-                        attachmentDao.deleteForPageIds(pageIds)
-                        editQueueDao.deleteForPageIds(pageIds)
-                    }
-                    pageDao.deleteForCollective(collectiveId)
+                    cascadeForCollectives(listOf(collectiveId))
                     dao.deleteById(collectiveId)
                 }
             }
             return result.mapSuccess { }
+        }
+
+        /**
+         * Delete every locally-cached row hanging off [collectiveIds] — their
+         * pages, and those pages' attachments and queued edits. The
+         * `collectives` rows themselves are left to the caller, because each
+         * delete path reconciles them differently (`deleteById`,
+         * `deleteMissing`, `clear`).
+         *
+         * B-65: no entity in this schema declares a foreign key (verified
+         * against `app/schemas/…/7.json`), so there is no `ON DELETE CASCADE`
+         * to lean on and every path that removes a collective has to do this
+         * by hand. Only `permanentlyDeleteCollective` used to. The cost of
+         * missing it isn't just dead rows: a surviving `pages` row is exactly
+         * what defeats `EditFlushWorker`'s `page == null` self-heal, so a
+         * collective that was unshared left a queued edit retrying against a
+         * page the user can no longer see or reach.
+         *
+         * Caller must already hold a transaction.
+         */
+        private suspend fun cascadeForCollectives(collectiveIds: List<Long>) {
+            for (collectiveId in collectiveIds) {
+                val pageIds = pageDao.idsForCollective(collectiveId)
+                if (pageIds.isNotEmpty()) {
+                    attachmentDao.deleteForPageIds(pageIds)
+                    editQueueDao.deleteForPageIds(pageIds)
+                }
+                pageDao.deleteForCollective(collectiveId)
+            }
         }
     }

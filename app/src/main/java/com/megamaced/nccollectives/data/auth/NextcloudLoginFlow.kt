@@ -140,9 +140,11 @@ class NextcloudLoginFlow
                                     }
                                     return@withContext LoginFlowStatus.Success(result)
                                 }
+
                                 404 -> {
                                     // Not yet authorised — keep polling.
                                 }
+
                                 else -> {
                                     return@withContext LoginFlowStatus.Error("Server returned ${response.code}")
                                 }
@@ -158,26 +160,67 @@ class NextcloudLoginFlow
                 LoginFlowStatus.Error("Login timed out")
             }
 
-        private fun hostMatches(
-            returned: String,
-            expected: String,
-        ): Boolean {
-            val returnedHost = returned.toHttpUrlOrNull()?.host ?: return false
-            val expectedHost = expected.toHttpUrlOrNull()?.host
-                ?: ("https://${expected.trimEnd('/')}").toHttpUrlOrNull()?.host
-                ?: return false
-            // Allow exact match or subdomain (e.g. user typed `nextcloud.example.com`
-            // and server returned `files.nextcloud.example.com`).
-            return returnedHost.equals(expectedHost, ignoreCase = true) ||
-                returnedHost.endsWith(".$expectedHost", ignoreCase = true)
-        }
-
         companion object {
             private const val USER_AGENT = "NC Collectives Android"
             private const val POLL_INTERVAL_MS = 5_000L
             private const val MAX_POLL_ATTEMPTS = 60 // 5 minutes total
         }
     }
+
+/**
+ * True when [returned] names the same Nextcloud host as [expected], or a
+ * subdomain of it (e.g. the user typed `nextcloud.example.com` and the
+ * server answered `files.nextcloud.example.com`). [expected] may be a bare
+ * host — it is read as `https://<host>` when it doesn't parse as a URL.
+ *
+ * Top-level and `internal` rather than private to [NextcloudLoginFlow]
+ * because the same comparison guards three other server-supplied URLs:
+ * the login page and poll endpoint handed back by `login/v2`
+ * (`LoginViewModel`, S-26) and the `directEditing/open` session URL
+ * (`DirectEditingRepositoryImpl`, S-22). One implementation means the
+ * subdomain rule can't drift between them.
+ */
+internal fun hostMatches(
+    returned: String,
+    expected: String,
+): Boolean {
+    val returnedHost = returned.toHttpUrlOrNull()?.host ?: return false
+    val expectedHost = serverHostOf(expected) ?: return false
+    return returnedHost.equals(expectedHost, ignoreCase = true) ||
+        returnedHost.endsWith(".$expectedHost", ignoreCase = true)
+}
+
+/**
+ * The bare host of a stored Nextcloud base URL — `cloud.example.com` for
+ * `https://cloud.example.com/nextcloud`. Accepts a bare host too, so a
+ * value typed by the user (before normalisation) resolves the same way.
+ *
+ * This is the host every authenticated request and every WebView
+ * navigation gate is measured against, so it derives from the credential
+ * and never from server-supplied data.
+ */
+internal fun serverHostOf(storedHost: String): String? =
+    storedHost.toHttpUrlOrNull()?.host
+        ?: ("https://${storedHost.trimEnd('/')}").toHttpUrlOrNull()?.host
+
+/**
+ * True when [url] is an absolute `https` URL on [expectedHost] (or a
+ * subdomain of it, per [hostMatches]).
+ *
+ * The scheme half matters as much as the host: a server-supplied URL is
+ * handed to a Custom Tab or a JS-enabled WebView, so anything that isn't
+ * `https` — `http`, but also `intent:`, `javascript:`, `file:` — must not
+ * survive validation. `toHttpUrlOrNull` already rejects every non-http(s)
+ * scheme; the explicit check closes the `http` downgrade.
+ */
+internal fun isSameServerHttpsUrl(
+    url: String,
+    expectedHost: String,
+): Boolean {
+    val parsed = url.toHttpUrlOrNull() ?: return false
+    if (parsed.scheme != "https") return false
+    return hostMatches(url, expectedHost)
+}
 
 class LoginFlowException(
     message: String,
