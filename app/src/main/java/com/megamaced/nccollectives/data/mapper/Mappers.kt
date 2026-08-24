@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.data.mapper
 import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.PageDto
+import com.megamaced.nccollectives.data.db.dao.PageListRow
 import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.joinTags
@@ -12,6 +13,7 @@ import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.data.toLongCsvSet
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 
 internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
     CollectiveEntity(
@@ -102,6 +104,30 @@ internal fun PageDto.toEntity(
         bodyEtag = existingEtag,
         draftBodyMd = existingDraft,
         lastSyncedAt = now,
+    )
+
+/**
+ * R-54: the list path's mapper, and the cheapest of the three in this file.
+ *
+ * It parses two CSV columns rather than the entity mapper's three — linked
+ * ids aren't list-visible ([PageListItem] says why) — and both of those
+ * yield the shared `emptyList()` for a row with no tags and no explicit
+ * sibling order, which most rows are. On a 200-page collective that is the
+ * difference between hundreds of list allocations per emission and none.
+ */
+internal fun PageListRow.toDomain(): PageListItem =
+    PageListItem(
+        id = id,
+        collectiveId = collectiveId,
+        parentId = parentId,
+        title = title,
+        emoji = emoji,
+        tags = splitTags(tagsCsv),
+        subpageOrder = subpageOrderCsv.toLongCsvList(),
+        trashed = trashTimestamp != null,
+        serverTimestamp = serverTimestamp,
+        lastUserDisplayName = lastUserDisplayName,
+        hasDraft = hasDraft,
     )
 
 internal fun PageEntity.toDomain(): Page =

@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.ui.components.EmptyState
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,13 +53,7 @@ internal fun TagBrowseScreen(
     val rows by viewModel.rows.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(ui.statusMessage) {
-        val msg = ui.statusMessage
-        if (msg != null) {
-            snackbarHostState.showSnackbar(msg)
-            viewModel.dismissStatus()
-        }
-    }
+    SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),

@@ -1,6 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.collective
 
-import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -20,7 +20,7 @@ class PageTreeNodesTest {
         parentId: Long,
         title: String = "Page $id",
         subpageOrder: List<Long> = emptyList(),
-    ) = Page(
+    ) = PageListItem(
         id = id,
         collectiveId = 1,
         parentId = parentId,
@@ -28,17 +28,10 @@ class PageTreeNodesTest {
         emoji = null,
         tags = emptyList(),
         subpageOrder = subpageOrder,
-        isFullWidth = false,
         trashed = false,
         serverTimestamp = 0,
-        size = 0,
-        fileName = "$title.md",
-        filePath = "",
-        collectivePath = ".Collectives/Wiki",
-        linkedPageIds = emptyList(),
         lastUserDisplayName = "",
-        bodyMd = null,
-        draftBodyMd = null,
+        hasDraft = false,
     )
 
     private fun ids(nodes: List<PageNode>) = nodes.map { it.page.id }

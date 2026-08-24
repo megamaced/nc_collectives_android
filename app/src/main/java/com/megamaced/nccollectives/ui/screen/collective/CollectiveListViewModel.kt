@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -92,12 +93,7 @@ class CollectiveListViewModel
             _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             viewModelScope.launch {
                 val result = repository.refresh()
-                _uiState.update {
-                    it.copy(
-                        isRefreshing = false,
-                        errorMessage = if (result is ApiResult.Success) null else result.userMessage(),
-                    )
-                }
+                _uiState.update { it.copy(isRefreshing = false, errorMessage = result.userMessage()) }
             }
         }
 
@@ -134,10 +130,7 @@ class CollectiveListViewModel
             emoji: String,
         ) {
             viewModelScope.launch {
-                val result = repository.setCollectiveEmoji(collectiveId, emoji)
-                if (result !is ApiResult.Success) {
-                    postMessage(result.userMessage())
-                }
+                postMessage(repository.setCollectiveEmoji(collectiveId, emoji).userMessage())
             }
         }
 
@@ -146,9 +139,5 @@ class CollectiveListViewModel
                 val result = repository.trashCollective(collectiveId)
                 postMessage(if (result is ApiResult.Success) "Moved to trash" else result.userMessage())
             }
-        }
-
-        private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

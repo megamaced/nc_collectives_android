@@ -3,13 +3,13 @@ package com.megamaced.nccollectives.ui.screen.tag
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.megamaced.nccollectives.data.api.ApiResult
-import com.megamaced.nccollectives.data.api.userMessage
-import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,8 +22,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * R-54: a [PageListItem]. Browse-by-tag draws the same row the tree does,
+ * and the tag match itself is decided from `tagsCsv` in the repository —
+ * neither needs a body.
+ */
 data class TagBrowseRow(
-    val page: Page,
+    val page: PageListItem,
     val isFavorite: Boolean,
 )
 
@@ -89,17 +94,13 @@ class TagBrowseViewModel
                     pageId = pageId,
                     favorite = !currentlyFavorite,
                 )
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                result.onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
 
         fun dismissStatus() {
             _uiState.update { it.copy(statusMessage = null) }
-        }
-
-        private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

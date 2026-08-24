@@ -2,10 +2,32 @@ package com.megamaced.nccollectives.domain.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import kotlinx.coroutines.flow.Flow
 
 interface PageRepository {
+    /**
+     * Every non-trashed page in [collectiveId] as list rows, in title
+     * order. What the tree, Favorites and every other page list observes.
+     *
+     * R-54: carries no markdown — see [PageListItem]. Distinct-until-
+     * changed, so a body write that leaves every list-visible field alone
+     * (which is every body write) stops here instead of re-flattening the
+     * tree downstream.
+     */
+    fun observePageList(collectiveId: Long): Flow<List<PageListItem>>
+
+    /**
+     * Every non-trashed page in [collectiveId] as full [Page]s, same order
+     * as [observePageList].
+     *
+     * R-54: for the pickers that need the detail model — "move page to…"
+     * and the share sheet's target list. Both take a snapshot or live only
+     * as long as a modal, which is what makes reading whole rows (bodies
+     * included) affordable there. Anything that renders a standing list
+     * wants [observePageList].
+     */
     fun observePages(collectiveId: Long): Flow<List<Page>>
 
     /**
@@ -16,9 +38,20 @@ interface PageRepository {
     fun observeRecentPages(
         collectiveId: Long,
         limit: Int,
-    ): Flow<List<Page>>
+    ): Flow<List<PageListItem>>
 
     fun observePage(pageId: Long): Flow<Page?>
+
+    /**
+     * The collective's landing page (`parentId == 0`), or null while the
+     * collective has no cached pages.
+     *
+     * R-56: a [Page], not a [PageListItem], because the landing card draws
+     * a snippet of the body — the one place a "list" screen legitimately
+     * reads markdown. It gets it from a single-row flow so the tree's list
+     * flow can stay body-free.
+     */
+    fun observeLandingPage(collectiveId: Long): Flow<Page?>
 
     suspend fun refresh(collectiveId: Long): ApiResult<Unit>
 
@@ -205,7 +238,7 @@ interface PageRepository {
     fun observePagesWithTagInCollective(
         collectiveId: Long,
         tagName: String,
-    ): Flow<List<Page>>
+    ): Flow<List<PageListItem>>
 
     /**
      * Resolve a wikilink target (`[[Page Name]]`, `./Page%20Name`, etc.) to a

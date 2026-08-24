@@ -2,9 +2,10 @@ package com.megamaced.nccollectives.ui.screen.favorites
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,8 +20,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * R-54: a [PageListItem]. A favorite row renders an emoji, a title and the
+ * name of the collective it came from. This screen fans its observers out
+ * across *every* collective at once, which makes it the last place that
+ * should be reading cached markdown no row draws.
+ */
 data class FavoriteEntry(
-    val page: Page,
+    val page: PageListItem,
     val collectiveName: String,
 )
 
@@ -48,7 +55,7 @@ class FavoritesViewModel
                 if (collectiveIds.isEmpty()) {
                     flowOf(emptyList())
                 } else {
-                    val pagesFlows = collectiveIds.map { id -> pageRepository.observePages(id) }
+                    val pagesFlows = collectiveIds.map { id -> pageRepository.observePageList(id) }
                     combine(
                         combine(pagesFlows) { it.toList() },
                         collectiveRepository.observeCollectives(),
@@ -76,9 +83,5 @@ class FavoritesViewModel
                 val list = collectiveRepository.observeCollectives().first()
                 list.forEach { c -> pageRepository.refresh(c.id) }
             }
-        }
-
-        private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

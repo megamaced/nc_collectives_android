@@ -28,15 +28,20 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 
 /**
  * Horizontal "Recent pages" strip rendered above the tree on
  * [PageTreeScreen]. Mirrors the widget Nextcloud's web client shows on the
  * collective landing page. Hidden when [pages] is empty.
+ *
+ * R-54: takes [PageListItem]s. A card shows an emoji, a title and a
+ * relative timestamp — nothing that needs a body — so the strip is one of
+ * the list consumers that must be incapable of reading one.
  */
 @Composable
 internal fun RecentPagesStrip(
-    pages: List<Page>,
+    pages: List<PageListItem>,
     onPageClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -61,7 +66,7 @@ internal fun RecentPagesStrip(
 
 @Composable
 private fun RecentPageCard(
-    page: Page,
+    page: PageListItem,
     onClick: () -> Unit,
 ) {
     Card(
@@ -107,6 +112,12 @@ private fun RecentPageCard(
  * few lines of the body). Rendered above the tree on phone-sized screens
  * only — tablet/foldable layouts will get a proper two-pane view in a
  * future batch. Tap routes into the landing page.
+ *
+ * R-56: the one card on this screen that keeps a whole [Page]. It is the
+ * only list-screen consumer that legitimately renders markdown, so it is
+ * fed by a dedicated single-row flow (`observeLandingPage`) — widening the
+ * tree's list projection to carry bodies for its sake would have handed a
+ * body to all 200 rows to draw two lines on one of them.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

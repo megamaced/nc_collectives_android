@@ -18,7 +18,7 @@ import com.megamaced.nccollectives.data.db.entity.PageEntity
         EditQueueEntity::class,
         AttachmentEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class NcCollectivesDatabase : RoomDatabase() {

@@ -1,0 +1,1 @@
+Mostly internal work. The page tree, page lists and recent pages are faster: opening a page no longer makes the whole collective reload in the background, and recent pages now uses a database index instead of re-sorting every time. When a page body fails to load and nothing is cached, the Retry button now stays on screen instead of vanishing after a few seconds.

@@ -9,6 +9,7 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -100,20 +101,10 @@ class SearchViewModel
             inFlight = viewModelScope.launch {
                 _uiState.update { it.copy(isSearching = true, errorMessage = null) }
                 val result = repository.search(trimmed)
-                _uiState.update { state ->
-                    when (result) {
-                        is ApiResult.Success -> state.copy(
-                            isSearching = false,
-                            results = result.data,
-                            errorMessage = null,
-                        )
-
-                        else -> state.copy(
-                            isSearching = false,
-                            results = emptyList(),
-                            errorMessage = result.userMessage(),
-                        )
-                    }
+                // A failed search clears the hits and reports (R-59).
+                val hits = if (result is ApiResult.Success) result.data else emptyList()
+                _uiState.update {
+                    it.copy(isSearching = false, results = hits, errorMessage = result.userMessage())
                 }
                 if (result is ApiResult.Success && result.data.isNotEmpty()) {
                     userPreferences.pushRecentSearch(trimmed)
@@ -124,6 +115,5 @@ class SearchViewModel
         private companion object {
             const val DEBOUNCE_MS = 350L
             const val MIN_QUERY_LENGTH = 2
-            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

@@ -62,10 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.EmptyState
-import com.megamaced.nccollectives.ui.components.ErrorState
-import com.megamaced.nccollectives.ui.components.LoadingState
+import com.megamaced.nccollectives.ui.components.ListStateSwitch
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -89,13 +89,7 @@ internal fun PageTreeScreen(
     // the dialog with a parent picker.
     var newPageMode by remember { mutableStateOf<NewPageMode?>(null) }
 
-    LaunchedEffect(ui.statusMessage) {
-        val msg = ui.statusMessage
-        if (msg != null) {
-            snackbarHostState.showSnackbar(msg)
-            viewModel.dismissStatus()
-        }
-    }
+    SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
 
     // Prime the landing-page body once we know which page it is, so the
     // landing-card snippet can show a preview without the user opening it.
@@ -155,38 +149,35 @@ internal fun PageTreeScreen(
             onRefresh = viewModel::refresh,
             modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
         ) {
-            when {
-                ui.isRefreshing && nodes.isEmpty() && ui.landingPage == null -> {
-                    LoadingState()
-                }
-
-                ui.errorMessage != null && nodes.isEmpty() && ui.landingPage == null -> {
-                    ErrorState(message = ui.errorMessage!!, onRetry = viewModel::refresh)
-                }
-
-                nodes.isEmpty() && ui.landingPage == null -> {
+            ListStateSwitch(
+                isLoading = ui.isRefreshing,
+                error = ui.errorMessage,
+                // The landing card counts as content: a collective whose
+                // only page is its landing page has nothing in the tree but
+                // is not empty.
+                isEmpty = nodes.isEmpty() && ui.landingPage == null,
+                onRetry = viewModel::refresh,
+                empty = {
                     EmptyState(
                         title = "No pages",
                         message = "This collective doesn't have any pages yet.",
                     )
-                }
-
-                else -> {
-                    PageTreeList(
-                        nodes = nodes,
-                        expanded = ui.expanded,
-                        landingPage = ui.landingPage,
-                        collectiveName = ui.collectiveName,
-                        collectiveEmoji = ui.collectiveEmoji,
-                        recentPages = ui.recentPages,
-                        showLandingCard = isCompactWidth,
-                        onToggle = viewModel::toggleExpanded,
-                        onPageClick = onPageClick,
-                        onToggleFavorite = viewModel::toggleFavorite,
-                        onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
-                        onReorder = viewModel::onReorderDrop,
-                    )
-                }
+                },
+            ) {
+                PageTreeList(
+                    nodes = nodes,
+                    expanded = ui.expanded,
+                    landingPage = ui.landingPage,
+                    collectiveName = ui.collectiveName,
+                    collectiveEmoji = ui.collectiveEmoji,
+                    recentPages = ui.recentPages,
+                    showLandingCard = isCompactWidth,
+                    onToggle = viewModel::toggleExpanded,
+                    onPageClick = onPageClick,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
+                    onReorder = viewModel::onReorderDrop,
+                )
             }
         }
     }
@@ -222,7 +213,7 @@ private fun PageTreeList(
     landingPage: com.megamaced.nccollectives.domain.model.Page?,
     collectiveName: String,
     collectiveEmoji: String?,
-    recentPages: List<com.megamaced.nccollectives.domain.model.Page>,
+    recentPages: List<PageListItem>,
     showLandingCard: Boolean,
     onToggle: (Long) -> Unit,
     onPageClick: (Long) -> Unit,
@@ -392,7 +383,7 @@ private fun PageTreeItem(
 @Composable
 private fun NewPageDialog(
     mode: NewPageMode,
-    parentChoices: List<Page>,
+    parentChoices: List<PageListItem>,
     onCreate: (Long, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -480,8 +471,8 @@ private fun NewPageDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ParentPickerSheet(
-    choices: List<Page>,
-    onPick: (Page) -> Unit,
+    choices: List<PageListItem>,
+    onPick: (PageListItem) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

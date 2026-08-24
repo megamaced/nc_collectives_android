@@ -17,6 +17,8 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import com.megamaced.nccollectives.util.AttachmentRef
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -179,18 +181,21 @@ class PageViewModel
             viewModelScope.launch {
                 val hadCachedBody = pageRepository.getPage(pageId)?.bodyMd != null
                 val result = pageRepository.refreshBodyIfChanged(pageId)
+                val failure = result.userMessage()
                 _uiState.update { state ->
                     state.copy(
                         isLoadingBody = false,
-                        errorMessage = when {
-                            result is ApiResult.Success -> null
-                            userInitiated || !hadCachedBody -> result.userMessage()
-                            else -> null
-                        },
+                        // B-81: `errorMessage` drives the full-screen error
+                        // state, so it only carries a failure with nothing
+                        // behind it. Over a cached body that arm never
+                        // renders and the message used to reach the user
+                        // only because this screen alone also snackbarred
+                        // `errorMessage`; it goes via `statusMessage` now.
+                        errorMessage = if (hadCachedBody) null else failure,
                         statusMessage = when {
                             !userInitiated -> state.statusMessage
-                            result !is ApiResult.Success -> state.statusMessage
-                            result.data -> "Page updated"
+                            failure != null -> if (hadCachedBody) failure else state.statusMessage
+                            result is ApiResult.Success && result.data -> "Page updated"
                             else -> "Already up to date"
                         },
                     )
@@ -245,17 +250,16 @@ class PageViewModel
                     pageId = current.id,
                     favorite = want,
                 )
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                result.onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
 
         fun setEmoji(emoji: String) {
             viewModelScope.launch {
-                val result = pageRepository.setEmoji(pageId, emoji)
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                pageRepository.setEmoji(pageId, emoji).onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
@@ -281,9 +285,8 @@ class PageViewModel
             add: Boolean,
         ) {
             viewModelScope.launch {
-                val result = pageRepository.togglePageTag(pageId, tag.id, tag.name, add)
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                pageRepository.togglePageTag(pageId, tag.id, tag.name, add).onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
@@ -473,8 +476,14 @@ class PageViewModel
             }
         }
 
+        /**
+         * B-81: the snackbar message only. `errorMessage` belongs to the
+         * full-screen error state and is cleared by the next [refreshBody];
+         * clearing it here swapped a retryable error screen for an empty
+         * page the moment the snackbar timed out.
+         */
         fun dismissStatus() {
-            _uiState.update { it.copy(statusMessage = null, errorMessage = null) }
+            _uiState.update { it.copy(statusMessage = null) }
         }
 
         /**
@@ -567,7 +576,6 @@ class PageViewModel
             }
 
         private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
             const val TAG = "PageViewModel"
 
             /**

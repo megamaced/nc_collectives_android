@@ -6,10 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,9 +30,13 @@ import javax.inject.Inject
 /**
  * A node in the rendered tree. [hasChildren] toggles the chevron; depth is
  * intentionally omitted — the tree is rendered flat (no indentation).
+ *
+ * R-54: a [PageListItem], not a [Page]. A tree row draws an emoji, a title
+ * and an editor name; carrying the detail model meant every row of every
+ * emission also carried whatever markdown was cached for that page.
  */
 data class PageNode(
-    val page: Page,
+    val page: PageListItem,
     val hasChildren: Boolean,
     val isFavorite: Boolean,
 )
@@ -42,11 +49,17 @@ data class PageTreeUiState(
     val expanded: Set<Long> = emptySet(),
     val statusMessage: String? = null,
     /** Pages eligible as the parent for a new top-level "Add page" — folder pages and the landing page. */
-    val parentChoices: List<Page> = emptyList(),
-    /** The collective's landing page (parentId == 0). Null until pages load. */
+    val parentChoices: List<PageListItem> = emptyList(),
+    /**
+     * The collective's landing page (parentId == 0). Null until pages load.
+     *
+     * R-56: the one full [Page] on this screen, from its own single-row
+     * flow — [LandingPageCard] renders a snippet of the body, so it needs
+     * markdown that no other row here carries.
+     */
     val landingPage: Page? = null,
     /** Most-recently-edited pages in this collective for the recent-pages strip. */
-    val recentPages: List<Page> = emptyList(),
+    val recentPages: List<PageListItem> = emptyList(),
 )
 
 @HiltViewModel
@@ -61,7 +74,7 @@ class PageTreeViewModel
             savedStateHandle.get<Long>(Destination.PageTree.ARG_COLLECTIVE_ID),
         )
 
-        private val pagesFlow = pageRepository.observePages(collectiveId)
+        private val pagesFlow = pageRepository.observePageList(collectiveId)
         private val favoritesFlow = collectiveRepository.observeFavoritePageIds(collectiveId)
 
         private val _uiState = MutableStateFlow(PageTreeUiState())
@@ -111,8 +124,16 @@ class PageTreeViewModel
                     // to hold the ordering the comparator defines; see
                     // [PAGE_TITLE_ORDER].
                     val choices = pages.sortedWith(PAGE_TITLE_ORDER)
-                    val landing = pages.firstOrNull { it.parentId == 0L }
-                    _uiState.update { it.copy(parentChoices = choices, landingPage = landing) }
+                    _uiState.update { it.copy(parentChoices = choices) }
+                }
+            }
+            viewModelScope.launch {
+                // R-56: the landing page comes from its own single-row flow
+                // rather than being picked out of the list. The list no
+                // longer carries a body, and the landing card needs one —
+                // this is the whole reason the split is affordable.
+                pageRepository.observeLandingPage(collectiveId).collect { landing ->
+                    _uiState.update { it.copy(landingPage = landing) }
                 }
             }
             viewModelScope.launch {
@@ -150,12 +171,7 @@ class PageTreeViewModel
             _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             viewModelScope.launch {
                 val result = pageRepository.refresh(collectiveId)
-                _uiState.update {
-                    it.copy(
-                        isRefreshing = false,
-                        errorMessage = if (result is ApiResult.Success) null else result.userMessage(),
-                    )
-                }
+                _uiState.update { it.copy(isRefreshing = false, errorMessage = result.userMessage()) }
             }
         }
 
@@ -177,8 +193,8 @@ class PageTreeViewModel
                     pageId = pageId,
                     favorite = !currentlyFavorite,
                 )
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                result.onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
@@ -250,14 +266,13 @@ class PageTreeViewModel
                     parentPageId = parentId,
                     subpageOrderIds = newSiblingIds,
                 )
-                if (result !is ApiResult.Success) {
-                    _uiState.update { it.copy(statusMessage = result.userMessage()) }
+                result.onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
                 }
             }
         }
 
         private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
             const val RECENT_LIMIT = 8
         }
     }
@@ -276,8 +291,8 @@ class PageTreeViewModel
  * pure function that must not assume its input arrived pre-sorted. On the
  * already-sorted input it does get, the sort is near-linear.
  */
-private val PAGE_TITLE_ORDER: Comparator<Page> =
-    compareBy(String.CASE_INSENSITIVE_ORDER) { page: Page -> page.title }
+private val PAGE_TITLE_ORDER: Comparator<PageListItem> =
+    compareBy(String.CASE_INSENSITIVE_ORDER) { page: PageListItem -> page.title }
 
 /**
  * Flattens the page list into the depth-first sequence of visible tree
@@ -303,14 +318,14 @@ private val PAGE_TITLE_ORDER: Comparator<Page> =
  * one `parentId`, so it is reached once).
  */
 internal fun buildVisibleNodes(
-    pages: List<Page>,
+    pages: List<PageListItem>,
     expanded: Set<Long>,
     favoriteIds: Set<Long>,
 ): List<PageNode> {
-    val byParent: Map<Long, List<Page>> = pages.groupBy { it.parentId }
-    val byId: Map<Long, Page> = pages.associateBy { it.id }
+    val byParent: Map<Long, List<PageListItem>> = pages.groupBy { it.parentId }
+    val byId: Map<Long, PageListItem> = pages.associateBy { it.id }
 
-    fun siblingsOrdered(parentId: Long): List<Page> {
+    fun siblingsOrdered(parentId: Long): List<PageListItem> {
         val children = byParent[parentId].orEmpty()
         if (children.isEmpty()) return children
         val orderHint = byId[parentId]?.subpageOrder.orEmpty().distinct()

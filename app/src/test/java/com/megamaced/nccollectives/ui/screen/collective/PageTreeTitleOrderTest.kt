@@ -1,6 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.collective
 
-import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -25,7 +25,7 @@ class PageTreeTitleOrderTest {
         parentId: Long,
         title: String,
         subpageOrder: List<Long> = emptyList(),
-    ) = Page(
+    ) = PageListItem(
         id = id,
         collectiveId = 1,
         parentId = parentId,
@@ -33,20 +33,13 @@ class PageTreeTitleOrderTest {
         emoji = null,
         tags = emptyList(),
         subpageOrder = subpageOrder,
-        isFullWidth = false,
         trashed = false,
         serverTimestamp = 0,
-        size = 0,
-        fileName = "$title.md",
-        filePath = "",
-        collectivePath = ".Collectives/Wiki",
-        linkedPageIds = emptyList(),
         lastUserDisplayName = "",
-        bodyMd = null,
-        draftBodyMd = null,
+        hasDraft = false,
     )
 
-    private fun titlesUnder(children: List<Page>): List<String> {
+    private fun titlesUnder(children: List<PageListItem>): List<String> {
         val pages = listOf(page(id = 100, parentId = 0, title = "Landing")) + children
         return buildVisibleNodes(pages, expanded = emptySet(), favoriteIds = emptySet())
             .map { it.page.title }

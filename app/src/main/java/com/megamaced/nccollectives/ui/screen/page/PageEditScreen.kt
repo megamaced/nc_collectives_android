@@ -67,6 +67,7 @@ import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,12 +144,7 @@ internal fun PageEditScreen(
         onClose()
     }
 
-    LaunchedEffect(ui.saveError) {
-        ui.saveError?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.dismissError()
-        }
-    }
+    SnackbarStatusEffect(ui.saveError, snackbarHostState, viewModel::dismissError)
 
     val hasUnsavedChanges = ui.initialBody != null && draftBody != ui.initialBody
     val tryClose: () -> Unit = {

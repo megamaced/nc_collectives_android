@@ -15,6 +15,7 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.sync.FullSync
 import com.megamaced.nccollectives.sync.SyncOutcome
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.ManualCheckResult
 import com.megamaced.nccollectives.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -254,9 +255,5 @@ class SettingsViewModel
                 defaultCollectiveId = prefs.defaultCollectiveId
                     ?.takeIf { id -> collectives.any { it.id == id } },
             )
-        }
-
-        private companion object {
-            const val STOP_TIMEOUT_MS = 5_000L
         }
     }

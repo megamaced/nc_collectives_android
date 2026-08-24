@@ -43,8 +43,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 36
-        versionCode = 31
-        versionName = "2.8.0"
+        versionCode = 32
+        versionName = "2.8.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -101,6 +101,15 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+
+    // Room's MigrationTestHelper loads the exported schema JSONs from the
+    // instrumentation APK's assets. Schemas are exported via the KSP arg
+    // below rather than the Room Gradle plugin, so nothing copies them in
+    // automatically and every migration test would fail with
+    // "Cannot find the schema file in the assets folder".
+    sourceSets {
+        getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
     }
 }
 
@@ -204,6 +213,21 @@ dependencies {
 
     // Unit tests
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.mockk)
+
+    // Instrumented tests. Room migrations are hand-written against seven
+    // committed schemas, and MigrationTestHelper is the only thing that
+    // actually exercises them — a wrong migration silently corrupts user data.
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+}
+
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose_reports")
+    metricsDestination = layout.buildDirectory.dir("compose_metrics")
 }
 
 ktlint {

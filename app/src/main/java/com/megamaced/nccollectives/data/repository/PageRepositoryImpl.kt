@@ -23,6 +23,7 @@ import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -30,6 +31,7 @@ import com.megamaced.nccollectives.sync.SyncScheduler
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -49,18 +51,39 @@ class PageRepositoryImpl
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
     ) : PageRepository {
+        override fun observePageList(collectiveId: Long): Flow<List<PageListItem>> =
+            pageDao
+                .observeForCollective(collectiveId)
+                // R-55: Room invalidates per *table*, so every `updateBody`
+                // — one per page open, via the B-58 revalidation — re-runs
+                // this query and re-emits the whole collective. None of
+                // those emissions differ in a single list-visible field.
+                // Filtering on the projection rather than after the mapper
+                // also skips re-mapping every row.
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
         override fun observePages(collectiveId: Long): Flow<List<Page>> =
-            pageDao.observeForCollective(collectiveId).map { rows -> rows.map { it.toDomain() } }
+            pageDao
+                .observeDetailForCollective(collectiveId)
+                // Deliberately *not* distinct-until-changed: these rows
+                // carry bodies, so holding the previous emission to compare
+                // against would pin a second copy of every cached body in
+                // the collective. R-55's filter belongs on the projection.
+                .map { rows -> rows.map { it.toDomain() } }
 
         override fun observeRecentPages(
             collectiveId: Long,
             limit: Int,
-        ): Flow<List<Page>> =
+        ): Flow<List<PageListItem>> =
             pageDao
                 .observeRecentInCollective(collectiveId, limit)
+                .distinctUntilChanged()
                 .map { rows -> rows.map { it.toDomain() } }
 
         override fun observePage(pageId: Long): Flow<Page?> = pageDao.observeById(pageId).map { it?.toDomain() }
+
+        override fun observeLandingPage(collectiveId: Long): Flow<Page?> = pageDao.observeLandingPage(collectiveId).map { it?.toDomain() }
 
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
             apiCall {
@@ -713,19 +736,30 @@ class PageRepositoryImpl
         override fun observeBacklinksFor(
             collectiveId: Long,
             pageId: Long,
-        ): Flow<List<Page>> =
-            pageDao.observeForCollective(collectiveId).map { rows ->
+        ): Flow<List<Page>> {
+            // R-57: narrow to the rows that mention the id in SQL instead
+            // of walking the whole collective in Kotlin. `linkedPageIdsCsv`
+            // is only ever written by `toLongCsv`, so it is bare digits and
+            // commas — wrapping the column in separators on both sides lets
+            // one LIKE match the id whether it sits first, last, alone or
+            // in the middle, and can't confuse `5` with `15`.
+            val likePattern = "%$ID_CSV_SEP$pageId$ID_CSV_SEP%"
+            return pageDao.observeBacklinksIn(collectiveId, ID_CSV_SEP, likePattern).map { rows ->
+                // Same exact-match filter as before, over the parsed ids:
+                // the LIKE only has to narrow, and a page that links to
+                // itself still mustn't appear in its own backlinks.
                 rows
                     .asSequence()
                     .filter { row -> row.id != pageId && pageId in row.linkedPageIdsCsv.toLongCsvList() }
                     .map { it.toDomain() }
                     .toList()
             }
+        }
 
         override fun observePagesWithTagInCollective(
             collectiveId: Long,
             tagName: String,
-        ): Flow<List<Page>> {
+        ): Flow<List<PageListItem>> {
             // B-53: escape `%`/`_`/`\\` in the tag name so they don't act
             // as LIKE wildcards. Worst case before this fix was
             // `tagName = "%"` matching every tagged row and loading the
@@ -738,6 +772,9 @@ class PageRepositoryImpl
             val likePattern = "%$TAG_SEP_STRING$escapedTag$TAG_SEP_STRING%"
             return pageDao
                 .observePagesWithTagInCollective(collectiveId, TAG_SEP_STRING, likePattern)
+                // R-55: as in `observePageList` — a body write re-runs this
+                // query too, and nothing it returns depends on a body.
+                .distinctUntilChanged()
                 .map { rows ->
                     // Defence in depth: exact-match filter against the
                     // unescaped name absorbs any LIKE corner case we
@@ -881,6 +918,14 @@ class PageRepositoryImpl
             return result.mapSuccess { }
         }
     }
+
+/**
+ * Separator `toLongCsv` writes id columns with. Named here because R-57's
+ * backlink LIKE pattern has to be built out of the same character the
+ * column was written with, and a silent mismatch would just quietly return
+ * no backlinks.
+ */
+private const val ID_CSV_SEP = ","
 
 /**
  * What opening a page should do about its markdown body.

@@ -12,6 +12,12 @@ import androidx.room.PrimaryKey
         // R-11: covers the hot `observeForCollective` query, which orders
         // by `title COLLATE NOCASE`. Added in DB v6 / Batch 18m.
         Index(value = ["collectiveId", "title"]),
+        // R-50: covers the `observeRecentInCollective` query, which filters
+        // on `collectiveId` and orders by `serverTimestamp DESC`. None of the
+        // indices above carries `serverTimestamp`, so without this one SQLite
+        // sorts the filtered rows into a transient B-tree on every emission.
+        // Added in DB v8.
+        Index(value = ["collectiveId", "serverTimestamp"]),
     ],
 )
 data class PageEntity(

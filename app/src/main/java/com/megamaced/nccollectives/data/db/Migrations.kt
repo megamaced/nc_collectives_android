@@ -16,10 +16,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v4: `attachments` introduced (Batch 12)
  *  - v5: `attachments.serverAttachmentId` added (Batch 18j)
  *  - v6: indexes for hot reads added (Batch 18m / R-11)
+ *  - v7: `edit_queue` rebuilt on a `pageId` primary key; `forceWrite`
+ *    added (Batch 26e / B-41 + B-46 + R-28)
+ *  - v8: `pages (collectiveId, serverTimestamp)` index added (R-50)
  *
- * Each [Migration] is verified by `NcCollectivesDatabaseMigrationTest`
- * which evolves a fresh DB through the chain and asserts the final
- * schema matches the v6 JSON.
+ * Each [Migration] is verified by `MigrationTest` in `androidTest`, which
+ * evolves a fresh DB through the chain and asserts the final schema
+ * matches the v8 JSON.
  */
 internal val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -119,6 +122,21 @@ internal val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/**
+ * R-50: index covering `PageDao.observeRecentInCollective`, which filters on
+ * `collectiveId` and orders by `serverTimestamp DESC`. The three older
+ * `pages` indices all stop short of `serverTimestamp`, so without this one
+ * SQLite sorts the filtered rows into a transient B-tree on every emission.
+ */
+internal val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_pages_collectiveId_serverTimestamp` " +
+                "ON `pages` (`collectiveId`, `serverTimestamp`)",
+        )
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -126,4 +144,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_4_5,
     MIGRATION_5_6,
     MIGRATION_6_7,
+    MIGRATION_7_8,
 )

@@ -65,6 +65,7 @@ import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,12 +81,7 @@ internal fun AttachmentsScreen(
     var showUploadSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(ui.statusMessage) {
-        ui.statusMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.dismissStatus()
-        }
-    }
+    SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
 
     val cameraCapture = rememberCameraCapture { uri, displayName ->
         viewModel.enqueueUpload(uri, displayName, "image/jpeg")

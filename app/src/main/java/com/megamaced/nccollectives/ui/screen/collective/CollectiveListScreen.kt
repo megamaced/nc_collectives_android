@@ -52,8 +52,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.components.EmptyState
-import com.megamaced.nccollectives.ui.components.ErrorState
-import com.megamaced.nccollectives.ui.components.LoadingState
+import com.megamaced.nccollectives.ui.components.ListStateSwitch
+import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,16 +75,11 @@ internal fun CollectiveListScreen(
     var emojiTarget by remember { mutableStateOf<Collective?>(null) }
     var pendingTrash by remember { mutableStateOf<Collective?>(null) }
 
-    // Keyed on `Unit`, and collecting a channel rather than watching a state
-    // field: keying on the message would cancel `showSnackbar` the instant the
-    // message was cleared, and a message left in the state outlives the
-    // composition the create-and-navigate path disposes (B-79). Each message
-    // here is consumed as it arrives — shown once, never re-shown on return.
-    LaunchedEffect(Unit) {
-        viewModel.messages.collect { message ->
-            snackbarHostState.showSnackbar(message)
-        }
-    }
+    // A channel rather than a state field: the create-and-navigate path
+    // disposes this composition while the snackbar is still up, so a message
+    // parked in state would never be cleared and would re-show on the way
+    // back (B-79).
+    SnackbarMessageEffect(viewModel.messages, snackbarHostState)
 
     // Re-check the server whenever this screen comes back to the front —
     // returning from a collective reuses the ViewModel, so nothing else
@@ -143,36 +138,27 @@ internal fun CollectiveListScreen(
             onRefresh = viewModel::refresh,
             modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
         ) {
-            when {
-                ui.isRefreshing && collectives.isEmpty() -> {
-                    LoadingState()
-                }
-
-                ui.errorMessage != null && collectives.isEmpty() -> {
-                    ErrorState(
-                        message = ui.errorMessage!!,
-                        onRetry = viewModel::refresh,
-                    )
-                }
-
-                collectives.isEmpty() -> {
+            ListStateSwitch(
+                isLoading = ui.isRefreshing,
+                error = ui.errorMessage,
+                isEmpty = collectives.isEmpty(),
+                onRetry = viewModel::refresh,
+                empty = {
                     EmptyState(
                         title = "No collectives",
                         message = "Tap the + button to create one.",
                     )
-                }
-
-                else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(collectives, key = { it.id }) { collective ->
-                            CollectiveRow(
-                                collective = collective,
-                                onClick = { onCollectiveClick(collective.id) },
-                                onSetEmoji = { emojiTarget = collective },
-                                onTrash = { pendingTrash = collective },
-                            )
-                            HorizontalDivider()
-                        }
+                },
+            ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(collectives, key = { it.id }) { collective ->
+                        CollectiveRow(
+                            collective = collective,
+                            onClick = { onCollectiveClick(collective.id) },
+                            onSetEmoji = { emojiTarget = collective },
+                            onTrash = { pendingTrash = collective },
+                        )
+                        HorizontalDivider()
                     }
                 }
             }

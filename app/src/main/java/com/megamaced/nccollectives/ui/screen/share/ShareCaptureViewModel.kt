@@ -14,6 +14,7 @@ import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.share.SharePayload
 import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -54,7 +55,7 @@ class ShareCaptureViewModel
         val collectives: StateFlow<List<Collective>> =
             collectiveRepository.observeCollectives().stateIn(
                 viewModelScope,
-                SharingStarted.WhileSubscribed(5_000),
+                SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
                 emptyList(),
             )
 

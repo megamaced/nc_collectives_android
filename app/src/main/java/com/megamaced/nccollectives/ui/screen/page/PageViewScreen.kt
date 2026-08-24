@@ -56,6 +56,7 @@ import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.util.AttachmentRef
 import kotlinx.coroutines.launch
 
@@ -100,13 +101,11 @@ internal fun PageViewScreen(
     }
     val visiblePage = page ?: lastLoadedPage
 
-    LaunchedEffect(ui.statusMessage, ui.errorMessage) {
-        val msg = ui.statusMessage ?: ui.errorMessage
-        if (msg != null) {
-            snackbarHostState.showSnackbar(msg)
-            viewModel.dismissStatus()
-        }
-    }
+    // B-81: `statusMessage` only. An `errorMessage` is the full-screen error
+    // state's, and this was the one screen that also snackbarred it — which
+    // meant its own `dismissStatus` then wiped the error screen out from
+    // under the user. See `PageViewModel.refreshBody`.
+    SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
 
     // Attachment staged and ready — fire the view intent, then tell the
     // ViewModel it's been consumed (and whether anything could open it).

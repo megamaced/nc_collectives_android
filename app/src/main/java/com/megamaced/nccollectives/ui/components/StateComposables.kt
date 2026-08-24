@@ -88,3 +88,31 @@ fun ErrorState(
         }
     }
 }
+
+/**
+ * The loading / error / empty / content switch a list screen shows (R-63).
+ *
+ * All three non-content arms are gated on [isEmpty] — that is what makes
+ * them *first-load* states: once there are rows, a refresh in flight is a
+ * spinner over the list and a failure is a snackbar, not a blank screen
+ * where the user's data was. [isEmpty] is passed in rather than derived from
+ * a list because a screen's "has content" test can be wider than one
+ * collection: the page tree has content when it has a landing page, even
+ * with no tree rows.
+ */
+@Composable
+fun ListStateSwitch(
+    isLoading: Boolean,
+    error: String?,
+    isEmpty: Boolean,
+    onRetry: (() -> Unit)?,
+    empty: @Composable () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    when {
+        isLoading && isEmpty -> LoadingState()
+        error != null && isEmpty -> ErrorState(message = error, onRetry = onRetry)
+        isEmpty -> empty()
+        else -> content()
+    }
+}

@@ -10,6 +10,7 @@ import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.attachmentDirName
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,7 @@ class AttachmentsViewModel
 
         val attachments: StateFlow<List<Attachment>> = repository.observeForPage(pageId).stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = emptyList(),
         )
 
@@ -59,12 +60,17 @@ class AttachmentsViewModel
 
         fun refresh() {
             if (_uiState.value.isRefreshing) return
-            _uiState.update { it.copy(isRefreshing = true) }
+            // B-82: clear the standing message first, as every other
+            // screen's refresh does. This was the one that didn't, so a
+            // stale failure sat over a listing that had since come back.
+            _uiState.update { it.copy(isRefreshing = true, statusMessage = null) }
             viewModelScope.launch {
                 val result = repository.refresh(pageId)
                 _uiState.update {
                     it.copy(
                         isRefreshing = false,
+                        // Not plain `userMessage()`: a success must leave
+                        // whatever an upload queued mid-listing.
                         statusMessage = if (result is ApiResult.Success) it.statusMessage else result.userMessage(),
                     )
                 }

@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import timber.log.Timber
 
 @Composable
@@ -45,12 +46,7 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
         uiState.loginUrl?.let { url -> launchCustomTab(context, url) }
     }
 
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            snackbarHostState.showSnackbar(error)
-            viewModel.dismissError()
-        }
-    }
+    SnackbarStatusEffect(uiState.error, snackbarHostState, viewModel::dismissError)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
