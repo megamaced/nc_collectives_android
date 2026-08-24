@@ -43,9 +43,9 @@ Builds:
     gradle:
       - yes
 
-  - versionName: 2.7.2
-    versionCode: 30
-    commit: 3aa006534b1e493583b589ca541964fd39cea4ad
+  - versionName: 2.8.0
+    versionCode: 31
+    commit: e48b874b7a4df91323da568873c52920b340b730
     subdir: app
     gradle:
       - yes
@@ -54,5 +54,5 @@ AllowedAPKSigningKeys: 65402e2578d91727d43c6849da20622d0fad160734c6272d887c16776
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 2.7.2
-CurrentVersionCode: 30
+CurrentVersion: 2.8.0
+CurrentVersionCode: 31
