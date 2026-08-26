@@ -252,6 +252,149 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The five tests in app/src/androidTest are the only coverage for the seven
+  # hand-written Room migrations in data/db/Migrations.kt. They are
+  # instrumented, so `testDebugUnitTest` in the `build` job cannot see them —
+  # before this job they ran nowhere at all. A migration that drops the wrong
+  # table or loses a queued edit fails on the user's next app open, against
+  # their only copy of the data, with no way back. This job is that gate.
+  #
+  # Deliberately a separate job, not extra tasks bolted onto `build`: an
+  # emulator boot must never sit in front of ktlint/lint/unit-test feedback,
+  # and `release` must not inherit a dependency on emulator uptime.
+  instrumented-tests:
+    name: instrumented tests
+    runs-on: ubuntu-latest
+    # No `if:` — this runs on PRs, on main, and on tags. The point of the job
+    # is to fail on the commit that *introduces* a bad migration, and that
+    # commit arrives in a PR. Gating it to tags would move the alarm to the
+    # one moment where the only remedies are moving a tag or burning a
+    # version. The workflow-level concurrency group already cancels
+    # superseded PR runs, so pushing again does not stack up emulators.
+    #
+    # Warm path (AVD snapshot cached, Gradle cache warm) is ~12-15 min. The
+    # cold path adds a system-image download and a second emulator boot, and
+    # the action allows each boot 600s, so the 30-minute discipline used
+    # elsewhere would flake on the first run and after every cache eviction.
+    # 45 is a ceiling, not a target.
+    timeout-minutes: 45
+    env:
+      # == minSdk, on purpose. These migrations are hand-written SQL, so the
+      # hazard is the *oldest* SQLite the app can be installed on, not the
+      # newest: MIGRATION_6_7's `ALTER TABLE ... RENAME TO` table rebuild is
+      # precisely the statement whose semantics moved between SQLite
+      # versions, and the OS ships SQLite. Room's schema validation is
+      # identical on every API level, so testing near targetSdk would add
+      # nothing that testing at the floor does not already cover, while
+      # leaving the floor untested.
+      EMULATOR_API_LEVEL: '29'
+      # AOSP `default`, not google_apis: nothing here touches Play services,
+      # and the smaller image boots faster. arch is set explicitly because the
+      # action still defaults to `arch: x86`, the slower 32-bit image, which
+      # does not exist at all above API 30 — pinning x86_64 now means raising
+      # EMULATOR_API_LEVEL later is a one-line change.
+      EMULATOR_TARGET: default
+      EMULATOR_ARCH: x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Read-only on every ref, not just PRs (which is what `build` does):
+      # `build` runs in the same run and is the cache writer, and two jobs
+      # racing to save the same Gradle cache entry is how it ends up thrashed.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      # Mandatory on ubuntu runners: /dev/kvm exists but is not accessible to
+      # the runner user, and without it the emulator either refuses to start
+      # or drops to pure software emulation and runs slowly enough to hit the
+      # job timeout instead of reporting a result.
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Exact key, no restore-keys: the test step runs with
+      # force-avd-creation:false, so a snapshot restored from a *different*
+      # system image would be booted as if it matched. Keying on the three
+      # inputs that define the image means changing EMULATOR_API_LEVEL
+      # invalidates the snapshot by itself. Bump the -v1 suffix to discard a
+      # cache that has gone bad without changing the image.
+      - name: Cache AVD snapshot
+        id: avd-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ runner.os }}-api${{ env.EMULATOR_API_LEVEL }}-${{ env.EMULATOR_TARGET }}-${{ env.EMULATOR_ARCH }}-v1
+
+      # First boot of a cold cache: create the AVD and let it save a snapshot
+      # (note the absence of -no-snapshot) so every later run restores instead
+      # of cold-booting.
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.EMULATOR_API_LEVEL }}
+          target: ${{ env.EMULATOR_TARGET }}
+          arch: ${{ env.EMULATOR_ARCH }}
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # The whole variant, not a runner-argument filter narrowed to the
+      # data.db package. androidTest holds only MigrationTest today, so a
+      # package filter would save nothing measurable against a ~10 min
+      # emulator boot, and it would silently exclude the next instrumented
+      # test someone adds — a filter that quietly stops running tests is the
+      # exact failure mode this job exists to close. Narrow it only if
+      # androidTest later grows something genuinely slow.
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.EMULATOR_API_LEVEL }}
+          target: ${{ env.EMULATOR_TARGET }}
+          arch: ${{ env.EMULATOR_ARCH }}
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
+
+      # A red run here means a migration is wrong, and the detail that says
+      # which one — the failing assert, the missing column, the Room schema
+      # diff — is in the report, not in Gradle's one-line summary. Upload it
+      # so the diagnosis does not require reproducing the emulator locally.
+      - name: Upload androidTest report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nc_collectives_android-androidTest-report-${{ github.sha }}
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          # warn, not error: if the emulator never booted there is no report,
+          # and a second red step would bury the one that actually failed.
+          if-no-files-found: warn
+          retention-days: 14
+
+  # `needs: build` only — deliberately NOT `needs: [build, instrumented-tests]`.
+  # The emulator is the least reliable component in this workflow (boot
+  # timeouts, KVM availability, adb dropping the device), and the migration
+  # gate has already done its work by tag time: the tagged commit passed
+  # instrumented-tests on the PR and again on main. Letting an emulator hiccup
+  # block a tagged publish would trade a real risk for an infrastructure one,
+  # and the remedy — re-tagging — means burning a version for a bot-driven
+  # F-Droid package (see the metadata check above). instrumented-tests still
+  # runs on the tag, so a genuine migration failure is visible on the release
+  # run; it just does not hold the artifact hostage.
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
