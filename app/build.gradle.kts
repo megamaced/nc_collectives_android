@@ -11,6 +11,7 @@ plugins {
     // version because the Kotlin Gradle plugin already provides it.
     kotlin("kapt")
     alias(libs.plugins.hilt)
+    alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -211,6 +212,21 @@ dependencies {
     // Logging
     implementation(libs.timber)
 
+    // Baseline profile, consumer side (R-64). profileinstaller is what applies
+    // a shipped profile at runtime — without it the profile rides along in
+    // assets/dexopt/ and ART never sees it.
+    //
+    // Declared explicitly because it was previously only arriving
+    // transitively, pulled in by whichever AndroidX libraries ship their own
+    // profiles. That resolved to the same 1.4.1, so this changes nothing
+    // today; it stops a future dependency bump from dropping it, or from
+    // settling below 1.4.0 — which is the floor for reading back a profile
+    // recorded on an API 34+ device, i.e. exactly what :baselineprofile
+    // generates on.
+    implementation(libs.androidx.profileinstaller)
+    // The generator. Supplies the profile to the merge task; ships nothing.
+    baselineProfile(project(":baselineprofile"))
+
     // Unit tests
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -223,6 +239,27 @@ dependencies {
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
+}
+
+// Consumer half of the baseline profile setup (R-64). The generator lives in
+// :baselineprofile; this decides what happens to what it produces.
+baselineProfile {
+    // Write one profile under src/main rather than a per-variant one.
+    //
+    // Two reasons. The app has no flavours, so a per-variant split would only
+    // ever hold one file. And the per-variant path is `app/src/<variant>/…` —
+    // for the release variant that is `app/src/release/`, which .gitignore's
+    // `release/` entry silently swallows, so the generated profile would look
+    // committed, never actually be committed, and quietly stop shipping.
+    mergeIntoMain = true
+
+    // Generation must never be a side effect of building. CI runs
+    // `assembleRelease` on every push; with this true that would try to boot
+    // an emulator on a runner that has none, and F-Droid's builder — which
+    // takes the same path — would fail outright. Generating is an explicit,
+    // occasional `:app:generateBaselineProfile` by a human, and the result is
+    // committed.
+    automaticGenerationDuringBuild = false
 }
 
 composeCompiler {
