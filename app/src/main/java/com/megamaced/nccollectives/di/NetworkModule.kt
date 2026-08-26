@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.di
 
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.api.AuthInterceptor
+import com.megamaced.nccollectives.data.api.CirclesApiService
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.DirectEditingService
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
@@ -103,6 +104,20 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideCollectivesApi(retrofit: Retrofit): CollectivesApiService = retrofit.create(CollectivesApiService::class.java)
+
+    /**
+     * Nextcloud Teams (Circles), for collective membership. Shares the
+     * authenticated [Retrofit] with every other Nextcloud service on
+     * purpose: it is the same host, the same OCS envelope and the same
+     * Basic-auth credentials, so a second client would only duplicate the
+     * connection pool and the two interceptors that make a request safe to
+     * send (`HostInterceptor`'s provenance tag, `AuthInterceptor`'s
+     * host-matched credentials). Only genuinely third-party APIs get their
+     * own client — see [provideGitHubReleaseService].
+     */
+    @Provides
+    @Singleton
+    fun provideCirclesApi(retrofit: Retrofit): CirclesApiService = retrofit.create(CirclesApiService::class.java)
 
     @Provides
     @Singleton

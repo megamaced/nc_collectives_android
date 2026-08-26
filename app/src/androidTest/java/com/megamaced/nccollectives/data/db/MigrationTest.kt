@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 8
+private const val LATEST_VERSION = 9
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -35,7 +35,7 @@ private const val LATEST_VERSION = 8
  *
  * [migrateAll] is the load-bearing test: it walks a v1 database through every
  * migration and lets Room compare the result against the committed
- * `app/schemas/…/8.json`, column by column and index by index. Schema
+ * `app/schemas/…/9.json`, column by column and index by index. Schema
  * validation cannot see a *lost row*, though, so the migrations that move
  * data rather than just adding a column get their own test below.
  *
@@ -104,6 +104,66 @@ class MigrationTest {
             // the body it already had.
             assertTrue(cursor.isNullAt("bodyEtag"))
             assertTrue(cursor.isNullAt("draftBodyMd"))
+        }
+        db.close()
+    }
+
+    /**
+     * MIGRATION_8_9 adds three columns to `collectives` (B-83). Plain
+     * `ADD COLUMN`s, so the risk isn't losing a row — [migrateAll] would
+     * catch a botched schema — it is the *defaults* a pre-v9 row reads back
+     * with. `circleId` has to be null rather than an empty string, because
+     * the members path treats null as "unreachable" and would send a
+     * blank path segment otherwise; `userShowMembers` has to default to 1,
+     * or every collective cached before this version hides its members
+     * entry point until the next refresh happens to land.
+     */
+    @Test
+    fun migrate8To9_addsTheTeamColumnsAndKeepsCollectives() {
+        helper.createDatabase(TEST_DB, 8).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide")
+            db.insertCollective(id = 8L, name = "Seasonal Calendar")
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 9, true, MIGRATION_8_9)
+
+        assertTrue(
+            "MIGRATION_8_9 did not add the v9 columns",
+            db.columnNames("collectives").containsAll(
+                setOf("circleId", "level", "userShowMembers"),
+            ),
+        )
+        db.query("SELECT * FROM `collectives` ORDER BY `id`").use { cursor ->
+            assertEquals(2, cursor.count)
+            assertTrue(cursor.moveToFirst())
+            assertEquals(7L, cursor.longAt("id"))
+            assertEquals("Field Guide", cursor.stringAt("name"))
+            // Unknown until the next refresh — not an empty string.
+            assertTrue(cursor.isNullAt("circleId"))
+            // 0 is not a level Circles ever sends; it reads as "unknown".
+            assertEquals(0L, cursor.longAt("level"))
+            // Shown by default: absent server-side preference is not an opt-out.
+            assertEquals(1L, cursor.longAt("userShowMembers"))
+            assertTrue(cursor.moveToNext())
+            assertEquals(8L, cursor.longAt("id"))
+            assertEquals("Seasonal Calendar", cursor.stringAt("name"))
+            assertTrue(cursor.isNullAt("circleId"))
+        }
+
+        // The columns are writable at v9, i.e. the affinities are what the
+        // entity expects rather than whatever the ALTER happened to produce.
+        db.insertCollective(
+            id = 9L,
+            name = "Hedgerow Notes",
+            circleId = "KZAid9qOxZ5nfvtui2mLFKzyLRhSEoo",
+            level = 9,
+            userShowMembers = false,
+        )
+        db.query("SELECT * FROM `collectives` WHERE `id` = 9").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("KZAid9qOxZ5nfvtui2mLFKzyLRhSEoo", cursor.stringAt("circleId"))
+            assertEquals(9L, cursor.longAt("level"))
+            assertEquals(0L, cursor.longAt("userShowMembers"))
         }
         db.close()
     }
@@ -232,10 +292,19 @@ private fun SupportSQLiteDatabase.insertPage(
     insert("pages", SQLiteDatabase.CONFLICT_ABORT, values)
 }
 
-/** `collectives` is unchanged from v1 to v8, so one insert covers every version. */
+/**
+ * Inserts a `collectives` row naming only the columns that have existed since
+ * v1, so the same insert is valid at any version — MIGRATION_8_9 only adds
+ * columns. Pass [circleId] / [level] / [userShowMembers] to seed a row at v9
+ * or later; they are omitted from the insert when null, which is what lets
+ * this seed a v1 or v8 database too.
+ */
 private fun SupportSQLiteDatabase.insertCollective(
     id: Long,
     name: String,
+    circleId: String? = null,
+    level: Int? = null,
+    userShowMembers: Boolean? = null,
 ) {
     val values = ContentValues().apply {
         put("id", id)
@@ -248,6 +317,11 @@ private fun SupportSQLiteDatabase.insertCollective(
         putNull("trashTimestamp")
         put("userFavoritePagesCsv", "")
         put("lastSyncedAt", 0L)
+        // v9 columns (B-83). Named only when the caller asks for them: the
+        // v1-seeded tests run against a table where they don't exist yet.
+        if (circleId != null) put("circleId", circleId)
+        if (level != null) put("level", level)
+        if (userShowMembers != null) put("userShowMembers", if (userShowMembers) 1 else 0)
     }
     insert("collectives", SQLiteDatabase.CONFLICT_ABORT, values)
 }

@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
+import com.megamaced.nccollectives.ui.screen.members.MembersScreen
 import com.megamaced.nccollectives.ui.screen.page.AttachmentsScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditWebScreen
@@ -75,14 +76,29 @@ internal fun NcCollectivesNavHost(
             arguments = listOf(
                 navArgument(Destination.PageTree.ARG_COLLECTIVE_ID) { type = NavType.LongType },
             ),
-        ) {
+        ) { backStackEntry ->
+            // `onOpenMembers` takes no argument — the members entry point sits
+            // on the collective header, which already knows which collective
+            // it is drawing — so the id comes from the route instead, the same
+            // way the `PageView` block below reads its page id.
+            val collectiveId = checkNotNull(
+                backStackEntry.arguments?.getLong(Destination.PageTree.ARG_COLLECTIVE_ID),
+            )
             PageTreeScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
                 onPageClick = { pageId -> navController.navigate(Destination.PageView.route(pageId)) },
-                onOpenTrash = { collectiveId -> navController.navigate(Destination.Trash.route(collectiveId)) },
+                onOpenTrash = { id -> navController.navigate(Destination.Trash.route(id)) },
                 onOpenSearch = { navController.navigate(Destination.Search.route) },
                 onOpenFavorites = { navController.navigate(Destination.Favorites.route) },
+                // B-76's `launchSingleTop`, for the same reason: two taps land
+                // two copies of the screen on the back stack, and here the
+                // second copy also fires a second Circles members request.
+                onOpenMembers = {
+                    navController.navigate(Destination.Members.route(collectiveId)) {
+                        launchSingleTop = true
+                    }
+                },
             )
         }
         composable(
@@ -179,6 +195,17 @@ internal fun NcCollectivesNavHost(
         }
         composable(Destination.CollectiveTrash.route) {
             CollectiveTrashScreen(
+                innerPadding = innerPadding,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Destination.Members.route,
+            arguments = listOf(
+                navArgument(Destination.Members.ARG_COLLECTIVE_ID) { type = NavType.LongType },
+            ),
+        ) {
+            MembersScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
             )

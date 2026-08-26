@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectiveMember
+import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -12,6 +15,7 @@ import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.ui.screen.isRetryableFailure
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -39,6 +44,53 @@ data class PageNode(
     val page: PageListItem,
     val hasChildren: Boolean,
     val isFavorite: Boolean,
+)
+
+/**
+ * Everything the landing-page members strip draws, in one place so the
+ * screen takes a single object rather than seven more `PageTreeUiState`
+ * fields.
+ *
+ * The three-way split of [isLoading] / [errorMessage] / [members] is the
+ * point of the type. Upstream's `MembersWidget.vue` has one signal —
+ * `loading = trimmedMembers.length === 0` — so it cannot tell "still
+ * fetching" from "fetched nothing" from "not allowed to fetch", and renders
+ * a skeleton forever for the last two. Conflating them again here is the
+ * one change to avoid.
+ *
+ * Nothing in here is cached: `CollectiveRepository.listMembers` writes no
+ * Room row, so this object *is* the snapshot, and it lives exactly as long
+ * as the ViewModel.
+ */
+data class MembersStripState(
+    /** True only while a fetch is in flight. */
+    val isLoading: Boolean = false,
+    /** User-facing text for a failed fetch; null when nothing has failed. */
+    val errorMessage: String? = null,
+    /**
+     * Whether the failure in [errorMessage] may be tried again. False for
+     * every terminal arm, 403 above all — see [isRetryableFailure].
+     */
+    val canRetry: Boolean = false,
+    val members: List<CollectiveMember> = emptyList(),
+    /**
+     * Whether membership can be addressed at all — the collective has a
+     * `circleId`. False hides the strip outright. *Not* a permission check:
+     * only the server knows whether this user may read the list.
+     */
+    val addressable: Boolean = false,
+    /**
+     * `Collective.userShowMembers`, the web app's per-user display hint,
+     * used as the strip's initial expanded state. A hint, never a
+     * permission.
+     */
+    val showInitially: Boolean = true,
+    /**
+     * Whether to label the trailing action "Manage members" instead of
+     * "Show members" (upstream's `level >= 8`). Both open the same screen,
+     * so a wrong guess costs a word, not access.
+     */
+    val canManage: Boolean = false,
 )
 
 data class PageTreeUiState(
@@ -60,6 +112,8 @@ data class PageTreeUiState(
     val landingPage: Page? = null,
     /** Most-recently-edited pages in this collective for the recent-pages strip. */
     val recentPages: List<PageListItem> = emptyList(),
+    /** Circle membership for the landing-page members strip. */
+    val membersStrip: MembersStripState = MembersStripState(),
 )
 
 @HiltViewModel
@@ -86,6 +140,13 @@ class PageTreeViewModel
          */
         private var lastRefreshAt = 0L
 
+        /**
+         * The `circleId` whose members have already been requested. The
+         * fetch-once guard behind [requestMembers] — see B-86/B-87 there for
+         * why "once" is a correctness requirement and not an optimisation.
+         */
+        private var membersRequestedFor: String? = null
+
         val nodes: StateFlow<List<PageNode>> =
             combine(
                 pagesFlow,
@@ -108,11 +169,19 @@ class PageTreeViewModel
 
         init {
             viewModelScope.launch {
-                collectiveRepository.observeCollectives().collect { collectives ->
-                    collectives.firstOrNull { it.id == collectiveId }?.let { c ->
-                        _uiState.update { it.copy(collectiveName = c.name, collectiveEmoji = c.emoji) }
-                    }
-                }
+                collectiveRepository
+                    .observeCollectives()
+                    // B-87: `observeCollectives()` is a Room flow over the
+                    // whole list, so it re-emits when *any* collective
+                    // changes — every favorite toggle on this screen, every
+                    // emoji edit, every list refresh. Narrowing to this
+                    // collective and de-duplicating is what keeps the
+                    // members fetch below from re-firing on all of that;
+                    // for a 403 that would be a throttle against the user's
+                    // own IP, triggered by their own starring of a page.
+                    .mapNotNull { collectives -> collectives.firstOrNull { it.id == collectiveId } }
+                    .distinctUntilChanged()
+                    .collect { collective -> onCollectiveLoaded(collective) }
             }
             viewModelScope.launch {
                 pagesFlow.collect { pages ->
@@ -156,6 +225,102 @@ class PageTreeViewModel
         }
 
         /**
+         * Fold the collective's own metadata into the state, and take the
+         * one shot at its member list.
+         *
+         * This is the natural trigger point: `circleId`, `level` and
+         * `userShowMembers` arrive on the same row as the name and emoji, so
+         * the strip is configured and the fetch is started from a single
+         * emission rather than from a second observer that would have to
+         * re-derive which collective this screen is showing.
+         */
+        private fun onCollectiveLoaded(collective: Collective) {
+            _uiState.update { state ->
+                state.copy(
+                    collectiveName = collective.name,
+                    collectiveEmoji = collective.emoji,
+                    membersStrip = state.membersStrip.copy(
+                        addressable = collective.circleId != null,
+                        showInitially = collective.userShowMembers,
+                        canManage = collective.userLevel >= CollectiveMemberLevel.Admin,
+                    ),
+                )
+            }
+            requestMembers(collective.circleId)
+        }
+
+        /**
+         * Fetch the member list once per circle, ever.
+         *
+         * **B-86: the 403 is the whole design here.** Every Circles
+         * controller carries `#[BruteForceProtection]` and calls
+         * `throttle()` when a permission check fails, and 403 is the
+         * *expected* answer for a non-member — so a members read that sits
+         * in anything loop-shaped throttles the user's own IP for using the
+         * app normally. Three separate things keep it out of one:
+         *  - this guard, so a re-emission of the collective row can't
+         *    re-request (B-87),
+         *  - [refresh] deliberately not touching members, so
+         *    pull-to-refresh and the `refreshIfStale` on every screen
+         *    resume can't either,
+         *  - [retryMembers] refusing anything [isRetryableFailure] calls
+         *    terminal, which is every arm except a request that never
+         *    reached the server.
+         *
+         * Null [circleId] never reaches the repository: it is not "no
+         * permission", it is an older server that never said which Team
+         * backs this collective, and the strip is hidden rather than shown
+         * failing.
+         */
+        private fun requestMembers(circleId: String?) {
+            if (circleId == null) return
+            if (membersRequestedFor == circleId) return
+            membersRequestedFor = circleId
+            fetchMembers(circleId)
+        }
+
+        /**
+         * Re-run a members fetch the user asked to retry. A no-op unless the
+         * failure was classified retryable, so there is no code path from
+         * the UI back to a 403.
+         */
+        fun retryMembers() {
+            if (!_uiState.value.membersStrip.canRetry) return
+            val circleId = membersRequestedFor ?: return
+            fetchMembers(circleId)
+        }
+
+        private fun fetchMembers(circleId: String) {
+            if (_uiState.value.membersStrip.isLoading) return
+            _uiState.update { state ->
+                state.copy(
+                    membersStrip = state.membersStrip.copy(
+                        isLoading = true,
+                        errorMessage = null,
+                        canRetry = false,
+                    ),
+                )
+            }
+            viewModelScope.launch {
+                val result = collectiveRepository.listMembers(circleId, MEMBERS_STRIP_LIMIT)
+                _uiState.update { state ->
+                    state.copy(
+                        membersStrip = state.membersStrip.copy(
+                            isLoading = false,
+                            // A failed retry keeps the avatars it had, the
+                            // same way `RemoteListViewModel.refresh` keeps
+                            // its rows: the error arm only shows when there
+                            // is nothing behind it.
+                            members = if (result is ApiResult.Success) result.data else state.membersStrip.members,
+                            errorMessage = result.userMessage(),
+                            canRetry = isRetryableFailure(result),
+                        ),
+                    )
+                }
+            }
+        }
+
+        /**
          * B-58: see [CollectiveListViewModel.refreshIfStale]. Same problem,
          * same fix — a page tree left on the backstack while the user reads a
          * page never re-checked the server on the way back.
@@ -165,6 +330,12 @@ class PageTreeViewModel
             refresh()
         }
 
+        /**
+         * Re-list pages. Deliberately does **not** re-fetch members: this is
+         * what pull-to-refresh and [refreshIfStale] call, so putting a
+         * Circles read here is exactly the retry loop B-86 exists to
+         * prevent.
+         */
         fun refresh() {
             if (_uiState.value.isRefreshing) return
             lastRefreshAt = System.currentTimeMillis()
@@ -274,6 +445,16 @@ class PageTreeViewModel
 
         private companion object {
             const val RECENT_LIMIT = 8
+
+            /**
+             * Members fetched for the strip. [MAX_STRIP_AVATARS], not
+             * `DEFAULT_MEMBER_LIMIT`: the strip shows no count and no "+N"
+             * badge, so nothing past the 15th avatar can change a pixel of
+             * it, and at ~2.2 KB per member the default 100 would pull
+             * ~220 KB on every landing-page open to draw at most 15 circles.
+             * The members *screen* is where the full list belongs.
+             */
+            const val MEMBERS_STRIP_LIMIT = MAX_STRIP_AVATARS
         }
     }
 

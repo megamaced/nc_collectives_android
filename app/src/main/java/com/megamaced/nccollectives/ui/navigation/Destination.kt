@@ -86,4 +86,24 @@ internal sealed class Destination(
             return "collective/$collectiveId/tag/$encoded"
         }
     }
+
+    /**
+     * Members of the Nextcloud Team backing a collective (B-90).
+     *
+     * Carries the *collective* id, not the `circleId` the Circles API is
+     * keyed on, for two reasons. `Collective.circleId` is nullable, so a
+     * route built from it could not be constructed for every collective —
+     * the caller would have to decide what "no team" means before it could
+     * even navigate. And the id every other route here already uses is the
+     * collective's, so `PageTreeScreen` needs nothing new to reach this.
+     * `MembersViewModel` resolves the circle id from the cached collective,
+     * which also lets it pick the id up if it arrives *after* the screen
+     * opens — a cache row written before `MIGRATION_8_9` has no circleId
+     * until the next `refresh()`.
+     */
+    object Members : Destination("collective/{collectiveId}/members") {
+        const val ARG_COLLECTIVE_ID = "collectiveId"
+
+        fun route(collectiveId: Long) = "collective/$collectiveId/members"
+    }
 }

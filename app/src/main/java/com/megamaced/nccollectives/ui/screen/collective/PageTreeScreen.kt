@@ -78,6 +78,7 @@ internal fun PageTreeScreen(
     onOpenTrash: (Long) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenFavorites: () -> Unit,
+    onOpenMembers: () -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -171,12 +172,15 @@ internal fun PageTreeScreen(
                     collectiveName = ui.collectiveName,
                     collectiveEmoji = ui.collectiveEmoji,
                     recentPages = ui.recentPages,
+                    membersStrip = ui.membersStrip,
                     showLandingCard = isCompactWidth,
                     onToggle = viewModel::toggleExpanded,
                     onPageClick = onPageClick,
                     onToggleFavorite = viewModel::toggleFavorite,
                     onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
                     onReorder = viewModel::onReorderDrop,
+                    onOpenMembers = onOpenMembers,
+                    onRetryMembers = viewModel::retryMembers,
                 )
             }
         }
@@ -214,12 +218,15 @@ private fun PageTreeList(
     collectiveName: String,
     collectiveEmoji: String?,
     recentPages: List<PageListItem>,
+    membersStrip: MembersStripState,
     showLandingCard: Boolean,
     onToggle: (Long) -> Unit,
     onPageClick: (Long) -> Unit,
     onToggleFavorite: (Long, Boolean) -> Unit,
     onAddSubpage: (Long) -> Unit,
     onReorder: (movedPageId: Long, newVisibleOrder: List<Long>) -> Unit,
+    onOpenMembers: () -> Unit,
+    onRetryMembers: () -> Unit,
 ) {
     // Local mirror of the upstream tree so the drag animation can swap
     // rows continuously while the drag is in flight (Batch 23). The
@@ -245,6 +252,31 @@ private fun PageTreeList(
         state = lazyListState,
         modifier = Modifier.fillMaxSize(),
     ) {
+        // Members first, then Recent pages, then the landing card: the web
+        // client renders its members widget above recent pages, and keeping
+        // that relative order means someone who knows the web app finds the
+        // avatars where they expect. It is also the cheapest thing to put
+        // at the top — one collapsible 48dp row against a 132dp card strip
+        // and a multi-line card — so it displaces the first tree row least,
+        // and it groups the collective's *identity* (who is in it, next to
+        // the name in the top bar) above the two widgets that are both
+        // content entry points.
+        //
+        // Not gated on `showLandingCard`: the strip measures its own
+        // container and truncates to fit, so unlike the landing card it has
+        // nothing to say about screen width. `MembersStrip` self-hides when
+        // membership isn't addressable, but the `item` is skipped as well so
+        // an unaddressable collective doesn't pay for an empty lazy item —
+        // and so the divider below knows whether anything was drawn.
+        if (membersStrip.addressable) {
+            item(key = "header-members") {
+                MembersStrip(
+                    state = membersStrip,
+                    onOpenMembers = onOpenMembers,
+                    onRetry = onRetryMembers,
+                )
+            }
+        }
         if (recentPages.isNotEmpty()) {
             item(key = "header-recent") {
                 RecentPagesStrip(pages = recentPages, onPageClick = onPageClick)
@@ -260,7 +292,10 @@ private fun PageTreeList(
                 )
             }
         }
-        if (recentPages.isNotEmpty() || (showLandingCard && landingPage != null)) {
+        if (membersStrip.addressable ||
+            recentPages.isNotEmpty() ||
+            (showLandingCard && landingPage != null)
+        ) {
             item(key = "header-divider") { HorizontalDivider() }
         }
         items(localNodes, key = { it.page.id }) { node ->

@@ -19,10 +19,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v7: `edit_queue` rebuilt on a `pageId` primary key; `forceWrite`
  *    added (Batch 26e / B-41 + B-46 + R-28)
  *  - v8: `pages (collectiveId, serverTimestamp)` index added (R-50)
+ *  - v9: `collectives.circleId` / `.level` / `.userShowMembers`
+ *    added (B-83)
  *
  * Each [Migration] is verified by `MigrationTest` in `androidTest`, which
  * evolves a fresh DB through the chain and asserts the final schema
- * matches the v8 JSON.
+ * matches the v9 JSON.
  */
 internal val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -137,6 +139,29 @@ internal val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/**
+ * B-83: the collectives payload has always carried `circleId`, `level` and
+ * `userShowMembers`, and none of them were kept. Without `circleId` the app
+ * cannot address the Circles API — which is where membership lives, because
+ * Collectives has no members endpoint — and without `level` it cannot tell
+ * an owner from a member.
+ *
+ * All three arrive as plain `ADD COLUMN`s, so pre-v9 rows keep every value
+ * they had. `circleId` is nullable, which is the honest reading of a row
+ * cached before the column existed. The two NOT NULL columns take the
+ * defaults `CollectiveDto` uses for an absent field: level 0 ("the server
+ * didn't say", never a real level) and `userShowMembers` 1 (a missing
+ * display preference is not an opt-out). Both are corrected by the next
+ * `refresh()`, which runs on app open.
+ */
+internal val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `circleId` TEXT")
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `level` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `userShowMembers` INTEGER NOT NULL DEFAULT 1")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -145,4 +170,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
+    MIGRATION_8_9,
 )

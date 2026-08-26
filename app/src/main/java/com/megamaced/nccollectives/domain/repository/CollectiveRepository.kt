@@ -2,6 +2,8 @@ package com.megamaced.nccollectives.domain.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectiveMember
+import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -77,6 +79,43 @@ interface CollectiveRepository {
      * any queued edits.
      */
     suspend fun permanentlyDeleteCollective(collectiveId: Long): ApiResult<Unit>
+
+    /**
+     * Members of the Nextcloud Team backing a collective, from
+     * `Collective.circleId` — Collectives has no members endpoint of its
+     * own, so membership reads go to Circles.
+     *
+     * **Online-only. Nothing is written to Room.** Member lists are small,
+     * looked at rarely and privacy-adjacent, and the web app doesn't cache
+     * them either; there is no reason to leave a copy of who is in a team
+     * on the device after the screen closes. Callers get a server snapshot
+     * and hold it themselves, exactly as `RemoteListViewModel` documents
+     * for the two trash listings.
+     *
+     * [limit] is mandatory — pass [DEFAULT_MEMBER_LIMIT] unless there is a
+     * reason not to. A non-positive value means *unbounded* to the server,
+     * which is the ~440 KB response the cap exists to prevent, so it is
+     * replaced by [DEFAULT_MEMBER_LIMIT] rather than sent. The response
+     * carries no total, so `result.size == limit` means "there may be
+     * more", not "that is all of them".
+     *
+     * Failure arms worth knowing about:
+     *  - **403 is terminal and must never be retried.** It is the expected
+     *    answer for a non-member, and the server deliberately gives the
+     *    same answer for a circle that doesn't exist — the two cannot be
+     *    told apart from here. Retrying is actively harmful: the Circles
+     *    controllers carry `#[BruteForceProtection]` and `throttle()` on a
+     *    failed permission check, so a retry loop throttles the user's own
+     *    IP. Surfaces as `ApiResult.HttpError(403, …)`; render
+     *    `userMessage()` and stop.
+     *  - A blank or null [circleId] never reaches the network — it can only
+     *    address a different route — and comes back as
+     *    `ApiResult.Unexpected`.
+     */
+    suspend fun listMembers(
+        circleId: String,
+        limit: Int,
+    ): ApiResult<List<CollectiveMember>>
 }
 
 /**

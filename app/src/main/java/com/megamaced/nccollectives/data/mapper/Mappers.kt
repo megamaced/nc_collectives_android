@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.data.mapper
 
 import com.megamaced.nccollectives.data.ServerStringValidation
+import com.megamaced.nccollectives.data.api.dto.CircleMemberDto
 import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.PageDto
 import com.megamaced.nccollectives.data.db.dao.PageListRow
@@ -12,6 +13,9 @@ import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.data.toLongCsvSet
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectiveMember
+import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
+import com.megamaced.nccollectives.domain.model.CollectiveMemberType
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 
@@ -27,8 +31,15 @@ internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
         name = ServerStringValidation.sanitiseDisplay(name),
         slug = slug,
         emoji = emoji,
+        // B-83: a blank circleId is the same as no circleId — it can only
+        // produce `/circles//members`, which is a different route — so it
+        // is normalised to null here rather than left for every caller to
+        // re-check.
+        circleId = circleId?.takeIf { it.isNotBlank() },
         canEdit = canEdit,
         canShare = canShare,
+        level = level,
+        userShowMembers = userShowMembers,
         isPageShare = isPageShare,
         trashTimestamp = trashTimestamp,
         userFavoritePagesCsv = userFavoritePages.toLongCsv(),
@@ -41,11 +52,36 @@ internal fun CollectiveEntity.toDomain(): Collective =
         name = name,
         slug = slug,
         emoji = emoji,
+        circleId = circleId,
         canEdit = canEdit,
         canShare = canShare,
+        level = level,
+        userShowMembers = userShowMembers,
         isPageShare = isPageShare,
         trashed = trashTimestamp != null,
         favoritePageIds = userFavoritePagesCsv.toLongCsvSet(),
+    )
+
+/**
+ * Circles member → domain. There is no entity step: members are never
+ * cached (see [CollectiveMember]), so this is the only mapper they get.
+ *
+ * S-18: `displayName` and `userId` are server-provided display strings that
+ * land straight in a list row, so they pass the same trust boundary as
+ * collective names and page titles — control characters stripped, length
+ * capped. The numeric `level`/`userType` become enums here so the magic
+ * numbers stay in one file instead of being re-derived per screen; an
+ * unrecognised value maps to the `Unknown` arm rather than being dropped,
+ * because a member the app can't classify is still a member.
+ */
+internal fun CircleMemberDto.toDomain(): CollectiveMember =
+    CollectiveMember(
+        id = id,
+        singleId = singleId,
+        userId = ServerStringValidation.sanitiseDisplay(userId),
+        displayName = ServerStringValidation.sanitiseDisplay(displayName),
+        level = CollectiveMemberLevel.fromRaw(level),
+        type = CollectiveMemberType.fromRaw(userType),
     )
 
 /**

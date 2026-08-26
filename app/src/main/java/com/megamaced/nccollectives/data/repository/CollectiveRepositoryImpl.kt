@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.data.repository
 
 import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.CirclesApiService
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.ifSuccess
@@ -16,6 +17,8 @@ import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectiveMember
+import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -27,6 +30,7 @@ class CollectiveRepositoryImpl
     @Inject
     constructor(
         private val api: CollectivesApiService,
+        private val circlesApi: CirclesApiService,
         private val dao: CollectiveDao,
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
@@ -192,6 +196,37 @@ class CollectiveRepositoryImpl
                 }
             }
             return result.mapSuccess { }
+        }
+
+        override suspend fun listMembers(
+            circleId: String,
+            limit: Int,
+        ): ApiResult<List<CollectiveMember>> {
+            if (circleId.isBlank()) {
+                // Not a network failure — `Collective.circleId` is nullable
+                // and an older server simply doesn't send one, so a caller
+                // reaching here with a blank id has a UI-state bug, not a
+                // connectivity problem. Sending it would request
+                // `/circles//members`, a different route whose answer would
+                // be misleading.
+                return ApiResult.Unexpected(
+                    IllegalArgumentException("Collective has no circleId; membership is unavailable"),
+                )
+            }
+            // A non-positive limit reads as "no limit" server-side, which is
+            // the ~440 KB unbounded response the cap exists to prevent. Fall
+            // back to the documented default rather than honouring it.
+            val effectiveLimit = if (limit > 0) limit else DEFAULT_MEMBER_LIMIT
+            // No Room write, and no retry. Members are deliberately
+            // uncached (see `CollectiveRepository.listMembers`), and a 403
+            // here is both the normal answer for a non-member and a
+            // `throttle()` against the user's own IP if hammered — so the
+            // `HttpError` arm goes straight back to the caller.
+            return apiCall {
+                circlesApi.listMembers(circleId, effectiveLimit)
+            }.mapSuccess { envelope ->
+                envelope.ocs.data.map { it.toDomain() }
+            }
         }
 
         /**
