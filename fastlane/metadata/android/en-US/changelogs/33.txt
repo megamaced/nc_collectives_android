@@ -1,0 +1,1 @@
+Collectives now show who they are shared with. The landing page carries a row of member avatars, and tapping through opens the full list with each member's role — owner, admin, moderator or member — and marks entries that are groups or email invitations rather than people. Viewing only for now: adding, removing and changing roles still happen on the web.
