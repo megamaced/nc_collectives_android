@@ -49,14 +49,31 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Installing
 
+### F-Droid (recommended)
+
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80" />](https://f-droid.org/packages/com.megamaced.nccollectives/)
+
+The app is published on F-Droid as `com.megamaced.nccollectives`. This is the route most people want: the F-Droid client notices new releases and updates the app for you, so you never have to come back here to find out a version shipped. Install the [F-Droid client](https://f-droid.org), search for **NC Collectives**, and install from there.
+
+The listing is a **reproducible build**. F-Droid rebuilds the app from this repository at the release tag, verifies that the result matches the APK signed with the developer's key, and then distributes that same signed APK. Both channels therefore carry the same signature, which means you can move between the F-Droid build and a GitHub-release APK in either direction **without uninstalling** — either way it's an in-place upgrade that keeps your account and cached pages.
+
+### APK from GitHub Releases
+
+Still a supported route, and it's the exact build F-Droid reproduces. Use it if you'd rather not run the F-Droid client, or to get a release before F-Droid's scanner has picked it up — the trade-off is that nothing updates the app for you afterwards.
+
 1. Download the latest `app-release.apk` from the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
 2. On the phone, allow the browser (or the file manager you opened the APK with) to install apps. Android usually prompts the first time; the toggle also lives under **Settings → Apps → Special app access → Install unknown apps**.
 3. Tap the downloaded APK to install. Android will surface the Play Protect scanning prompt — it can flag unrecognised installers but the install itself is safe to proceed with.
-4. Open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
+
+### First run
+
+Whichever route you used: open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
 
 ### Updates
 
-Update checks are user-initiated only. **Settings → About → Check for updates** queries `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at the moment you tap it, then either opens the release page in your browser (newer non-pre-release tag available), reports that you're on the latest version, or reports that GitHub couldn't be reached. Download the new APK from the page it opens and install it over the existing app — same signing key from `v1.0.0` onwards, so it's an in-place upgrade.
+If you installed from F-Droid, updates come through F-Droid — there's nothing to do in the app.
+
+For sideloaded installs, update checks are user-initiated only. **Settings → About → Check for updates** queries `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at the moment you tap it, then either opens the release page in a browser tab (newer non-pre-release tag available) or reports via a snackbar that you're on the latest version or that GitHub couldn't be reached. Download the new APK from the page it opens and install it over the existing app — same signing key from `v1.0.0` onwards, so it's an in-place upgrade.
 
 The app makes no launch-time or background request to GitHub, and it posts no notifications: results appear in the Settings screen, so no `POST_NOTIFICATIONS` permission is declared or needed.
 
@@ -102,7 +119,7 @@ For a release build:
 
 Without signing env vars set, this produces an *unsigned* APK at `app/build/outputs/apk/release/app-release-unsigned.apk`. The signing setup (keystore generation, GitHub Actions secret names, local env vars) is documented in [`docs/SIGNING.md`](docs/SIGNING.md).
 
-R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). Release builds are around 4.9 MB; debug builds, which include the full debug tooling, are around 73 MB.
+R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). That determinism is what lets F-Droid match its own rebuild against the signed release APK; a mirror of the recipe it builds from lives at [`docs/fdroid/com.megamaced.nccollectives.yml`](docs/fdroid/com.megamaced.nccollectives.yml). Release builds are around 4.9 MB; debug builds, which include the full debug tooling, are around 73 MB.
 
 ## Contributing
 

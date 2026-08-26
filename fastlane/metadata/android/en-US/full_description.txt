@@ -21,7 +21,7 @@ Features:
 * Configurable background sync cadence (Off, 1h, 6h, 12h, daily).
 * Adaptive launcher icon with a monochrome layer for Android 13+ themed icons.
 * Splash screen.
-* Optional in-app update notification: on launch, polls the GitHub Releases API at most once per 24 hours and posts a notification when a newer version is published on GitHub. Tapping the notification opens the release page in your browser; the app never downloads or installs anything itself. F-Droid users can ignore this entirely — updates come through F-Droid as normal.
+* Manual update check: a button in Settings under About asks the GitHub Releases API whether a newer version has been published, and opens the release page in a browser tab if so. Nothing is checked at launch and nothing runs in the background; the app never downloads or installs anything itself. F-Droid users can ignore it entirely — updates come through F-Droid as normal.
 
 Requirements:
 
@@ -32,7 +32,7 @@ Authentication uses Nextcloud Login Flow v2 — you authorise the app from your 
 
 Privacy:
 
-* The app talks only to the Nextcloud server you configure, plus (optionally) one request to api.github.com on launch for the update check, on a separate HTTP client that never carries your Nextcloud credentials.
+* The app talks only to the Nextcloud server you configure. The one exception is the manual update check in Settings, which contacts api.github.com only when you press the button, on a separate HTTP client that never carries your Nextcloud credentials.
 * No Google Play Services. No Firebase. No analytics. No telemetry. No crash reporters. No advertising IDs.
 * The device-scoped app password is stored in EncryptedSharedPreferences (Tink-backed). Signing out wipes the keystore entry along with every cached row and preference.
 
