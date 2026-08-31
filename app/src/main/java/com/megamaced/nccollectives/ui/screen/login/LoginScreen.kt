@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,8 +38,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import timber.log.Timber
 
+/**
+ * Sign in to a Nextcloud server.
+ *
+ * Serves both the cold sign-in (mounted by the scaffold when there is no
+ * session) and "add another account" from Settings (issue #14) — hence
+ * [onCancel], which is null in the first case because there is nowhere to
+ * go back to. The screen itself is otherwise identical between the two:
+ * `AccountSwitcher.signInTo` works out from the credential store which of
+ * them is happening.
+ */
 @Composable
-fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
+fun LoginScreen(
+    innerPadding: PaddingValues = PaddingValues(),
+    onCancel: (() -> Unit)? = null,
+    viewModel: LoginViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -49,12 +65,16 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     SnackbarStatusEffect(uiState.error, snackbarHostState, viewModel::dismissError)
 
     Scaffold(
+        // Zero when the scaffold mounts this directly as the signed-out
+        // screen; the authenticated host's padding when it is the "add
+        // account" destination, same as every other screen in the nav host.
+        modifier = Modifier.padding(innerPadding),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
+    ) { scaffoldPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(scaffoldPadding)
                 .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -116,6 +136,21 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            if (onCancel != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                // Disabled mid-flow: the Custom Tab is already open and the
+                // poll is running, and backing out from under it would leave
+                // an app password issued server-side that this device never
+                // stored.
+                TextButton(
+                    onClick = onCancel,
+                    enabled = !uiState.isLoading && !uiState.isPolling,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Cancel")
+                }
             }
         }
     }

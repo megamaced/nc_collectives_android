@@ -54,6 +54,14 @@ data class EditRouteDecision(
 
 data class PageViewUiState(
     val isLoadingBody: Boolean = false,
+    /**
+     * True only while a *user-initiated* body refresh is in flight — the
+     * pull-to-refresh indicator's flag. Deliberately not [isLoadingBody]:
+     * that one is also true for the automatic revalidation every page open
+     * fires from `init`, so binding the indicator to it would flash the
+     * refresh spinner every single time a page is opened.
+     */
+    val isRefreshingBody: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
     /** Available tags for the page's collective; populated when the tags sheet is opened. */
@@ -177,7 +185,13 @@ class PageViewModel
          */
         fun refreshBody(userInitiated: Boolean = true) {
             if (_uiState.value.isLoadingBody) return
-            _uiState.update { it.copy(isLoadingBody = true, errorMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoadingBody = true,
+                    isRefreshingBody = userInitiated,
+                    errorMessage = null,
+                )
+            }
             viewModelScope.launch {
                 val hadCachedBody = pageRepository.getPage(pageId)?.bodyMd != null
                 val result = pageRepository.refreshBodyIfChanged(pageId)
@@ -185,6 +199,7 @@ class PageViewModel
                 _uiState.update { state ->
                     state.copy(
                         isLoadingBody = false,
+                        isRefreshingBody = false,
                         // B-81: `errorMessage` drives the full-screen error
                         // state, so it only carries a failure with nothing
                         // behind it. Over a cached body that arm never

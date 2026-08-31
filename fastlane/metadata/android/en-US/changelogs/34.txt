@@ -1,0 +1,3 @@
+Several Nextcloud accounts can now live on one device. Add them under Settings, and switch without signing out — one account's pages are cached at a time, so switching clears the old copy and downloads the new one, warning first if any edits are still unsent.
+
+Long pages get an index: tap the list icon in the page toolbar for the headings, and jump straight to one. Pull down to refresh a page or its attachments, which previously only the lists supported.

@@ -221,6 +221,47 @@ class UserPreferences
             context.dataStore.edit { it.clear() }
         }
 
+        /**
+         * Wipe everything that belongs to the signed-in account, for an
+         * account switch (issue #14).
+         *
+         * Kept: theme, text scale, sync cadence, editor preference, and the
+         * update-check bookkeeping. Those describe how the user has set this
+         * *device* up — resetting the theme because they looked at their
+         * other server would be a bug — and the GitHub update check has
+         * nothing to do with which Nextcloud is signed in.
+         *
+         * Written as clear-then-restore rather than as a list of keys to
+         * remove, so the default for a key added later is to be *dropped* on
+         * a switch. Getting that wrong in the remove-list direction leaks one
+         * account's content into the other's UI; getting it wrong this way
+         * costs the user a device setting, once.
+         */
+        suspend fun clearAccountScoped() {
+            context.dataStore.edit { prefs ->
+                // Read out, clear, put back. Spelled out per key rather than
+                // looped over an untyped map because `MutablePreferences` has
+                // no untyped setter, and the alternative is an unchecked cast
+                // in the one place where getting a type wrong would quietly
+                // corrupt a setting.
+                val themeMode = prefs[KEY_THEME_MODE]
+                val textScale = prefs[KEY_TEXT_SCALE]
+                val syncCadence = prefs[KEY_SYNC_CADENCE]
+                val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
+                val updateCheckedAt = prefs[KEY_UPDATE_LAST_CHECKED_AT]
+                val updateNotifiedVersion = prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION]
+
+                prefs.clear()
+
+                themeMode?.let { prefs[KEY_THEME_MODE] = it }
+                textScale?.let { prefs[KEY_TEXT_SCALE] = it }
+                syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
+                editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
+                updateCheckedAt?.let { prefs[KEY_UPDATE_LAST_CHECKED_AT] = it }
+                updateNotifiedVersion?.let { prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION] = it }
+            }
+        }
+
         suspend fun getUpdateState(): UpdateCheckState {
             val prefs = context.dataStore.data.first()
             return UpdateCheckState(

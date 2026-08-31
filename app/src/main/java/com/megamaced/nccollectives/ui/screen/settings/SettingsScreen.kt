@@ -19,6 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.data.auth.AccountSummary
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
@@ -69,6 +73,7 @@ private const val LICENCE_URL = "https://www.gnu.org/licenses/agpl-3.0.html"
 internal fun SettingsScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
+    onAddAccount: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -77,6 +82,12 @@ internal fun SettingsScreen(
     val manualSync by viewModel.manualSync.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showSignOutConfirm by remember { mutableStateOf(false) }
+    // Account the user has asked to switch to / remove, held while the
+    // confirmation is up. Both are destructive to the local cache, so
+    // neither happens on the first tap.
+    var pendingSwitch by remember { mutableStateOf<AccountSummary?>(null) }
+    var pendingRemoval by remember { mutableStateOf<AccountSummary?>(null) }
+    val pendingEdits by viewModel.pendingEditCount.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Side-effects for terminal manual-update-check states. UpdateAvailable
@@ -154,23 +165,42 @@ internal fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SectionHeader("Account")
-            val account = ui.account
-            if (account != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(account.loginName, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        account.host,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
+            SectionHeader("Accounts")
+            if (ui.accounts.isEmpty()) {
                 Text(
                     "Not signed in.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                Column {
+                    ui.accounts.forEach { account ->
+                        AccountRow(
+                            account = account,
+                            isActive = account.id == ui.activeAccountId,
+                            onSwitch = {
+                                viewModel.loadPendingEditCount()
+                                pendingSwitch = account
+                            },
+                            onRemove = {
+                                viewModel.loadPendingEditCount()
+                                pendingRemoval = account
+                            },
+                        )
+                    }
+                }
+                if (ui.accounts.size > 1) {
+                    Text(
+                        text = "Only the account you're signed in to is stored on this device. " +
+                            "Switching downloads the other one's pages again.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            TextButton(onClick = onAddAccount, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Box(modifier = Modifier.padding(start = 8.dp)) { Text("Add account") }
             }
 
             HorizontalDivider()
@@ -278,6 +308,41 @@ internal fun SettingsScreen(
         }
     }
 
+    pendingSwitch?.let { account ->
+        AlertDialog(
+            onDismissRequest = { pendingSwitch = null },
+            title = { Text("Switch to ${account.loginName}?") },
+            text = { Text(switchWarning(account, pendingEdits)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingSwitch = null
+                    viewModel.switchToAccount(account.id)
+                }) { Text("Switch") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSwitch = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    pendingRemoval?.let { account ->
+        val isActive = account.id == ui.activeAccountId
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text("Remove ${account.loginName}?") },
+            text = { Text(removalWarning(account, isActive, pendingEdits, ui.accounts.size)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRemoval = null
+                    viewModel.removeAccount(account.id)
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     if (showSignOutConfirm) {
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
@@ -300,6 +365,104 @@ internal fun SettingsScreen(
         )
     }
 }
+
+@Composable
+private fun AccountRow(
+    account: AccountSummary,
+    isActive: Boolean,
+    onSwitch: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The active account is not clickable: switching to the account
+            // you are already on would wipe its cache and re-download it for
+            // nothing.
+            .then(
+                if (isActive) Modifier else Modifier.clickable(role = Role.Button, onClick = onSwitch),
+            ).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Reserves the slot on every row so the names line up whichever
+        // account is active.
+        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            if (isActive) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = "Signed in",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(account.loginName, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = account.host,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                Icons.Filled.RemoveCircleOutline,
+                contentDescription = "Remove ${account.loginName}",
+            )
+        }
+    }
+}
+
+/**
+ * Copy for the switch confirmation. [pendingEdits] is null while the count
+ * is still being read, in which case the sentence about unsynced work is
+ * left out rather than guessed at.
+ */
+private fun switchWarning(
+    account: AccountSummary,
+    pendingEdits: Int?,
+): String {
+    val base = "Pages cached on this device will be removed and ${account.loginName}'s " +
+        "downloaded instead. Your other account stays signed in."
+    return base + unsyncedSuffix(pendingEdits)
+}
+
+private fun removalWarning(
+    account: AccountSummary,
+    isActive: Boolean,
+    pendingEdits: Int?,
+    accountCount: Int,
+): String {
+    val base = when {
+        !isActive -> {
+            "${account.loginName} will be signed out on this device. " +
+                "Nothing you have cached is affected — this isn't the account you're using."
+        }
+
+        accountCount > 1 -> {
+            "${account.loginName} will be signed out and their cached pages removed. " +
+                "You'll be switched to your other account."
+        }
+
+        else -> {
+            "${account.loginName} will be signed out and their cached pages removed. " +
+                "This is your last account, so you'll be returned to the login screen."
+        }
+    }
+    // Only the active account has a queue: nothing else's data is on the
+    // device to have queued writes against.
+    return if (isActive) base + unsyncedSuffix(pendingEdits) else base
+}
+
+private fun unsyncedSuffix(pendingEdits: Int?): String =
+    when {
+        pendingEdits == null || pendingEdits == 0 -> ""
+        pendingEdits == 1 -> " One edit hasn't reached the server yet and will be lost."
+        else -> " $pendingEdits edits haven't reached the server yet and will be lost."
+    }
 
 @Composable
 private fun SectionHeader(label: String) {

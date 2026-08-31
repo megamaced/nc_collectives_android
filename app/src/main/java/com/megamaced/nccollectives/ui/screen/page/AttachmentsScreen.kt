@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +66,7 @@ import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
+import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,7 +158,11 @@ internal fun AttachmentsScreen(
             )
         },
     ) { scaffoldPadding ->
-        Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = ui.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
+        ) {
             when {
                 ui.isRefreshing && attachments.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -165,13 +171,14 @@ internal fun AttachmentsScreen(
                 }
 
                 attachments.isEmpty() -> {
-                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "No attachments yet. Tap Add to upload a photo or file.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    // `EmptyState` rather than a centred `Text`: it carries the
+                    // `verticalScroll` that hands an unconsumed drag up to the
+                    // `PullToRefreshBox`, so the pull works on the empty list
+                    // too — which is the one you most want to retry.
+                    EmptyState(
+                        title = "No attachments yet",
+                        message = "Tap Add to upload a photo or file.",
+                    )
                 }
 
                 else -> {

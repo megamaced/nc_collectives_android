@@ -2,10 +2,10 @@ package com.megamaced.nccollectives.ui.screen.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.data.auth.AccountSwitcher
 import com.megamaced.nccollectives.data.auth.LoginFlowInitResponse
 import com.megamaced.nccollectives.data.auth.LoginFlowStatus
 import com.megamaced.nccollectives.data.auth.NextcloudLoginFlow
-import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.auth.isSameServerHttpsUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +29,7 @@ class LoginViewModel
     @Inject
     constructor(
         private val loginFlow: NextcloudLoginFlow,
-        private val sessionManager: SessionManager,
+        private val accountSwitcher: AccountSwitcher,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(LoginUiState())
         val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
@@ -120,7 +120,13 @@ class LoginViewModel
                 )
                 when (status) {
                     is LoginFlowStatus.Success -> {
-                        sessionManager.onLoginSuccess(
+                        // `signInTo` and not `SessionManager.onLoginSuccess`:
+                        // this same screen is also the "add another account"
+                        // flow (issue #14), and only the switcher knows
+                        // whether there is an outgoing account's cache to
+                        // wipe first. Deciding it there rather than from a
+                        // mode flag is what keeps this screen mode-less.
+                        accountSwitcher.signInTo(
                             host = status.result.server,
                             loginName = status.result.loginName,
                             appPassword = status.result.appPassword,

@@ -14,6 +14,19 @@ sealed interface AuthState {
     data object Authenticated : AuthState
 
     data object Unauthenticated : AuthState
+
+    /**
+     * An account switch is in progress (issue #14). Distinct from
+     * [Unauthenticated] because the user has not signed out and must not be
+     * shown the login screen; distinct from [Unknown] because the scaffold
+     * says so rather than showing a bare spinner.
+     *
+     * Load-bearing as well as cosmetic: the scaffold unmounts the whole
+     * authenticated host on this state, which tears down every Room flow
+     * observer *before* `AccountSwitcher` wipes the tables underneath them
+     * — the same ordering `LogoutHandler` relies on.
+     */
+    data object Switching : AuthState
 }
 
 @Singleton
@@ -25,13 +38,22 @@ class SessionManager
         private val _authState = MutableStateFlow<AuthState>(AuthState.Unknown)
         val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+        private val _accounts = MutableStateFlow<List<AccountSummary>>(emptyList())
+
+        /** Every account on the device. Drives the switcher in Settings. */
+        val accounts: StateFlow<List<AccountSummary>> = _accounts.asStateFlow()
+
+        private val _activeAccountId = MutableStateFlow<String?>(null)
+        val activeAccountId: StateFlow<String?> = _activeAccountId.asStateFlow()
+
         /**
-         * Set while [LogoutHandler] is wiping local state. Suppresses
+         * Set while [LogoutHandler] is wiping local state, or while
+         * `AccountSwitcher` is swapping accounts. Suppresses
          * `AuthInterceptor`'s 401-driven sign-out, so any in-flight
          * `SyncWorker` / `EditFlushWorker` requests that race with the wipe
          * don't trigger a second (concurrent) sign-out cycle.
          */
-        private val signOutInProgress = AtomicBoolean(false)
+        private val sessionChangeInProgress = AtomicBoolean(false)
 
         /**
          * Count of consecutive 401 responses on authenticated requests. A 2xx
@@ -48,6 +70,8 @@ class SessionManager
         }
 
         fun refreshState() {
+            _accounts.value = tokenStore.accounts()
+            _activeAccountId.value = tokenStore.activeAccountId()
             _authState.value = if (tokenStore.getCredentials() != null) {
                 AuthState.Authenticated
             } else {
@@ -57,7 +81,7 @@ class SessionManager
 
         /** Called from [LogoutHandler] before it touches local state. */
         fun beginSignOut() {
-            signOutInProgress.set(true)
+            sessionChangeInProgress.set(true)
             _authState.value = AuthState.Unauthenticated
         }
 
@@ -65,7 +89,31 @@ class SessionManager
         fun endSignOut() {
             tokenStore.clear()
             consecutive401s.set(0)
-            signOutInProgress.set(false)
+            sessionChangeInProgress.set(false)
+            refreshState()
+        }
+
+        /**
+         * Called from `AccountSwitcher` before it wipes the outgoing
+         * account's cache. Unlike [beginSignOut] this must not flip to
+         * [AuthState.Unauthenticated]: the user has not signed out, and a
+         * flash of the login screen mid-switch reads as one.
+         */
+        fun beginAccountSwitch() {
+            sessionChangeInProgress.set(true)
+            _authState.value = AuthState.Switching
+        }
+
+        /**
+         * Called from `AccountSwitcher` once the incoming account is active.
+         * Re-derives the state from the store, so this lands on
+         * [AuthState.Unauthenticated] when the switch was really the removal
+         * of the last account.
+         */
+        fun endAccountSwitch() {
+            consecutive401s.set(0)
+            sessionChangeInProgress.set(false)
+            refreshState()
         }
 
         /**
@@ -78,27 +126,35 @@ class SessionManager
             endSignOut()
         }
 
+        /**
+         * Persist a freshly obtained credential and make it the live one.
+         *
+         * Only correct as the *cold* sign-in path — there is no cached data
+         * to wipe when nothing was signed in. Adding a second account, or
+         * re-authenticating while another account's cache is loaded, goes
+         * through `AccountSwitcher.signInTo`, which owns the wipe decision.
+         */
         fun onLoginSuccess(
             host: String,
             loginName: String,
             appPassword: String,
         ) {
-            tokenStore.saveCredentials(host, loginName, appPassword)
+            tokenStore.upsertAndActivate(host, loginName, appPassword)
             consecutive401s.set(0)
-            signOutInProgress.set(false)
-            _authState.value = AuthState.Authenticated
+            sessionChangeInProgress.set(false)
+            refreshState()
         }
 
         /**
          * Record a response from an authenticated request. A 2xx resets the
          * counter; an `Unauthorised` ticks it and, once we cross the
          * threshold, flips the session to `Unauthenticated`. Silently
-         * no-ops while sign-out is already in progress.
+         * no-ops while a sign-out or account switch is already in progress.
          *
          * Called from [com.megamaced.nccollectives.data.api.AuthInterceptor].
          */
         fun onAuthenticatedResponse(code: Int) {
-            if (signOutInProgress.get()) return
+            if (sessionChangeInProgress.get()) return
             if (code == 401) {
                 val n = consecutive401s.incrementAndGet()
                 if (n >= CONSECUTIVE_401_THRESHOLD) {

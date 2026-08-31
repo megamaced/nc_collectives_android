@@ -48,6 +48,15 @@ internal sealed class Destination(
         fun route(pageId: Long) = "page/$pageId/attachments"
     }
 
+    /**
+     * "Add account" (issue #14) — the same `LoginScreen` the scaffold shows
+     * when signed out, reached from Settings while a session is live. On
+     * success `AccountSwitcher` flips the session through
+     * `AuthState.Switching`, which unmounts this whole nav host, so nothing
+     * here has to pop the destination itself.
+     */
+    object AddAccount : Destination("account/add")
+
     /** Reached from share intents, not from the UI. */
     object ShareCapture : Destination("share")
 

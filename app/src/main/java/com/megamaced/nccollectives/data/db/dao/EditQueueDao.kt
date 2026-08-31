@@ -35,6 +35,14 @@ interface EditQueueDao {
     @Query("DELETE FROM edit_queue WHERE pageId IN (:pageIds)")
     suspend fun deleteForPageIds(pageIds: List<Long>)
 
+    /**
+     * Every queued row, conflicted ones included. Used before an account
+     * switch to tell the user how many local writes the wipe will discard —
+     * a conflicted row is just as unresolved as a pending one.
+     */
+    @Query("SELECT COUNT(*) FROM edit_queue")
+    suspend fun countAll(): Int
+
     @Query("DELETE FROM edit_queue")
     suspend fun clear()
 }

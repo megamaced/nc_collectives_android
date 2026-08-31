@@ -132,6 +132,20 @@ class SyncScheduler
         }
 
         /**
+         * Re-enqueue the periodic job at the user's current cadence.
+         *
+         * [start] runs once from `Application.onCreate` and thereafter only
+         * reacts to *changes* in the cadence setting, so every [cancelAll] —
+         * sign-out, account switch — leaves background sync off for the rest
+         * of the process unless something puts it back. `UPDATE` rather than
+         * `KEEP` because the point is to replace whatever state the cancel
+         * left behind.
+         */
+        fun reschedulePeriodic() {
+            scope.launch { applyCadence(userPreferences.flow.first().syncCadence, replaceExisting = true) }
+        }
+
+        /**
          * Cancels every WorkManager job this scheduler owns — used by the
          * logout flow so background workers don't fire against a stale
          * session.

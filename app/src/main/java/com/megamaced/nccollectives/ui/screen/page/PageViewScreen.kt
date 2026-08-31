@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.page
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Toc
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
@@ -34,10 +36,12 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,7 +49,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,10 +63,13 @@ import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
 import com.megamaced.nccollectives.ui.components.ErrorState
 import com.megamaced.nccollectives.ui.components.LoadingState
+import com.megamaced.nccollectives.ui.components.MarkdownOutline
 import com.megamaced.nccollectives.ui.components.MarkdownView
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
 import com.megamaced.nccollectives.util.AttachmentRef
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,8 +99,21 @@ internal fun PageViewScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMoveSheet by remember { mutableStateOf(false) }
     var showTrashConfirm by remember { mutableStateOf(false) }
+    var showOutline by remember { mutableStateOf(false) }
     // B-76: disables the Edit button for the duration of the route lookup.
     var resolvingEditRoute by remember { mutableStateOf(false) }
+
+    // Page index (issue #15). The outline is filled in by `MarkdownView` off
+    // the rendered `Spanned`, so it only exists once a body has been laid
+    // out — hence the heading count gating the toolbar button below.
+    val outline = rememberMarkdownOutline()
+    val bodyScrollState = rememberScrollState()
+    // Content-space y of the rendered body's top edge, i.e. everything the
+    // page header (emoji, title, byline, tags, conflict banner) occupies
+    // above it. A heading's `Layout` offset is relative to the body view,
+    // so this is what turns one into a scroll position.
+    var bodyTopPx by remember { mutableIntStateOf(0) }
+    val scrollHeadroomPx = with(LocalDensity.current) { OUTLINE_SCROLL_HEADROOM.roundToPx() }
 
     // Trashing drops the page's Room row, so `page` goes null while the undo
     // snackbar is still up (B-75). Keep rendering the last version we had —
@@ -220,6 +244,16 @@ internal fun PageViewScreen(
                         ) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }
+                        // Only worth a toolbar slot once there is somewhere
+                        // to jump to. One heading is an index of one.
+                        if (outline.headings.size >= MIN_HEADINGS_FOR_INDEX) {
+                            IconButton(onClick = { showOutline = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Toc,
+                                    contentDescription = "Page index",
+                                )
+                            }
+                        }
                         Box {
                             IconButton(onClick = { menuExpanded = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = "More")
@@ -302,7 +336,15 @@ internal fun PageViewScreen(
             SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data) }
         },
     ) { scaffoldPadding ->
-        Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
+        // The menu still carries "Refresh": pull is a gesture, and a
+        // gesture-only refresh is unreachable with TalkBack or a switch
+        // device. Both paths land on the same `refreshBody`, so both get
+        // the "Page updated" / "Already up to date" snackbar.
+        PullToRefreshBox(
+            isRefreshing = ui.isRefreshingBody,
+            onRefresh = { viewModel.refreshBody() },
+            modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
+        ) {
             val currentPage = visiblePage
             when {
                 currentPage == null -> {
@@ -324,6 +366,9 @@ internal fun PageViewScreen(
                         imageBaseUrl = imageBaseUrl,
                         backlinks = backlinks,
                         remoteAttachmentCount = remoteAttachmentCount,
+                        scrollState = bodyScrollState,
+                        outline = outline,
+                        onBodyPositioned = { top -> bodyTopPx = top },
                         onReplaceWithDraft = viewModel::replaceWithDraft,
                         onDiscardDraft = viewModel::discardDraft,
                         onOpenPage = onOpenPage,
@@ -334,6 +379,26 @@ internal fun PageViewScreen(
                 }
             }
         }
+    }
+
+    if (showOutline) {
+        PageOutlineSheet(
+            headings = outline.headings,
+            onSelect = { heading ->
+                showOutline = false
+                editScope.launch {
+                    // `topOf` is null only if the body has not been laid out,
+                    // which cannot happen while its index is on screen — but
+                    // fall back to the top rather than assert it.
+                    val target = heading
+                        ?.let { outline.topOf(it) }
+                        ?.let { bodyTopPx + it - scrollHeadroomPx }
+                        ?: 0
+                    bodyScrollState.animateScrollTo(target.coerceAtLeast(0))
+                }
+            },
+            onDismiss = { showOutline = false },
+        )
     }
 
     if (showEmojiPicker) {
@@ -418,6 +483,9 @@ private fun PageViewContent(
     imageBaseUrl: String?,
     backlinks: List<Page>,
     remoteAttachmentCount: Int,
+    scrollState: ScrollState,
+    outline: MarkdownOutline,
+    onBodyPositioned: (Int) -> Unit,
     onReplaceWithDraft: () -> Unit,
     onDiscardDraft: () -> Unit,
     onOpenPage: (Long) -> Unit,
@@ -425,10 +493,18 @@ private fun PageViewContent(
     onAttachmentLink: (AttachmentRef) -> Unit,
     onBrowseTag: (String) -> Unit,
 ) {
+    // Captured so the body's offset can be expressed in content space:
+    // `positionInWindow` of the body minus that of the viewport gives its
+    // on-screen offset, and adding the current scroll makes it absolute.
+    // Doing it this way rather than reading `positionInParent` keeps the
+    // arithmetic correct however `verticalScroll` chooses to place content.
+    var viewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
+            .onGloballyPositioned { viewportCoordinates = it }
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -491,12 +567,29 @@ private fun PageViewContent(
         key(remoteAttachmentCount) {
             MarkdownView(
                 markdown = body,
+                modifier = Modifier.onGloballyPositioned { coordinates ->
+                    val viewport = viewportCoordinates ?: return@onGloballyPositioned
+                    val top = (
+                        coordinates.positionInWindow().y - viewport.positionInWindow().y
+                    ).roundToInt() + scrollState.value
+                    onBodyPositioned(top)
+                },
                 imageBaseUrl = imageBaseUrl,
                 pageId = page.id,
                 onWikiLink = onWikiLink,
                 onAttachmentLink = onAttachmentLink,
+                outline = outline,
             )
         }
         BacklinkChipRow(pages = backlinks, onOpenPage = onOpenPage)
     }
 }
+
+/**
+ * Breathing room left above a heading the index scrolled to, so it does not
+ * sit flush against the top app bar.
+ */
+private val OUTLINE_SCROLL_HEADROOM = 12.dp
+
+/** Below this, the index would list fewer places than it costs a tap to open. */
+private const val MIN_HEADINGS_FOR_INDEX = 2

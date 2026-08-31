@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
+import com.megamaced.nccollectives.ui.screen.login.LoginScreen
 import com.megamaced.nccollectives.ui.screen.members.MembersScreen
 import com.megamaced.nccollectives.ui.screen.page.AttachmentsScreen
 import com.megamaced.nccollectives.ui.screen.page.PageEditScreen
@@ -69,6 +70,13 @@ internal fun NcCollectivesNavHost(
             SettingsScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
+                onAddAccount = { navController.navigate(Destination.AddAccount.route) },
+            )
+        }
+        composable(Destination.AddAccount.route) {
+            LoginScreen(
+                innerPadding = innerPadding,
+                onCancel = { navController.popBackStack() },
             )
         }
         composable(

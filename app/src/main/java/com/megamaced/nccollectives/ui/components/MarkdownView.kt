@@ -87,6 +87,13 @@ fun MarkdownView(
      * tap-to-download would fight the edit session).
      */
     onAttachmentLink: (AttachmentRef) -> Unit = {},
+    /**
+     * Receives the page's heading structure and a resolver from heading to
+     * y offset each time the body is rendered, so callers can offer an index
+     * (issue #15). Null when the caller has no use for one — the editor's
+     * live preview, for instance.
+     */
+    outline: MarkdownOutline? = null,
 ) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
@@ -131,7 +138,7 @@ fun MarkdownView(
     val codeBg = colorScheme.surfaceContainerHigh.toArgb()
     val codeFg = colorScheme.onSurface.toArgb()
     val linkColor = colorScheme.primary.toArgb()
-    val outline = colorScheme.outline.toArgb()
+    val outlineColor = colorScheme.outline.toArgb()
     val tableHeaderRow = colorScheme.surfaceContainerHighest.toArgb()
     val tableOddRow = colorScheme.surface.toArgb()
     val tableEvenRow = colorScheme.surfaceContainer.toArgb()
@@ -191,7 +198,7 @@ fun MarkdownView(
             ).usePlugin(
                 TablePlugin.create { builder ->
                     builder
-                        .tableBorderColor(outline)
+                        .tableBorderColor(outlineColor)
                         .tableHeaderRowBackgroundColor(tableHeaderRow)
                         .tableOddRowBackgroundColor(tableOddRow)
                         .tableEvenRowBackgroundColor(tableEvenRow)
@@ -254,6 +261,15 @@ fun MarkdownView(
             // land until the view was rebuilt for some other reason.
             tv.textSize = bodyTextSizeSp
             markwon.setMarkdown(tv, resolvedMarkdown)
+            outline?.onRendered(headingsFrom(tv.text)) { charOffset ->
+                // Read lazily: `getLayout()` is null here on the first pass
+                // (the view has not been measured yet) but is populated by
+                // the time anything asks for a heading's position.
+                tv.layout?.let { layout ->
+                    val clamped = charOffset.coerceIn(0, tv.text.length)
+                    layout.getLineTop(layout.getLineForOffset(clamped))
+                }
+            }
         },
     )
 }

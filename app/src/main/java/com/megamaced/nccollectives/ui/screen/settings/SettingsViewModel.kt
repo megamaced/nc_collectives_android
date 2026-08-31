@@ -2,8 +2,10 @@ package com.megamaced.nccollectives.ui.screen.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.data.auth.AccountSummary
+import com.megamaced.nccollectives.data.auth.AccountSwitcher
 import com.megamaced.nccollectives.data.auth.LogoutHandler
-import com.megamaced.nccollectives.data.auth.TokenStore
+import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
@@ -31,13 +33,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class AccountInfo(
-    val host: String,
-    val loginName: String,
-)
-
 data class SettingsUiState(
-    val account: AccountInfo?,
+    /** Every account on the device, in the order they were added. */
+    val accounts: List<AccountSummary>,
+    /** Id of the account whose data is currently cached, or null when signed out. */
+    val activeAccountId: String?,
     val themeMode: ThemeMode,
     val textScale: TextScale,
     val syncCadence: SyncCadence,
@@ -95,12 +95,22 @@ class SettingsViewModel
     @Inject
     constructor(
         private val userPreferences: UserPreferences,
-        private val tokenStore: TokenStore,
+        private val sessionManager: SessionManager,
+        private val accountSwitcher: AccountSwitcher,
         private val logoutHandler: LogoutHandler,
         private val updateChecker: UpdateChecker,
         private val fullSync: FullSync,
         collectiveRepository: CollectiveRepository,
     ) : ViewModel() {
+        /**
+         * Queued edits that have not reached the server, filled in by
+         * [loadPendingEditCount] when the switch confirmation opens. Null
+         * until the count has been read, which is what lets the dialog say
+         * nothing rather than a misleading "0" while the query is in flight.
+         */
+        private val _pendingEditCount = MutableStateFlow<Int?>(null)
+        val pendingEditCount: StateFlow<Int?> = _pendingEditCount.asStateFlow()
+
         /**
          * Last-sync state, observed rather than snapshotted so a background
          * `SyncWorker` run updates the line while Settings is open.
@@ -114,19 +124,22 @@ class SettingsViewModel
         val uiState: StateFlow<SettingsUiState> = combine(
             userPreferences.flow,
             collectiveRepository.observeCollectives(),
-        ) { prefs, collectives -> toState(prefs, collectives) }
-            // `toState` reads `EncryptedSharedPreferences` on disk via
-            // `tokenStore.getCredentials()`. Force it onto Dispatchers.IO
-            // so the disk hit doesn't run on the Compose collector's
-            // dispatcher (Main) — B-21. The `initialValue` below uses
-            // `account = null` for the same reason: avoids a synchronous
-            // disk read at VM construction.
+            sessionManager.accounts,
+            sessionManager.activeAccountId,
+        ) { prefs, collectives, accounts, activeAccountId ->
+            toState(prefs, collectives, accounts, activeAccountId)
+        }
+            // B-21: the account flows are backed by `EncryptedSharedPreferences`
+            // on disk, so keep the combine off the Compose collector's
+            // dispatcher (Main). The `initialValue` below starts empty for the
+            // same reason: no synchronous disk read at VM construction.
             .flowOn(Dispatchers.IO)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
                 initialValue = SettingsUiState(
-                    account = null,
+                    accounts = emptyList(),
+                    activeAccountId = null,
                     themeMode = ThemeMode.System,
                     textScale = TextScale.Default,
                     syncCadence = SyncCadence.SixHourly,
@@ -234,15 +247,36 @@ class SettingsViewModel
             logoutHandler.signOut()
         }
 
+        fun switchToAccount(accountId: String) {
+            accountSwitcher.switchTo(accountId)
+        }
+
+        fun removeAccount(accountId: String) {
+            accountSwitcher.removeAccount(accountId)
+        }
+
+        /**
+         * Local writes the server hasn't taken yet. Read on demand rather
+         * than observed: it is only ever needed to fill in the account-switch
+         * confirmation, and a live count would mean a Room subscription open
+         * for the whole time Settings is on screen.
+         */
+        fun loadPendingEditCount() {
+            _pendingEditCount.value = null
+            viewModelScope.launch {
+                _pendingEditCount.value = accountSwitcher.pendingEditCount()
+            }
+        }
+
         private fun toState(
             prefs: UserPrefs,
             collectives: List<Collective>,
-        ): SettingsUiState {
-            val credentials = tokenStore.getCredentials()
-            return SettingsUiState(
-                account = credentials?.let {
-                    AccountInfo(host = it.host, loginName = it.loginName)
-                },
+            accounts: List<AccountSummary>,
+            activeAccountId: String?,
+        ): SettingsUiState =
+            SettingsUiState(
+                accounts = accounts,
+                activeAccountId = activeAccountId,
                 themeMode = prefs.themeMode,
                 textScale = prefs.textScale,
                 syncCadence = prefs.syncCadence,
@@ -255,5 +289,4 @@ class SettingsViewModel
                 defaultCollectiveId = prefs.defaultCollectiveId
                     ?.takeIf { id -> collectives.any { it.id == id } },
             )
-        }
     }
