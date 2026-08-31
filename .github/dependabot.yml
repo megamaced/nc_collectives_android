@@ -1,9 +1,8 @@
 version: 2
 
 updates:
-  # Reads gradle/libs.versions.toml (the version catalog) as well as the
-  # build scripts. The Gradle wrapper itself is not covered by Dependabot and
-  # stays a manual bump alongside AGP.
+  # Reads gradle/libs.versions.toml (the version catalog), the build scripts,
+  # and the Gradle wrapper.
   - package-ecosystem: gradle
     directory: "/"
     schedule:
@@ -43,17 +42,45 @@ updates:
           - "*"
     ignore:
       # Deliberate pin, documented in gradle/libs.versions.toml: the project
-      # is on AGP 8.13.2 with Gradle 8.14.4. AGP 9 needs a Gradle upgrade and
-      # drags Hilt with it, so the major is a deliberate manual decision.
+      # is on AGP 8.13.2 with Gradle 8.14.4. AGP 9 needs a Gradle upgrade, a
+      # Hilt bump, and the removal of the `org.jetbrains.kotlin.android`
+      # plugin (AGP 9 has Kotlin support built in), so the major is a
+      # deliberate manual decision.
+      #
+      # Every AGP plugin id has to be listed, not just the one the build
+      # applies directly. They all resolve to the same `agp` key in the
+      # version catalog, so leaving one un-ignored lets Dependabot rewrite
+      # that key for all of them — which is exactly how PR #13 arrived
+      # carrying AGP 9.3.2 despite the two entries that were already here.
       - dependency-name: "com.android.tools.build:gradle"
         update-types:
           - version-update:semver-major
       - dependency-name: "com.android.application*"
         update-types:
           - version-update:semver-major
+      - dependency-name: "com.android.library*"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "com.android.test*"
+        update-types:
+          - version-update:semver-major
+      # Gradle 9 is half of the AGP 9 migration and useless without it, so it
+      # moves on the same manual decision rather than on its own PR.
+      - dependency-name: "gradle-wrapper"
+        update-types:
+          - version-update:semver-major
       # Hilt is held at 2.58 because 2.59+ requires AGP 9. Unblock this at the
       # same time as the AGP major above, not before.
+      #
+      # Both spellings: `com.google.dagger:*` matches the library coordinates,
+      # but Dependabot names the Gradle plugin by its *id*
+      # (`com.google.dagger.hilt.android`), which has no colon and so slipped
+      # straight past the coordinate glob.
       - dependency-name: "com.google.dagger:*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+      - dependency-name: "com.google.dagger.hilt*"
         update-types:
           - version-update:semver-minor
           - version-update:semver-major
