@@ -1,7 +1,7 @@
 [versions]
 agp = "8.13.2"
-kotlin = "2.3.21"
-ksp = "2.3.7"
+kotlin = "2.4.10"
+ksp = "2.3.11"
 
 # AndroidX / Jetpack
 coreKtx = "1.18.0"
