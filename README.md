@@ -25,7 +25,7 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 - Browse collectives and nested page trees
 - Render markdown pages, including images, links, task lists, tables, syntax-highlighted fenced code blocks (Prism4j, themed against the app's M3 colour scheme), Nextcloud Text callouts (`> [!INFO]` / `[!WARN]` / `[!ERROR]` / `[!SUCCESS]`), and `==text==` highlights
 - View-first by default with a per-page edit toggle. Two editors ship side-by-side: a **native markdown editor** with formatting toolbar + live preview swap that works offline (default), and a **collaborative WebView editor** backed by [Nextcloud Text](https://github.com/nextcloud/text) (beta — multi-user real-time editing, callouts, multi-line tables, math, etc.) used when the server supports it and you're online. Choose the default under **Settings → Editor** (Prefer plain markdown / Prefer collaborative).
-- Offline read cache and offline edit queue (last-write-wins on conflict; local edits preserved as drafts attached to the page)
+- Offline read cache and offline edit queue. A queued edit is sent with the ETag it was written against, so a page someone else changed meanwhile surfaces as a conflict rather than overwriting them — your text is kept as a draft on the page, beside theirs, and you choose which wins
 - Full-text search via the Nextcloud unified-search provider
 - Favourites and recent searches, persisted across sessions
 - Per-page tags, emoji, rename, and move (folder pages supported)

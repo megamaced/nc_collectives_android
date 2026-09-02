@@ -1,0 +1,7 @@
+A large fix release, mostly offline editing and attachments.
+
+Every offline edit is kept now, not just the last, and they survive renaming or moving the page. Attachments no longer overwrite a file someone else uploaded, a failed one can be retried, and emoji or non-Latin names work.
+
+Sharing into the app reports what it actually saved, and survives interruption.
+
+Signing out clears your credentials even if cache clean-up fails, and page content can no longer make the app fetch your other files.
