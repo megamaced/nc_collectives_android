@@ -580,10 +580,8 @@ class AttachmentRepositoryImpl
                 .filter { ch -> ch.code >= 0x20 && ch !in INVALID_FILENAME_CHARS }
                 .trim()
                 .trimStart('.') // S-5: refuse `.`, `..`, leading-dot names (`.htaccess` etc.)
-                .ifEmpty { "attachment" }
-            // Cap at 200 chars — Nextcloud's hard cap is 250 bytes but UTF-8
-            // headroom keeps us safe.
-            return if (cleaned.length > 200) cleaned.take(200) else cleaned
+                .ifEmpty { FALLBACK_STEM }
+            return boundedFileName(cleaned)
         }
 
         private fun guessMimeType(fileName: String): String? {
@@ -717,11 +715,108 @@ internal fun collisionCandidate(
     sanitised: String,
     counter: Int,
 ): String {
-    if (counter == 0) return sanitised
+    if (counter == 0) return boundedFileName(sanitised)
     val stem = sanitised.substringBeforeLast('.', sanitised)
     val ext = sanitised.substringAfterLast('.', "")
-    return if (ext.isEmpty()) "$stem-$counter" else "$stem-$counter.$ext"
+    return if (ext.isEmpty()) fitFileName(stem, "-$counter") else fitFileName(stem, "-$counter.$ext")
 }
+
+/**
+ * [name] truncated to [MAX_ATTACHMENT_NAME_BYTES] UTF-8 bytes, extension kept.
+ *
+ * Issue #43: the cap used to be `take(200)`, which counts UTF-16 `Char`s.
+ * A name of 100 emoji is 200 of those and about 400 UTF-8 bytes, so it sailed
+ * past a limit expressed in bytes — and `take` can land between the halves of
+ * a surrogate pair, producing a name whose encoding is invalid before it even
+ * reaches the length check. Both mean an upload that fails identically on
+ * every attempt, with a retry that cannot help because the name never changes.
+ *
+ * B-32 had already fixed the same class of bug for page *titles* in
+ * `sanitiseTitleForFilename`; the attachment sanitiser never got it. This
+ * walks forward by code point rather than backward from a byte offset, which
+ * additionally leaves room for the extension and the `-N` collision suffix.
+ */
+internal fun boundedFileName(name: String): String {
+    val ext = name.substringAfterLast('.', "")
+    return if (ext.isEmpty()) fitFileName(name, "") else fitFileName(name.substringBeforeLast('.'), ".$ext")
+}
+
+/**
+ * `[stem] + [tail]`, truncated on code-point boundaries to fit
+ * [MAX_ATTACHMENT_NAME_BYTES] UTF-8 bytes.
+ *
+ * [tail] is the part that carries meaning the rest of the app reads back —
+ * the extension decides the content type and the image-vs-file demotion, the
+ * `-N` says which copy this is — so the stem is what gives up room. An
+ * absurdly long tail is itself truncated, always leaving at least one byte
+ * for the stem, and a stem that truncates away entirely falls back to
+ * [FALLBACK_STEM] rather than yielding a leading-dot name S-5 refuses.
+ */
+private fun fitFileName(
+    stem: String,
+    tail: String,
+): String {
+    val fittedTail = takeUtf8Bytes(tail, MAX_ATTACHMENT_NAME_BYTES - 1)
+    val stemBudget = MAX_ATTACHMENT_NAME_BYTES - fittedTail.utf8ByteLength()
+    val fittedStem = takeUtf8Bytes(stem, stemBudget)
+    return if (fittedStem.isEmpty()) {
+        takeUtf8Bytes(FALLBACK_STEM, stemBudget) + fittedTail
+    } else {
+        fittedStem + fittedTail
+    }
+}
+
+/**
+ * The longest prefix of [text] that encodes to at most [maxBytes] UTF-8
+ * bytes, cut only between code points — so a surrogate pair is either kept
+ * whole or dropped whole.
+ */
+private fun takeUtf8Bytes(
+    text: String,
+    maxBytes: Int,
+): String {
+    if (maxBytes <= 0) return ""
+    var used = 0
+    var index = 0
+    while (index < text.length) {
+        val codePoint = text.codePointAt(index)
+        val cost = utf8Cost(codePoint)
+        if (used + cost > maxBytes) break
+        used += cost
+        index += Character.charCount(codePoint)
+    }
+    return text.substring(0, index)
+}
+
+internal fun String.utf8ByteLength(): Int {
+    var total = 0
+    var index = 0
+    while (index < length) {
+        val codePoint = codePointAt(index)
+        total += utf8Cost(codePoint)
+        index += Character.charCount(codePoint)
+    }
+    return total
+}
+
+private fun utf8Cost(codePoint: Int): Int =
+    when {
+        codePoint < 0x80 -> 1
+        codePoint < 0x800 -> 2
+        codePoint < 0x10000 -> 3
+        else -> 4
+    }
+
+/**
+ * Nextcloud refuses a filename over 250 UTF-8 bytes. 200 keeps headroom for
+ * the `.attachments.<pageId>/` prefix the server prepends and for anything
+ * that re-encodes the name on the way. Distinct from
+ * `sanitiseTitleForFilename`'s 250, which budgets for `.md` instead.
+ */
+internal const val MAX_ATTACHMENT_NAME_BYTES = 200
+
+/** Stands in for a name that sanitised or truncated away to nothing. */
+private const val FALLBACK_STEM = "attachment"
 
 /** How [AttachmentRepository.delete] has to reach a given attachment. */
 internal enum class DeleteRoute {
