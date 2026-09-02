@@ -24,6 +24,7 @@ import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
@@ -643,7 +644,7 @@ class PageRepositoryImpl
             parentPageId: Long,
             title: String,
             body: String,
-        ): ApiResult<Page> {
+        ): ApiResult<PageCreation> {
             val parent = pageDao.getById(parentPageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Parent $parentPageId not cached"))
             if (parent.collectiveId != collectiveId) {
@@ -704,21 +705,21 @@ class PageRepositoryImpl
             // durably the user's, `EditFlushWorker` carries it, and the
             // caller gets the page either way. It also gives the initial
             // body the same offline story every other save in the app has.
-            if (body.isNotEmpty()) {
-                when (val outcome = saveBody(createdDto.id, body)) {
-                    SaveOutcome.Saved, SaveOutcome.Queued, SaveOutcome.Conflict -> Unit
-
-                    // Pathological rather than a failed write: the row was
-                    // upserted above, so this is "the page vanished from the
-                    // cache", which the check below reports anyway.
-                    is SaveOutcome.Error -> Timber.w("Initial body for page %d: %s", createdDto.id, outcome.message)
-                }
+            val bodyOutcome = if (body.isEmpty()) {
+                SaveOutcome.Saved
+            } else {
+                // Issue #31: whatever this says is handed back rather than
+                // logged. `saveBody` queues a dropped network, but a 408, a
+                // 5xx or a permission failure comes back as an Error — and
+                // swallowing that left an empty remote page while the caller
+                // reported a clean capture.
+                saveBody(createdDto.id, body)
             }
             val saved = pageDao.getById(createdDto.id)
                 ?: return ApiResult.Unexpected(
                     IllegalStateException("Page ${createdDto.id} disappeared from cache after create"),
                 )
-            return ApiResult.Success(saved.toDomain())
+            return ApiResult.Success(PageCreation(page = saved.toDomain(), bodyOutcome = bodyOutcome))
         }
 
         override suspend fun trashPage(pageId: Long): ApiResult<Unit> {

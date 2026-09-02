@@ -74,3 +74,17 @@ data class PageListItem(
     /** Whether the row has an unresolved local draft — never the text. */
     val hasDraft: Boolean,
 )
+
+/**
+ * The result of creating a page: the page itself, and separately what
+ * happened to the markdown that was meant to go in it.
+ *
+ * Two outcomes rather than one because they fail independently and the caller
+ * needs both. The page existing is what a retry must not duplicate (issue
+ * #25); the body having landed, been queued or failed outright is what the
+ * user has to be told (issue #31).
+ */
+data class PageCreation(
+    val page: Page,
+    val bodyOutcome: SaveOutcome,
+)

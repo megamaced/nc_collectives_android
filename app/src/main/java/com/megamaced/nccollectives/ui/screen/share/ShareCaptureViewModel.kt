@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 
 enum class ShareMode { NEW_PAGE, APPEND }
@@ -43,6 +44,33 @@ data class PartialCreate(
     val pageId: Long,
     val pageTitle: String,
     val imageRefs: String,
+    /** What `createPage` managed to do with the shared text (issue #31). */
+    val bodyOutcome: SaveOutcome,
+    /** Shared images that couldn't be staged at all (issue #31). */
+    val imagesDropped: Int,
+    /** Whether the share carried any text, so "nothing saved" can be told apart. */
+    val hasText: Boolean,
+)
+
+/** What [ShareCaptureViewModel.queueImages] managed to stage, and what it didn't. */
+internal data class StagedImages(
+    val names: List<String>,
+    val dropped: Int,
+)
+
+/**
+ * What to tell the user, and whether the share is finished with.
+ *
+ * [resumable] is the narrow case worth distinguishing: the page exists and
+ * trying again would finish it. A dropped image is *not* resumable — the URI
+ * will not become readable — so it is reported and the payload consumed
+ * anyway, which is the "UI explicitly reports partial completion" half of
+ * issue #31.
+ */
+internal data class CaptureReport(
+    val message: String,
+    val succeeded: Boolean,
+    val resumable: Boolean,
 )
 
 data class ShareCaptureUiState(
@@ -217,8 +245,9 @@ class ShareCaptureViewModel
                 _uiState.update { it.copy(isSaving = false, errorMessage = result.userMessage()) }
                 return
             }
-            val newPage = result.data
-            val resolvedNames = queueImages(newPage.id, payload)
+            val created = result.data
+            val newPage = created.page
+            val staged = queueImages(newPage.id, payload)
             // If any image actually staged, append their markdown refs using
             // the resolved (collision-resolved, sanitised) filenames returned
             // by enqueueUpload — B-30/R-39 + S-13.
@@ -232,7 +261,10 @@ class ShareCaptureViewModel
                 created = PartialCreate(
                     pageId = newPage.id,
                     pageTitle = newPage.title,
-                    imageRefs = if (resolvedNames.isEmpty()) "" else imageRefMarkdown(resolvedNames),
+                    imageRefs = if (staged.names.isEmpty()) "" else imageRefMarkdown(staged.names),
+                    bodyOutcome = created.bodyOutcome,
+                    imagesDropped = staged.dropped,
+                    hasText = !payload.text.isNullOrBlank(),
                 ),
             )
         }
@@ -255,27 +287,29 @@ class ShareCaptureViewModel
             } else {
                 pageRepository.appendToPage(created.pageId, created.imageRefs)
             }
-            if (refsOutcome is SaveOutcome.Error) {
-                // The page and its text are saved and the images are queued;
-                // only the references failed. Say so rather than reporting
-                // success, keep the payload, and remember what has already
-                // happened so a retry finishes this page instead of making
-                // another one.
+            val report = captureReport(created, refsOutcome)
+            if (report.resumable) {
+                // Something the user can act on by trying again: the page and
+                // its text are saved and the images are queued, but the
+                // references didn't land. Keep the payload, and remember what
+                // has already happened so a retry finishes this page instead
+                // of making another one.
                 _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        errorMessage = savedMessage(created.pageTitle, refsOutcome),
-                        partialCreate = created,
-                    )
+                    it.copy(isSaving = false, errorMessage = report.message, partialCreate = created)
                 }
                 return
             }
+            // Consumed even when [report] carries a loss, which is the point
+            // of reporting it: a URI that couldn't be staged will not stage
+            // on a second attempt either, so holding the payload would only
+            // offer a retry that cannot help (issue #31).
             sharePayloadHolder.consume(payload.id)
             _uiState.update {
                 it.copy(
                     isSaving = false,
-                    finished = true,
-                    finishedMessage = savedMessage(created.pageTitle, refsOutcome),
+                    finished = report.succeeded,
+                    finishedMessage = report.message.takeIf { _ -> report.succeeded },
+                    errorMessage = report.message.takeUnless { _ -> report.succeeded },
                     partialCreate = null,
                 )
             }
@@ -289,55 +323,83 @@ class ShareCaptureViewModel
                 _uiState.update { it.copy(isSaving = false, errorMessage = "Pick a page to append to") }
                 return
             }
-            val resolvedNames = queueImages(pageId, payload)
+            val staged = queueImages(pageId, payload)
             val appendBody = buildString {
                 payload.text?.takeIf { it.isNotBlank() }?.let { append(it) }
-                if (resolvedNames.isNotEmpty()) {
+                if (staged.names.isNotEmpty()) {
                     if (isNotEmpty()) append("\n\n")
-                    append(imageRefMarkdown(resolvedNames))
+                    append(imageRefMarkdown(staged.names))
                 }
             }
-            val outcome = pageRepository.appendToPage(pageId, appendBody)
-            val message = when (outcome) {
-                SaveOutcome.Saved -> "Appended"
-                SaveOutcome.Queued -> "Appended (queued, will sync when online)"
-                SaveOutcome.Conflict -> "Page changed on the server; appended as a draft"
-                is SaveOutcome.Error -> null
+            if (appendBody.isEmpty()) {
+                // Issue #31: everything the share carried was dropped —
+                // typically an image-only share whose URIs couldn't be read.
+                // Appending an empty string and reporting "Appended" is what
+                // this used to do.
+                _uiState.update {
+                    it.copy(isSaving = false, errorMessage = nothingToSaveMessage(staged.dropped))
+                }
+                return
             }
-            val error = (outcome as? SaveOutcome.Error)?.message
-            if (error == null) sharePayloadHolder.consume(payload.id)
+            val outcome = pageRepository.appendToPage(pageId, appendBody)
+            val report = appendReport(outcome, staged.dropped)
+            if (report.succeeded) sharePayloadHolder.consume(payload.id)
             _uiState.update {
                 it.copy(
                     isSaving = false,
-                    finished = error == null,
-                    finishedMessage = message,
-                    errorMessage = error,
+                    finished = report.succeeded,
+                    finishedMessage = report.message.takeIf { _ -> report.succeeded },
+                    errorMessage = report.message.takeUnless { _ -> report.succeeded },
                 )
             }
         }
 
         /**
-         * Stage every shareable image. Returns the list of resolved (sanitised
-         * + collision-free) filenames the worker will upload them under — the
-         * markdown image refs must use these names, not the raw display names
-         * (B-30/R-39).
+         * Stage every shareable image, and say how many could not be.
+         *
+         * The names returned are the resolved (sanitised + collision-free)
+         * filenames the worker will upload them under — the markdown image
+         * refs must use these, not the raw display names (B-30/R-39).
+         *
+         * Issue #31: this used to be a `mapNotNull` returning only the
+         * survivors, so a URI that couldn't be read and a URI that was never
+         * an image both vanished without trace. Both create and append then
+         * built markdown from the shorter list, consumed the payload and
+         * reported success — an image-only share whose URIs all failed made a
+         * blank page and called it saved.
          */
         private suspend fun queueImages(
             pageId: Long,
             payload: SharePayload,
-        ): List<String> =
-            payload.images.mapNotNull { uri ->
+        ): StagedImages {
+            val names = mutableListOf<String>()
+            var dropped = 0
+            for (uri in payload.images) {
                 val type = context.contentResolver.getType(uri)
                 // S-5: refuse non-image Uris. The manifest only declares
                 // image/* + text/plain intent filters, so the OS routes
                 // matching senders only — but a malicious app can still
                 // target the activity explicitly with any mime.
                 if (type != null && !type.startsWith("image/")) {
-                    return@mapNotNull null
+                    Timber.w("Refusing shared %s: not an image", type)
+                    dropped++
+                    continue
                 }
                 val suggestion = uriDisplayName(context, uri) ?: "share-${System.currentTimeMillis()}.jpg"
-                attachmentRepository.enqueueUpload(pageId, uri, suggestion, type)
+                val resolved = attachmentRepository.enqueueUpload(pageId, uri, suggestion, type)
+                if (resolved == null) {
+                    // The bytes couldn't be read or copied. Nothing a retry
+                    // from this screen can fix — the grant may be gone, or
+                    // the source evicted — so the user has to be told rather
+                    // than left with a page that quietly lacks the image.
+                    Timber.w("Couldn't stage shared image %s", uri)
+                    dropped++
+                } else {
+                    names += resolved
+                }
             }
+            return StagedImages(names = names, dropped = dropped)
+        }
 
         private fun imageRefMarkdown(resolvedNames: List<String>): String = resolvedNames.joinToString("\n") { name -> "![$name]($name)" }
 
@@ -360,22 +422,90 @@ class ShareCaptureViewModel
     }
 
 /**
- * What to tell the user after a share created a page.
+ * What to tell the user after a share created a page, and whether anything is
+ * left to do about it.
  *
  * Issue #25: a capture whose image references only reached the edit queue is
  * a success — the offline design working — but it is not the same success as
  * one already on the server, and reporting it as though it were is how a
- * partial result passes for a clean one. The other two arms cannot come from
- * a page created seconds ago on this device, and are spelled out rather than
- * folded into an `else` so a change to `SaveOutcome` has to come back here.
+ * partial result passes for a clean one.
+ *
+ * Issue #31: two more ways to end up short of that, both of which happen
+ * *before* the reference append and were therefore invisible to #25's check.
+ * The shared text may have failed its own write, and shared images may never
+ * have been staged. Neither is a reason to claim a clean capture, and only
+ * the reference append is worth offering a retry for.
  */
-internal fun savedMessage(
-    title: String,
+internal fun captureReport(
+    created: PartialCreate,
     refsOutcome: SaveOutcome,
-): String =
-    when (refsOutcome) {
-        SaveOutcome.Saved -> "Saved as \"$title\""
-        SaveOutcome.Queued -> "Saved as \"$title\" (image links will sync when online)"
-        SaveOutcome.Conflict -> "Saved as \"$title\"; the image links are waiting as a draft"
-        is SaveOutcome.Error -> "Saved as \"$title\", but the image links didn't: ${refsOutcome.message}"
+): CaptureReport {
+    val title = created.pageTitle
+    val lost = buildList {
+        when (val body = created.bodyOutcome) {
+            SaveOutcome.Saved -> Unit
+            SaveOutcome.Queued -> add("the text will sync when online")
+            SaveOutcome.Conflict -> add("the text is waiting as a draft")
+            is SaveOutcome.Error -> add("the text didn't save (${body.message})")
+        }
+        when (refsOutcome) {
+            SaveOutcome.Saved -> Unit
+            SaveOutcome.Queued -> add("the image links will sync when online")
+            SaveOutcome.Conflict -> add("the image links are waiting as a draft")
+            is SaveOutcome.Error -> add("the image links didn't save (${refsOutcome.message})")
+        }
+        if (created.imagesDropped > 0) add(droppedImagesPhrase(created.imagesDropped))
+    }
+    // Nothing of the share reached the page at all. Worth its own arm: the
+    // page exists but is empty, so "Saved" would be actively wrong.
+    val savedNothing = created.imagesDropped > 0 &&
+        created.imageRefs.isEmpty() &&
+        !created.hasText
+    return CaptureReport(
+        message = when {
+            savedNothing -> "Created \"$title\", but ${droppedImagesPhrase(created.imagesDropped)}"
+            lost.isEmpty() -> "Saved as \"$title\""
+            else -> "Saved as \"$title\" — ${lost.joinToString("; ")}"
+        },
+        succeeded = !savedNothing && refsOutcome !is SaveOutcome.Error,
+        resumable = refsOutcome is SaveOutcome.Error,
+    )
+}
+
+/** The append half of [captureReport]. */
+internal fun appendReport(
+    outcome: SaveOutcome,
+    imagesDropped: Int,
+): CaptureReport {
+    val base = when (outcome) {
+        SaveOutcome.Saved -> "Appended"
+        SaveOutcome.Queued -> "Appended (queued, will sync when online)"
+        SaveOutcome.Conflict -> "Page changed on the server; appended as a draft"
+        is SaveOutcome.Error -> outcome.message
+    }
+    val succeeded = outcome !is SaveOutcome.Error
+    return CaptureReport(
+        message = if (succeeded && imagesDropped > 0) {
+            "$base — ${droppedImagesPhrase(imagesDropped)}"
+        } else {
+            base
+        },
+        succeeded = succeeded,
+        resumable = false,
+    )
+}
+
+/** Nothing the share carried could be saved (issue #31). */
+internal fun nothingToSaveMessage(imagesDropped: Int): String =
+    if (imagesDropped > 0) {
+        "Nothing to save — ${droppedImagesPhrase(imagesDropped)}"
+    } else {
+        "Nothing to save — the share was empty"
+    }
+
+private fun droppedImagesPhrase(count: Int): String =
+    if (count == 1) {
+        "1 image couldn't be read"
+    } else {
+        "$count images couldn't be read"
     }

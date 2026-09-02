@@ -151,19 +151,24 @@ interface PageRepository {
      * parent atomically (Batch 18h, OCS-1).
      *
      * If [body] is non-empty it is written as the new page's markdown after
-     * the OCS POST succeeds — through the ordinary save path, so a write
-     * that can't reach the server is queued rather than lost. A success
-     * therefore means "the page exists and its body is durably local", not
-     * "the body is on the server" (issue #25). Only the *create* failing is
-     * reported as an error, because that is the only failure where there is
-     * no page to hand back.
+     * the OCS POST succeeds, through the ordinary save path. Only the
+     * *create* failing is reported as an error, because that is the only
+     * failure where there is no page to hand back — losing the id is what
+     * made a retry create a second remote page (issue #25).
+     *
+     * What happened to the body is in `PageCreation.bodyOutcome` rather than
+     * folded into the result. `saveBody` queues a dropped network, but a 408,
+     * a 5xx or a permission failure comes back as an error, and issue #31 was
+     * that swallowing it left an empty remote page while the caller reported
+     * a clean capture. The caller decides what to tell the user; it must not
+     * have to guess.
      */
     suspend fun createPage(
         collectiveId: Long,
         parentPageId: Long,
         title: String,
         body: String,
-    ): ApiResult<com.megamaced.nccollectives.domain.model.Page>
+    ): ApiResult<com.megamaced.nccollectives.domain.model.PageCreation>
 
     /**
      * Append [text] to a page's markdown body. Uses the regular save path
