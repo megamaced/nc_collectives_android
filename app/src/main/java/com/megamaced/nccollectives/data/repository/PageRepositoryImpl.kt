@@ -340,12 +340,16 @@ class PageRepositoryImpl
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
                 ?: return SaveOutcome.Error("Page not cached")
+            // Issue #29: the precondition comes from the queue row when there
+            // is one, not from the page row. See `savePrecondition`.
+            val existing = editQueueDao.forPage(pageId)
+            val precondition = savePrecondition(existing, entity.bodyEtag)
             val result = bodyService.saveBody(
                 collectivePath = entity.collectivePath,
                 filePath = entity.filePath,
                 fileName = entity.fileName,
                 body = newBody,
-                baseEtag = entity.bodyEtag,
+                baseEtag = precondition.baseEtag,
             )
             return when (result) {
                 is ApiResult.Success -> {
@@ -362,7 +366,6 @@ class PageRepositoryImpl
                     // the user would silently lose the original draft. The
                     // existing draft is on the page row; the user resolves
                     // it via the `ConflictBanner` before queueing more.
-                    val existing = editQueueDao.forPage(pageId)
                     if (existing?.status == "CONFLICTED") {
                         SaveOutcome.Conflict
                     } else {
@@ -1010,6 +1013,51 @@ internal fun bodyFetchPlan(
         BodyFetchPlan.Revalidate(bodyEtag)
     } else {
         BodyFetchPlan.FetchWhole
+    }
+
+/** What a foreground save should write against. See [savePrecondition]. */
+internal data class SavePrecondition(
+    val baseEtag: String?,
+    val forceWrite: Boolean,
+)
+
+/**
+ * The `If-Match` value a foreground save should carry.
+ *
+ * Issue #29, and a regression the reader-side overlay in #18 introduced. The
+ * precondition used to come straight off the page row, which is wrong as soon
+ * as a queued edit exists, because the two describe different things: the
+ * page row's ETag is *the server's current version*, and the queued body was
+ * written against whatever the chain started from.
+ *
+ * The sequence that lost data: fetch at ETag A, go offline, edit and save
+ * (queued with baseEtag A), another client writes and the server moves to
+ * ETag B, come back online and reopen the page. Revalidation advances the row
+ * to B — deliberately, and #18 made the editor keep showing the *queued*
+ * body over it. Press Save and the queued body went out with `If-Match: B`,
+ * which succeeds, silently discarding the other client's edit and deleting
+ * the queue row that held the only evidence. Before #18 the editor had shown
+ * the server's text instead, so the same keypress wrote B back over B and the
+ * flush worker later reported the conflict properly.
+ *
+ * So a non-conflicted queue row's own metadata wins, exactly as
+ * `EditFlushWorker` uses it: its `baseEtag`, and `forceWrite` collapsing the
+ * precondition to none because the user has already chosen to override it
+ * (B-46). A 412 then routes into the conflict branch, which parks the text as
+ * a draft — recoverable, and visible.
+ *
+ * A `CONFLICTED` row is deliberately not used. Its draft is already on the
+ * page row beside the server's body, the user has been shown both, and the
+ * page's ETag is the version they were shown.
+ */
+internal fun savePrecondition(
+    queued: EditQueueEntity?,
+    pageEtag: String?,
+): SavePrecondition =
+    when {
+        queued == null || queued.status == "CONFLICTED" -> SavePrecondition(pageEtag, forceWrite = false)
+        queued.forceWrite -> SavePrecondition(baseEtag = null, forceWrite = true)
+        else -> SavePrecondition(queued.baseEtag, forceWrite = false)
     }
 
 /**

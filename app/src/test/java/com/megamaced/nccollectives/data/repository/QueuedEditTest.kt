@@ -150,3 +150,76 @@ class AppendedBodyTest {
         assertEquals("base\n\nA\n\nB", appendedBody(base = once, text = "B"))
     }
 }
+
+/**
+ * Issue #29 — the precondition a foreground save carries, and a regression
+ * the reader-side overlay in #18 introduced.
+ *
+ * The losing sequence: fetch at ETag A, edit offline (queued with baseEtag
+ * A), another client moves the server to B, reopen the page so revalidation
+ * advances the row to B, press Save. Taking the precondition off the page row
+ * sent the queued body with `If-Match: B`, which succeeds and discards the
+ * other client's edit.
+ */
+class SavePreconditionTest {
+    private fun queued(
+        baseEtag: String? = "etag-A",
+        status: String = "PENDING",
+        forceWrite: Boolean = false,
+    ) = EditQueueEntity(
+        pageId = 7L,
+        baseEtag = baseEtag,
+        newBodyMd = "base + A",
+        queuedAt = 1_000L,
+        status = status,
+        forceWrite = forceWrite,
+    )
+
+    @Test
+    fun `with no queued edit the page row's etag is the precondition`() {
+        val precondition = savePrecondition(queued = null, pageEtag = "etag-B")
+        assertEquals("etag-B", precondition.baseEtag)
+        assertFalse(precondition.forceWrite)
+    }
+
+    @Test
+    fun `a queued edit's own base etag wins over the refreshed page row`() {
+        // The whole of issue #29: etag-B is what the server has now, and
+        // etag-A is what the queued text was written against.
+        val precondition = savePrecondition(queued = queued(baseEtag = "etag-A"), pageEtag = "etag-B")
+        assertEquals("etag-A", precondition.baseEtag)
+    }
+
+    @Test
+    fun `an in-flight queued edit is treated the same as a pending one`() {
+        val precondition = savePrecondition(queued = queued(status = "IN_FLIGHT"), pageEtag = "etag-B")
+        assertEquals("etag-A", precondition.baseEtag)
+    }
+
+    @Test
+    fun `a force-write queued edit carries no precondition`() {
+        // B-46: the user has already chosen to override the server. Re-arming
+        // an `If-Match` here would turn their override back into a conflict.
+        val precondition = savePrecondition(queued = queued(forceWrite = true, baseEtag = null), pageEtag = "etag-B")
+        assertNull(precondition.baseEtag)
+        assertTrue(precondition.forceWrite)
+    }
+
+    @Test
+    fun `a null base etag on a queued edit is not healed from the page row`() {
+        // An ETag-less server. Healing it would claim a precondition the
+        // queued text was never compared against.
+        val precondition = savePrecondition(queued = queued(baseEtag = null), pageEtag = "etag-B")
+        assertNull(precondition.baseEtag)
+    }
+
+    @Test
+    fun `a conflicted row leaves the page row's etag in charge`() {
+        // Its draft is already on the page row beside the server's body, the
+        // user has been shown both, and the page's etag is the version they
+        // were shown.
+        val precondition = savePrecondition(queued = queued(status = "CONFLICTED"), pageEtag = "etag-B")
+        assertEquals("etag-B", precondition.baseEtag)
+        assertFalse(precondition.forceWrite)
+    }
+}
