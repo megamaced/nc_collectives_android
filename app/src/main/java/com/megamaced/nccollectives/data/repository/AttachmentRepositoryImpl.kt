@@ -276,6 +276,48 @@ class AttachmentRepositoryImpl
             return ApiResult.Success(Unit)
         }
 
+        override suspend fun renameForRemoteCollision(
+            pageId: Long,
+            fileName: String,
+        ): String? {
+            val oldKey = AttachmentEntity.key(pageId, fileName)
+            val row = attachmentDao.getById(oldKey) ?: return null
+            // Best-effort: a fresh listing is what lets the local resolver
+            // step past the names the server already holds, rather than
+            // handing back one it will refuse for the same reason. Offline,
+            // or on a failure, the resolver still bumps past our own row and
+            // the next 412 brings us back here.
+            refresh(pageId)
+            val newName = resolveCollisionFreeName(pageId, fileName)
+            val newKey = AttachmentEntity.key(pageId, newName)
+            if (newKey == oldKey) return null
+            // The staged bytes are keyed on the row id, so the file moves
+            // with the row. Bail rather than re-queue if it can't: a PENDING
+            // row with no bytes behind it just fails again.
+            val oldStaged = stagedFileFor(context, oldKey)
+            val newStaged = stagedFileFor(context, newKey)
+            if (!oldStaged.exists() || !oldStaged.renameTo(newStaged)) {
+                Timber.w("Couldn't move the staged copy of %s aside", oldKey)
+                return null
+            }
+            database.withTransaction {
+                attachmentDao.delete(oldKey)
+                attachmentDao.upsert(
+                    row.copy(
+                        id = newKey,
+                        fileName = newName,
+                        status = AttachmentEntity.STATUS_PENDING,
+                        localUriString = Uri.fromFile(newStaged).toString(),
+                        // The old row's server id, if it had one, belonged to
+                        // whatever is sitting at the old name.
+                        serverAttachmentId = null,
+                    ),
+                )
+            }
+            Timber.i("Attachment name %s was taken on the server; re-queued as %s", fileName, newName)
+            return newName
+        }
+
         private fun deleteStagedFile(attachmentId: String) {
             val staged = stagedFileFor(context, attachmentId)
             if (staged.exists() && !staged.delete()) {
@@ -423,20 +465,25 @@ class AttachmentRepositoryImpl
             }
         }
 
+        /**
+         * A filename no row for [pageId] is using.
+         *
+         * Only the *local* table is probed, which is the whole of issue #24:
+         * a name free here can be taken on the server, so the upload sends
+         * `If-None-Match: *` and [renameForRemoteCollision] comes back here
+         * after a 412.
+         */
         private suspend fun resolveCollisionFreeName(
             pageId: Long,
             suggested: String,
         ): String {
             val sanitised = sanitiseFileName(suggested)
-            val stem = sanitised.substringBeforeLast('.', sanitised)
-            val ext = sanitised.substringAfterLast('.', "")
-            var candidate = sanitised
-            var counter = 1
-            while (attachmentDao.getById(AttachmentEntity.key(pageId, candidate)) != null) {
-                candidate = if (ext.isEmpty()) "$stem-$counter" else "$stem-$counter.$ext"
+            var counter = 0
+            while (true) {
+                val candidate = collisionCandidate(sanitised, counter)
+                if (attachmentDao.getById(AttachmentEntity.key(pageId, candidate)) == null) return candidate
                 counter++
             }
-            return candidate
         }
 
         private fun sanitiseFileName(name: String): String {
@@ -576,3 +623,23 @@ private fun AttachmentEntity.toDomain(remoteUrl: String?): Attachment =
         remoteUrl = remoteUrl,
         localUriString = localUriString,
     )
+
+/**
+ * The [counter]th candidate name for [sanitised]: the name itself at 0, then
+ * `stem-1.ext`, `stem-2.ext`, and so on.
+ *
+ * The suffix goes before the extension, not after it, so a renamed file
+ * keeps the extension the content type and the image-vs-file decision are
+ * read from. Only the *last* dot separates the extension, so `photo.tar.gz`
+ * becomes `photo.tar-1.gz` — imperfect for double extensions, and the same
+ * answer every other part of the app gets from `substringAfterLast('.')`.
+ */
+internal fun collisionCandidate(
+    sanitised: String,
+    counter: Int,
+): String {
+    if (counter == 0) return sanitised
+    val stem = sanitised.substringBeforeLast('.', sanitised)
+    val ext = sanitised.substringAfterLast('.', "")
+    return if (ext.isEmpty()) "$stem-$counter" else "$stem-$counter.$ext"
+}

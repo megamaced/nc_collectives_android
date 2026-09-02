@@ -152,9 +152,22 @@ class PageBodyService
         }
 
         /**
-         * Uploads a binary file at `(collectivePath, filePath, fileName)`.
-         * Server overwrites any existing file with the same name — callers
-         * are expected to disambiguate names beforehand.
+         * Creates a binary file at `(collectivePath, filePath, fileName)`.
+         *
+         * `If-None-Match: *` makes it a *create*, not a write: the server
+         * refuses with 412 — which [webDavCall] folds into
+         * [ApiResult.Conflict] — if anything is already at that path.
+         *
+         * Issue #24: this used to be an unconditional PUT, with the
+         * disambiguation left entirely to the caller's
+         * `resolveCollisionFreeName`, which probes only the *local*
+         * attachments table. So a name that looked free locally because the
+         * cache was stale, incomplete, or predated another client's upload
+         * was written over. Note the asymmetry it leaves behind: page bodies
+         * have guarded writes with `If-Match` and revalidated reads with
+         * `If-None-Match` since the beginning, and attachment uploads carried
+         * no precondition at all. Only the server can settle this — a
+         * pre-upload refresh narrows the window and cannot close it.
          */
         suspend fun uploadFile(
             collectivePath: String,
@@ -166,6 +179,7 @@ class PageBodyService
             val request = Request
                 .Builder()
                 .url(url)
+                .header("If-None-Match", "*")
                 .put(body)
                 .build()
             return webDavCall(request) { response -> normaliseEtag(response.header("ETag")) }

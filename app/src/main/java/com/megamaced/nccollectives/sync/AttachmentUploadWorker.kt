@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
+import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.ui.screen.isRetryableFailure
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -56,6 +57,7 @@ class AttachmentUploadWorker
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
         private val bodyService: PageBodyService,
+        private val attachmentRepository: AttachmentRepository,
         private val accountGeneration: AccountGeneration,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
@@ -204,8 +206,16 @@ class AttachmentUploadWorker
                         }
 
                         ApiResult.Conflict -> {
-                            Timber.w("Upload conflict for %s", row.id)
-                            if (settleUploadFailure(row.id, put)) retry = true
+                            // Issue #24: `If-None-Match: *` refused, so the
+                            // name is taken on the server. Re-queue under the
+                            // next free one rather than overwrite a file this
+                            // device didn't put there.
+                            Timber.w("Upload name for %s is taken on the server", row.id)
+                            if (attachmentRepository.renameForRemoteCollision(row.pageId, row.fileName) != null) {
+                                retry = true
+                            } else if (settleUploadFailure(row.id, put)) {
+                                retry = true
+                            }
                         }
                     }
                 } catch (e: CancellationException) {

@@ -55,6 +55,27 @@ interface AttachmentRepository {
         fileName: String,
     ): ApiResult<Unit>
 
+    /**
+     * Move a queued upload to the next free filename, after the server
+     * refused to create it because something is already there (issue #24).
+     *
+     * Returns the new filename, or null when there is nothing to move — the
+     * row has gone, or its staged bytes have. The caller re-queues on a
+     * non-null return.
+     *
+     * The page body's markdown reference still names the old file, so an
+     * inline image renamed this way renders broken until the user fixes the
+     * ref. That is the deliberate trade: the alternative is overwriting a
+     * file somebody else put there, and a broken ref is recoverable where
+     * destroyed bytes are not. The rename is also rare — it needs another
+     * client to have taken the name since this device last listed the
+     * directory.
+     */
+    suspend fun renameForRemoteCollision(
+        pageId: Long,
+        fileName: String,
+    ): String?
+
     /** Build the WebDAV URL Coil should hit for this attachment. */
     suspend fun urlFor(
         pageId: Long,
