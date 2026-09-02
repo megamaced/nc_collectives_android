@@ -342,15 +342,27 @@ jobs:
       - name: Resolve emulator version
         id: emulator-version
         run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          # `sdkmanager` is not on PATH on the hosted image -- it lives under
+          # cmdline-tools, and the version directory is not always `latest`.
+          # PATH is still checked first in case a future image adds it.
+          sdkmanager=$(command -v sdkmanager || true)
+          if [ -z "$sdkmanager" ]; then
+            sdkmanager=$(ls -d "$sdk"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort | tail -1)
+          fi
+          if [ -z "$sdkmanager" ]; then
+            echo "::error::no sdkmanager found under $sdk"
+            exit 1
+          fi
           # Licences are pre-accepted on the hosted image, but `yes |` keeps a
           # prompt from blocking the step if that ever stops being true, and
           # the step runs under `bash -e` so a no-op failure must not abort.
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install emulator --channel=0 > /dev/null
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" --install emulator --channel=0 > /dev/null
           # `|| true` because the assignment's status is the pipeline's, and a
           # `grep` miss under `-e` would abort before the explicit check below
           # could say what actually went wrong.
-          version=$("$ANDROID_HOME/emulator/emulator" -version 2>/dev/null \
+          version=$("$sdk/emulator/emulator" -version 2>/dev/null \
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
             | head -1) || true
           if [ -z "$version" ]; then
