@@ -66,6 +66,14 @@ turbine = "1.2.1"
 mockk = "1.14.7"
 androidxTestJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
+# Integration tests. Robolectric puts a real Android runtime — and therefore
+# real Room, a real WorkManager and a real Compose tree — inside the JVM unit
+# test task, so the seams the audits keep finding bugs in are testable without
+# an emulator. Deliberately *not* androidTest: this project's emulator step is
+# its least reliable CI surface, and an integration suite is the last thing
+# that should depend on it.
+robolectric = "4.16.1"
+androidxTestCore = "1.7.0"
 
 # Tooling
 ktlintPlugin = "14.2.0"
@@ -160,6 +168,13 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workManager" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+okhttp-tls = { group = "com.squareup.okhttp3", name = "okhttp-tls", version.ref = "okhttp" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

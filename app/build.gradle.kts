@@ -112,6 +112,15 @@ android {
     sourceSets {
         getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric reads the merged manifest and resource table from
+            // the unit-test task's own output; without this every test that
+            // inflates a theme or resolves a string dies at startup.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // Prism4j (Batch 24) drags in the legacy `annotations-java5` artifact;
@@ -232,6 +241,24 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
+    // Integration suite (app/src/test/.../integration). Robolectric supplies
+    // the Android runtime, so these get real Room, real WorkManager and a
+    // real Compose tree while staying in the fast JVM task.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Required, not optional: `createComposeRule` launches a bare
+    // `ComponentActivity`, and this is the artifact that declares one. Verified
+    // by removing it — every Compose test then dies with "Unable to resolve
+    // activity for Intent". `debugImplementation` per AndroidX's own guidance,
+    // so the extra activity lands in the debug manifest only and the release
+    // APK — and therefore F-Droid's reproducible build — is untouched.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Instrumented tests. Room migrations are hand-written against seven
     // committed schemas, and MigrationTestHelper is the only thing that
