@@ -13,7 +13,9 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
+import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
+import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.screen.isRetryableFailure
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -58,6 +60,7 @@ class AttachmentUploadWorker
         private val attachmentDao: AttachmentDao,
         private val bodyService: PageBodyService,
         private val attachmentRepository: AttachmentRepository,
+        private val pageRepository: PageRepository,
         private val accountGeneration: AccountGeneration,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
@@ -238,7 +241,28 @@ class AttachmentUploadWorker
                             // next free one rather than overwrite a file this
                             // device didn't put there.
                             Timber.w("Upload name for %s is taken on the server", row.id)
-                            if (attachmentRepository.renameForRemoteCollision(row.pageId, row.fileName) != null) {
+                            val renamed = attachmentRepository.renameForRemoteCollision(row.pageId, row.fileName)
+                            if (renamed != null) {
+                                // Issue #40: the body was written with the
+                                // name `enqueueUpload` handed back, which the
+                                // server has just refused. Left alone, the
+                                // page renders whatever the *other* client
+                                // put at that name while this upload lands
+                                // somewhere nothing points at.
+                                val followed = pageRepository.retargetAttachmentRef(
+                                    pageId = row.pageId,
+                                    oldName = row.fileName,
+                                    newName = renamed,
+                                )
+                                if (followed !is SaveOutcome.Saved) {
+                                    // Queued, parked as a conflict, or the
+                                    // body isn't cached. The upload still has
+                                    // to proceed under the new name — the
+                                    // reference is recoverable (the queue
+                                    // flushes, or the banner asks), the bytes
+                                    // are not.
+                                    Timber.w("Couldn't repoint %s at %s yet: %s", row.fileName, renamed, followed)
+                                }
                                 retry = true
                             } else if (settleUploadFailure(row.id, put, attemptsSoFar)) {
                                 retry = true

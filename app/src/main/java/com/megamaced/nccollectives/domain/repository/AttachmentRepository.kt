@@ -115,4 +115,22 @@ interface AttachmentRepository {
      * image refs like `![](photo.jpg)`.
      */
     suspend fun attachmentsBaseUrl(pageId: Long): String?
+
+    /**
+     * Move every attachment row for [oldPageId] — and the staged bytes
+     * behind the unfinished ones — onto [newPageId]. Issue #39.
+     *
+     * Called when a rename or move made Nextcloud hand the page a new file
+     * id. `AttachmentEntity.id` is `<pageId>/<fileName>` and the staging file
+     * is named from it, so a page id change is a rekey of both, not an
+     * `UPDATE` on one column.
+     *
+     * Runs inside the caller's transaction; the file moves are best-effort
+     * and a row whose bytes can't be moved is dropped rather than left
+     * pointing at a file that isn't there.
+     */
+    suspend fun rekeyForPage(
+        oldPageId: Long,
+        newPageId: Long,
+    )
 }

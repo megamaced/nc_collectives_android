@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.ConditionalBody
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.dto.PageDto
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountGeneration
@@ -16,6 +17,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
+import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
@@ -28,8 +30,11 @@ import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
+import com.megamaced.nccollectives.util.retargetAttachmentRefs
+import dagger.Lazy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -55,6 +60,12 @@ class PageRepositoryImpl
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
         private val accountGeneration: AccountGeneration,
+        // Issue #39: a rename or move can reissue the page's file id, and the
+        // attachment rows keyed on the old one have to travel with it —
+        // including the staged bytes, which only this repository knows how to
+        // move. `dagger.Lazy` because it is used on one branch of two methods
+        // and the graph should not pay to build it for every page read.
+        private val attachmentRepository: Lazy<AttachmentRepository>,
     ) : PageRepository {
         override fun observePageList(collectiveId: Long): Flow<List<PageListItem>> =
             pageDao
@@ -213,6 +224,61 @@ class PageRepositoryImpl
             } else {
                 Timber.w("Tag lookup failed for collective %d; keeping the cached tags", collectiveId)
                 null
+            }
+        }
+
+        /**
+         * Carry [old]'s local-only state onto the id [moved] came back with —
+         * issue #39.
+         *
+         * `PUT /pages/{id}` can hand a page a *new* Nextcloud file id
+         * (`CollectivesApiService.updatePage`, spec gotcha #16), and both
+         * `renamePage` and `movePage` used to throw the response away and let
+         * `refresh` sort it out. Refresh maps local state onto server pages
+         * strictly by numeric id, so a reissued id arrived as a page with no
+         * history; the old id then looked like a page the server had deleted,
+         * and [cascadeForPages] removed its attachment and edit-queue rows.
+         * A rename could therefore discard a conflict draft, an offline edit
+         * waiting for the network, or the only database pointers to staged
+         * upload bytes — silently, on a operation the user thinks of as
+         * cosmetic.
+         *
+         * One transaction, so the row never exists under both ids and never
+         * under neither. Built from the response rather than `old.copy` so
+         * the title, path and parent are the server's own answer: `refresh`
+         * follows and would correct them, but it needs the network and this
+         * must not depend on it.
+         *
+         * A no-op — the overwhelmingly common case — when the id came back
+         * unchanged.
+         */
+        private suspend fun carryLocalStateToNewId(
+            old: PageEntity,
+            moved: PageDto,
+        ) {
+            if (moved.id == old.id) return
+            Timber.i("Page %d was reissued as %d; carrying local state across", old.id, moved.id)
+            database.withTransaction {
+                pageDao.upsertAll(
+                    listOf(
+                        moved.toEntity(
+                            collectiveId = old.collectiveId,
+                            now = System.currentTimeMillis(),
+                            existingBody = old.bodyMd,
+                            existingEtag = old.bodyEtag,
+                            existingDraft = old.draftBodyMd,
+                            existingTagsCsv = old.tagsCsv,
+                            // B-69: null is "we didn't resolve the tag list",
+                            // which is right — `existingTagsCsv` above is what
+                            // this page's tags are until `refresh` says
+                            // otherwise. An empty map would blank them.
+                            tagNamesById = null,
+                        ),
+                    ),
+                )
+                editQueueDao.repointPage(old.id, moved.id)
+                attachmentRepository.get().rekeyForPage(old.id, moved.id)
+                pageDao.deleteById(old.id)
             }
         }
 
@@ -630,10 +696,10 @@ class PageRepositoryImpl
                 api.updatePage(entity.collectiveId, pageId, mapOf("title" to cleaned))
             }
             if (result is ApiResult.Success) {
+                carryLocalStateToNewId(entity, result.data.ocs.data.page)
                 // Refresh the collective to pick up any cascading filePath
                 // changes on descendants (folder rename moves the whole
-                // directory) and to reconcile if the server changed the
-                // page's id during the move (gotcha #16).
+                // directory) and to reconcile whatever else moved.
                 refresh(entity.collectiveId)
             }
             return result.mapSuccess { }
@@ -887,6 +953,28 @@ class PageRepositoryImpl
             return saveBody(pageId, appendedBody(baseBody, text))
         }
 
+        override suspend fun retargetAttachmentRef(
+            pageId: Long,
+            oldName: String,
+            newName: String,
+        ): SaveOutcome {
+            if (oldName == newName) return SaveOutcome.Saved
+            val entity = pageDao.getById(pageId) ?: return SaveOutcome.Error("Page not cached")
+            // Same precedence as `appendToPage`: a queued edit is the local
+            // truth about this body, the row's cached copy is the server's,
+            // and only a page we have never held the body of needs fetching.
+            // Unlike append, a failure to get one is not worth reporting —
+            // nothing the user did is waiting on it, and the next refresh of
+            // a body that has no local copy will carry the server's own
+            // reference anyway.
+            val baseBody = editQueueDao.pendingBody(pageId)
+                ?: entity.bodyMd
+                ?: return SaveOutcome.Error("Page body not cached")
+            val retargeted = retargetAttachmentRefs(baseBody, pageId, oldName, newName)
+            if (retargeted == baseBody) return SaveOutcome.Saved
+            return saveBody(pageId, retargeted)
+        }
+
         override suspend fun movePage(
             pageId: Long,
             newParentPageId: Long,
@@ -913,6 +1001,7 @@ class PageRepositoryImpl
                 api.updatePage(entity.collectiveId, pageId, mapOf("parentId" to newParentPageId.toString()))
             }
             if (result is ApiResult.Success) {
+                carryLocalStateToNewId(entity, result.data.ocs.data.page)
                 refresh(entity.collectiveId)
             }
             return result.mapSuccess { }

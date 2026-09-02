@@ -398,6 +398,45 @@ class AttachmentRepositoryImpl
             }
         }
 
+        override suspend fun rekeyForPage(
+            oldPageId: Long,
+            newPageId: Long,
+        ) {
+            if (oldPageId == newPageId) return
+            for (row in attachmentDao.listForPage(oldPageId)) {
+                val newKey = AttachmentEntity.key(newPageId, row.fileName)
+                attachmentDao.delete(row.id)
+                // A `REMOTE` row carries no local bytes and the next
+                // PROPFIND rebuilds it anyway, so there is nothing to move
+                // and nothing lost if the move is imperfect. The unfinished
+                // statuses are the ones worth carrying: their staged copy is
+                // the only place those bytes exist.
+                if (row.localUriString == null) {
+                    attachmentDao.upsert(row.copy(id = newKey, pageId = newPageId))
+                    continue
+                }
+                val oldStaged = stagedFileFor(context, row.id)
+                val newStaged = stagedFileFor(context, newKey)
+                if (!oldStaged.exists() || !oldStaged.renameTo(newStaged)) {
+                    // Same posture as `renameForRemoteCollision`: a queued
+                    // row with no bytes behind it only fails again, and now
+                    // in a way the user can't act on.
+                    Timber.w("Couldn't carry the staged copy of %s to page %d", row.id, newPageId)
+                    continue
+                }
+                attachmentDao.upsert(
+                    row.copy(
+                        id = newKey,
+                        pageId = newPageId,
+                        localUriString = Uri.fromFile(newStaged).toString(),
+                        // The server id belonged to a directory addressed by
+                        // the old page id.
+                        serverAttachmentId = null,
+                    ),
+                )
+            }
+        }
+
         override suspend fun downloadForViewing(
             pageId: Long,
             relativePath: String,

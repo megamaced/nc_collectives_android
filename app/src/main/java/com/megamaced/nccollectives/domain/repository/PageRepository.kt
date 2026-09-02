@@ -181,6 +181,22 @@ interface PageRepository {
     ): com.megamaced.nccollectives.domain.model.SaveOutcome
 
     /**
+     * Repoint the page body's references to attachment [oldName] at
+     * [newName] — issue #40.
+     *
+     * Called by `AttachmentUploadWorker` after a `412` forced the upload to a
+     * different filename than the one already written into the markdown.
+     * Goes through the ordinary save path, so an offline device or a
+     * concurrent edit queues or parks exactly as any other body write does,
+     * and a body that never referenced [oldName] is a no-op.
+     */
+    suspend fun retargetAttachmentRef(
+        pageId: Long,
+        oldName: String,
+        newName: String,
+    ): com.megamaced.nccollectives.domain.model.SaveOutcome
+
+    /**
      * Soft-delete a page. Refuses the landing page (parentId == 0); rename
      * the collective instead. On success the local row is dropped from the
      * active list so observers reflect the change immediately.

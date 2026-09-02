@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.util
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -269,5 +270,174 @@ class AttachmentRefsTest {
         // the pre-existing behaviour.
         assertNull(pageDirectoryUrlFrom("https://nc.example/dav/Wiki/"))
         assertNull(pageDirectoryUrlFrom(".attachments.4/"))
+    }
+}
+
+/**
+ * Issue #40: repointing a page body at the filename an upload actually
+ * landed under, after a `412` moved it.
+ */
+class RetargetAttachmentRefsTest {
+    @Test
+    fun `an image embed is repointed`() {
+        assertEquals(
+            "![photo.jpg](photo-1.jpg)",
+            retargetAttachmentRefs("![photo.jpg](photo.jpg)", PAGE_ID, "photo.jpg", "photo-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `the alt text is left exactly as written`() {
+        // It is prose. A caption that happens to equal the filename is still
+        // a caption, and rewriting it would be an edit nobody asked for.
+        assertEquals(
+            "![My holiday photo.jpg](photo-1.jpg)",
+            retargetAttachmentRefs(
+                "![My holiday photo.jpg](photo.jpg)",
+                PAGE_ID,
+                "photo.jpg",
+                "photo-1.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `a plain link is repointed too`() {
+        // A non-image attachment is a link by the time `demoteNonImageEmbeds`
+        // has run, so the refs that need following are not all embeds.
+        assertEquals(
+            "[📄 report.pdf](report-1.pdf)",
+            retargetAttachmentRefs("[📄 report.pdf](report.pdf)", PAGE_ID, "report.pdf", "report-1.pdf"),
+        )
+    }
+
+    @Test
+    fun `a directory-qualified ref keeps naming its directory`() {
+        assertEquals(
+            "![x](.attachments.12/photo-1.jpg)",
+            retargetAttachmentRefs(
+                "![x](.attachments.12/photo.jpg)",
+                PAGE_ID,
+                "photo.jpg",
+                "photo-1.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `a sibling page's attachment directory is followed as written`() {
+        assertEquals(
+            "![x](.attachments.99/photo-1.jpg)",
+            retargetAttachmentRefs(
+                "![x](.attachments.99/photo.jpg)",
+                PAGE_ID,
+                "photo.jpg",
+                "photo-1.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `every occurrence is repointed`() {
+        assertEquals(
+            "![a](photo-1.jpg)\n\ntext\n\n![b](photo-1.jpg)",
+            retargetAttachmentRefs(
+                "![a](photo.jpg)\n\ntext\n\n![b](photo.jpg)",
+                PAGE_ID,
+                "photo.jpg",
+                "photo-1.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `a different attachment is left alone`() {
+        assertEquals(
+            "![a](other.jpg)",
+            retargetAttachmentRefs("![a](other.jpg)", PAGE_ID, "photo.jpg", "photo-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `a wiki page reference is left alone`() {
+        // `parseAttachmentRef` returns null for a page title, so nothing here
+        // is a candidate — a page called `photo.jpg` would be pathological,
+        // and the extension allowlist is what keeps the two apart.
+        assertEquals(
+            "[Some Page](Some Page)",
+            retargetAttachmentRefs("[Some Page](Some Page)", PAGE_ID, "photo.jpg", "photo-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `refs inside a fenced block are left alone`() {
+        val markdown = "```\n![photo.jpg](photo.jpg)\n```\n\n![photo.jpg](photo.jpg)"
+
+        assertEquals(
+            "```\n![photo.jpg](photo.jpg)\n```\n\n![photo.jpg](photo-1.jpg)",
+            retargetAttachmentRefs(markdown, PAGE_ID, "photo.jpg", "photo-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `refs inside inline code are left alone`() {
+        assertEquals(
+            "`![photo.jpg](photo.jpg)` and ![photo.jpg](photo-1.jpg)",
+            retargetAttachmentRefs(
+                "`![photo.jpg](photo.jpg)` and ![photo.jpg](photo.jpg)",
+                PAGE_ID,
+                "photo.jpg",
+                "photo-1.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `a query or fragment on the ref survives`() {
+        assertEquals(
+            "![x](photo-1.jpg?v=2)",
+            retargetAttachmentRefs("![x](photo.jpg?v=2)", PAGE_ID, "photo.jpg", "photo-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `a percent-encoded ref is matched`() {
+        // `parseAttachmentRef` percent-decodes to classify, so a name with a
+        // space still matches — and the replacement takes the whole segment,
+        // so nothing is left half-encoded.
+        assertEquals(
+            "![x](holiday-1.jpg)",
+            retargetAttachmentRefs("![x](holiday%20photo.jpg)", PAGE_ID, "holiday photo.jpg", "holiday-1.jpg"),
+        )
+    }
+
+    @Test
+    fun `an absolute url is left alone`() {
+        // Not a page attachment, and repointing it would be meddling with
+        // someone else's resource.
+        val markdown = "![x](https://example.test/photo.jpg)"
+
+        assertEquals(markdown, retargetAttachmentRefs(markdown, PAGE_ID, "photo.jpg", "photo-1.jpg"))
+    }
+
+    @Test
+    fun `a no-op rename returns the body unchanged and identical`() {
+        val markdown = "![photo.jpg](photo.jpg)"
+
+        assertSame(markdown, retargetAttachmentRefs(markdown, PAGE_ID, "photo.jpg", "photo.jpg"))
+    }
+
+    @Test
+    fun `a traversal attempt is not followed`() {
+        // S-14′ posture: `parseAttachmentRef` refuses a `..` segment outright
+        // rather than sanitising it into something plausible, so there is
+        // nothing here to repoint.
+        val markdown = "![x](../../photo.jpg)"
+
+        assertEquals(markdown, retargetAttachmentRefs(markdown, PAGE_ID, "photo.jpg", "photo-1.jpg"))
+    }
+
+    private companion object {
+        const val PAGE_ID = 12L
     }
 }

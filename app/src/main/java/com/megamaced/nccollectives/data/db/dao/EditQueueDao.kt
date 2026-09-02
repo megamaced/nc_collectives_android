@@ -65,6 +65,20 @@ interface EditQueueDao {
     @Query("UPDATE edit_queue SET status = 'IN_FLIGHT', attempts = attempts + 1 WHERE pageId = :pageId")
     suspend fun markInFlight(pageId: Long)
 
+    /**
+     * Move a queued edit onto a new page id — issue #39, where a rename or
+     * move made Nextcloud reissue the page's file id and the row would
+     * otherwise have been cascaded away as belonging to a page that no longer
+     * exists.
+     *
+     * `pageId` is the primary key (B-41), so this is the whole rekey.
+     */
+    @Query("UPDATE edit_queue SET pageId = :newPageId WHERE pageId = :oldPageId")
+    suspend fun repointPage(
+        oldPageId: Long,
+        newPageId: Long,
+    )
+
     @Query("UPDATE edit_queue SET status = :status WHERE pageId = :pageId")
     suspend fun setStatus(
         pageId: Long,

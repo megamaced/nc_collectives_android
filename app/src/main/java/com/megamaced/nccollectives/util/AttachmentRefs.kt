@@ -181,6 +181,72 @@ fun demoteNonImageEmbeds(markdown: String): String =
         "[$FILE_GLYPH $alt]($target$trailing)"
     }
 
+/**
+ * Repoint every reference to [oldName] in [markdown] at [newName] — the
+ * markdown half of issue #40.
+ *
+ * `enqueueUpload` resolves an attachment's filename against the *local*
+ * table and hands it straight back, and `ShareCaptureViewModel` commits that
+ * name into the page body immediately. Issue #24's overwrite protection then
+ * introduced a second, later naming decision: a `412` from
+ * `If-None-Match: *` means the name was taken on the server after all, and
+ * `renameForRemoteCollision` moves the row and its staged bytes to the next
+ * free one. Nothing rewrote the body, so the page was left pointing at
+ * `photo.jpg` — *the other client's* `photo.jpg` — while the user's upload
+ * landed at `photo-1.jpg` and was referenced by nothing.
+ *
+ * Matches both shapes [parseAttachmentRef] recognises, and both embeds and
+ * links, because a non-image attachment is a link by the time
+ * [demoteNonImageEmbeds] has run and Nextcloud Text writes the qualified
+ * shape directly. Only the last path segment is replaced, so a qualified ref
+ * keeps naming the directory it named. Fence and inline-code regions are
+ * skipped by the usual alternation (B-4), and the alt text / label is left
+ * exactly as written: it is prose, and rewriting a caption that happens to
+ * equal the filename would be an edit the user did not ask for.
+ */
+fun retargetAttachmentRefs(
+    markdown: String,
+    pageId: Long,
+    oldName: String,
+    newName: String,
+): String {
+    if (oldName == newName || oldName.isEmpty()) return markdown
+    return REF_TARGET_PATTERN.replace(markdown) { match ->
+        val target = match.groups["target"]?.value
+        if (match.groups["ref"] == null || target == null) return@replace match.value
+        val parsed = parseAttachmentRef(target, pageId) ?: return@replace match.value
+        if (parsed.fileName != oldName) return@replace match.value
+        val bang = match.groups["bang"]?.value.orEmpty()
+        val label = match.groups["label"]?.value.orEmpty()
+        val trailing = match.groups["trailing"]?.value.orEmpty()
+        "$bang[$label](${target.replaceLastSegment(newName)}$trailing)"
+    }
+}
+
+/**
+ * Swap the final path segment of a markdown target for [replacement],
+ * preserving any directory prefix and any `?query` / `#fragment` the ref
+ * carried — [parseAttachmentRef] strips those to classify, and dropping them
+ * here would silently change the ref.
+ */
+private fun String.replaceLastSegment(replacement: String): String {
+    val suffixStart = indexOfFirst { it == '?' || it == '#' }
+    val path = if (suffixStart >= 0) substring(0, suffixStart) else this
+    val suffix = if (suffixStart >= 0) substring(suffixStart) else ""
+    val cut = path.lastIndexOf('/')
+    return if (cut < 0) replacement + suffix else path.substring(0, cut + 1) + replacement + suffix
+}
+
+// As `EMBED_PATTERN`, but matching links as well as embeds — a non-image
+// attachment reaches the body as `[📄 name](name)`, and issue #40 has to
+// follow those too.
+private val REF_TARGET_PATTERN = Regex(
+    "(?s)" +
+        "(?<fence>```.*?```|~~~.*?~~~)" +
+        "|(?<code>`[^`\\n]+`)" +
+        "|(?<ref>(?<bang>!?)\\[(?<label>[^\\]]*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
+)
+
 private fun fileNameOf(target: String): String =
     target
         .substringBefore('#')
