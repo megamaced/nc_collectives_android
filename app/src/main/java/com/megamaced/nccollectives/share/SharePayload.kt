@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import java.util.UUID
 
 /**
@@ -36,7 +37,28 @@ data class SharePayload(
 ) {
     val isEmpty: Boolean get() = text.isNullOrBlank() && images.isEmpty()
 
+    /**
+     * Save this payload into an Activity's saved instance state so it can
+     * outlive the process — issue #42.
+     *
+     * Written as primitives rather than as a `Parcelable` so the bundle's
+     * contents stay legible to anything reading a bug report, and so adding
+     * a field to this class cannot silently change what an old bundle
+     * deserialises to.
+     */
+    fun writeTo(state: Bundle) {
+        state.putString(KEY_ID, id)
+        state.putString(KEY_SUBJECT, subject)
+        state.putString(KEY_TEXT, text)
+        state.putStringArrayList(KEY_IMAGES, ArrayList(images.map(Uri::toString)))
+    }
+
     companion object {
+        private const val KEY_ID = "com.megamaced.nccollectives.PENDING_SHARE_ID"
+        private const val KEY_SUBJECT = "com.megamaced.nccollectives.PENDING_SHARE_SUBJECT"
+        private const val KEY_TEXT = "com.megamaced.nccollectives.PENDING_SHARE_TEXT"
+        private const val KEY_IMAGES = "com.megamaced.nccollectives.PENDING_SHARE_IMAGES"
+
         @Suppress("DEPRECATION")
         fun fromIntent(intent: Intent): SharePayload? {
             val action = intent.action ?: return null
@@ -80,6 +102,35 @@ data class SharePayload(
             // defence; this is the second.
             val combined = (images + clipImages).filter { it.scheme == "content" }
             val payload = SharePayload(subject = subject, text = text, images = combined)
+            return payload.takeUnless { it.isEmpty }
+        }
+
+        /**
+         * Read back what [writeTo] saved, or null when the bundle holds no
+         * pending share — issue #42.
+         *
+         * The payload's own [id] is restored rather than regenerated, so a
+         * share recovered after process death is still the *same* share as
+         * far as `SharePayloadHolder.consume` and the scaffold's identity
+         * keying are concerned.
+         *
+         * S-11 is re-asserted rather than assumed: the URIs went out as
+         * strings and come back as strings, and the invariant that keeps
+         * `file://` paths out of the upload pipeline is worth restating at
+         * every boundary they cross.
+         */
+        fun fromSavedState(state: Bundle): SharePayload? {
+            val id = state.getString(KEY_ID) ?: return null
+            val payload = SharePayload(
+                subject = state.getString(KEY_SUBJECT),
+                text = state.getString(KEY_TEXT),
+                images = state
+                    .getStringArrayList(KEY_IMAGES)
+                    .orEmpty()
+                    .map(Uri::parse)
+                    .filter { it.scheme == "content" },
+                id = id,
+            )
             return payload.takeUnless { it.isEmpty }
         }
 

@@ -38,7 +38,11 @@ class MainActivity : ComponentActivity() {
         // already on the server, and tapping Create made a duplicate page.
         // A non-null `savedInstanceState` is exactly "this is a recreation,
         // not a new share".
-        if (savedInstanceState == null) publishShareIfPresent(intent)
+        if (savedInstanceState == null) {
+            publishShareIfPresent(intent)
+        } else {
+            restoreUnfinishedShare(savedInstanceState)
+        }
         setContent {
             val prefs by userPreferences.flow.collectAsStateWithLifecycle(initialValue = UserPrefs())
             NcCollectivesTheme(themeMode = prefs.themeMode, textScale = prefs.textScale) {
@@ -51,6 +55,46 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         publishShareIfPresent(intent)
+    }
+
+    /**
+     * Carry an *unfinished* share across process death — issue #42.
+     *
+     * [SharePayloadHolder] is process-local, and B-74's `savedInstanceState`
+     * gate turned that into data loss rather than merely a cold start: when
+     * Android reclaims the background process while capture, destination
+     * selection, or the login browser is foreground, the task is restored
+     * with a non-null saved state, so nothing republishes — and the marker
+     * extra that would have permitted it does not survive either, because
+     * `putExtra` mutates this process's copy of the intent while the system
+     * re-delivers its own. The user's text and images were still sitting in
+     * the restored intent, unreachable.
+     *
+     * What goes into the bundle is the payload the holder is *still* holding,
+     * which is what keeps B-74 fixed: `ShareCaptureViewModel` calls
+     * `consume` once the content is on the server, so a finished share
+     * leaves nothing to write and nothing to replay. A share still in the
+     * holder is by definition one the user has not finished with.
+     *
+     * The payload's own id is preserved rather than re-derived from the
+     * intent, so `consume(payloadId)` and the scaffold's identity keying
+     * still see one share rather than two.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        sharePayloadHolder.payload.value?.writeTo(outState)
+    }
+
+    private fun restoreUnfinishedShare(savedInstanceState: Bundle) {
+        // Non-empty in the same process (rotation, theme change), where the
+        // singleton outlived the activity and the payload never went
+        // anywhere. Only a genuine process restart leaves it empty.
+        if (sharePayloadHolder.payload.value != null) return
+        // The task still holds the URI grants that came with the original
+        // intent, so the images stay readable; a grant that has gone is
+        // handled downstream by the staging copy, which drops what it cannot
+        // read and says so (issue #31).
+        SharePayload.fromSavedState(savedInstanceState)?.let(sharePayloadHolder::publish)
     }
 
     /**
