@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -385,13 +386,43 @@ class PageBodyService
         }
 
         /**
-         * B-40: strip RFC 7232 weak-validator prefix and surrounding quotes
-         * so a server emitting weak ETags (`W/"abc"`) round-trips through
-         * `If-Match` against the same value's strong form (`"abc"`) without
-         * a phantom 412. Nextcloud's behind a mix of Apache configs in the
-         * wild — some emit weak, some strong, sometimes for the same file.
+         * B-40: strip the RFC 9110 weak-validator prefix and surrounding
+         * quotes, so what is stored is the opaque tag and every header this
+         * class writes re-quotes it as a strong validator.
+         *
+         * Issue #34 argues this is invalid validator handling, and on the
+         * letter of the RFC it is: `W/"abc"` and `"abc"` are unequal under
+         * the strong comparison `If-Match` requires, so an origin whose *own*
+         * ETag is weak must reject `If-Match: "abc"`. Deliberately kept
+         * anyway, because the case B-40 was written for is the other one —
+         * a proxy weakening the header on the way out while the origin's
+         * stored ETag stays strong, which is what "a mix of Apache configs in
+         * the wild, some emitting weak, some strong, sometimes for the same
+         * file" meant. There, stripping is what makes the save work, and
+         * sending `W/"abc"` verbatim would 412 every time.
+         *
+         * The client cannot tell the two apart from a response header. And
+         * against an origin that really holds a weak validator, neither form
+         * can strong-compare, so no `If-Match` value saves: the choice is
+         * this 412 — which routes into the conflict branch, keeps the user's
+         * text as a draft and offers "Replace with my draft" — or a blind
+         * write with no precondition, which B-61 refuses. Closing it properly
+         * means the queue row remembering the body the edit was based on, the
+         * same schema change B-61 identified.
+         *
+         * What is worth doing is not hiding it: a weak validator is logged,
+         * so "every save on my server conflicts" is diagnosable from a log
+         * rather than only from a packet capture.
          */
-        private fun normaliseEtag(raw: String?): String? = raw?.removePrefix("W/")?.trim('"')
+        private fun normaliseEtag(raw: String?): String? {
+            if (raw != null && raw.trimStart().startsWith("W/")) {
+                Timber.d(
+                    "Server sent a weak ETag (%s); If-Match cannot guarantee lost-update prevention against it",
+                    raw,
+                )
+            }
+            return raw?.removePrefix("W/")?.trim('"')
+        }
 
         private companion object {
             const val MARKDOWN = "text/markdown; charset=utf-8"
