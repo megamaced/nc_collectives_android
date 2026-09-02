@@ -9,6 +9,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
@@ -128,8 +129,14 @@ class AttachmentRepositoryImpl
                     ApiResult.Success(Unit)
                 }
 
+                // Issue #26: `mapSuccess` rather than the hand-rolled
+                // `mapNonSuccess` this used to call. That function spelled
+                // out all six arms including an `is ApiResult.Success` one
+                // that could never run, since this is the `else` of a `when`
+                // whose first arm already took `Success` — and re-typing a
+                // failure is exactly what `mapSuccess` does.
                 else -> {
-                    mapNonSuccess(result)
+                    result.mapSuccess { }
                 }
             }
         }
@@ -325,29 +332,6 @@ class AttachmentRepositoryImpl
             }
         }
 
-        override suspend fun urlFor(
-            pageId: Long,
-            fileName: String,
-        ): String? {
-            val page = pageDao.getById(pageId) ?: return null
-            val dir = attachmentsDirectoryFor(pageId)
-            // `resourceUrl` throws on a segment that fails validation or when
-            // credentials have gone (sign-out racing an open screen). Both
-            // read as "no URL for this attachment" — the nullable return the
-            // callers already handle — not as a reason to crash the caller's
-            // scope, which is what an escaping IllegalStateException did.
-            // Matches [remoteUrlFor]'s deliberate non-throwing contract.
-            return try {
-                bodyService.resourceUrl(
-                    collectivePath = page.collectivePath,
-                    filePath = combinePath(page.filePath, dir),
-                    fileName = fileName,
-                )
-            } catch (_: Exception) {
-                null
-            }
-        }
-
         override suspend fun downloadForViewing(
             pageId: Long,
             relativePath: String,
@@ -505,16 +489,6 @@ class AttachmentRepositoryImpl
                 MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
             }
         }
-
-        private fun mapNonSuccess(result: ApiResult<*>): ApiResult<Unit> =
-            when (result) {
-                is ApiResult.Success -> ApiResult.Success(Unit)
-                is ApiResult.NetworkError -> result
-                is ApiResult.HttpError -> result
-                ApiResult.Unauthorised -> ApiResult.Unauthorised
-                ApiResult.Conflict -> ApiResult.Conflict
-                is ApiResult.Unexpected -> result
-            }
 
         companion object {
             /** Nextcloud Collectives stores per-page attachments here. */

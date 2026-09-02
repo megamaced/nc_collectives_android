@@ -33,9 +33,16 @@ data class LoginFlowResult(
     val appPassword: String,
 )
 
+/**
+ * A terminal outcome of the login poll.
+ *
+ * Issue #26: there used to be a `Polling` member too, which `poll()` never
+ * returned — it only ever answers when the flow has finished one way or the
+ * other. `LoginViewModel` carried a `when` arm for it whose own comment said
+ * "Unreachable", so the state machine read as wider than it was. In-progress
+ * polling is `LoginUiState.isPolling`, which is where the UI needs it.
+ */
 sealed interface LoginFlowStatus {
-    data object Polling : LoginFlowStatus
-
     data class Success(
         val result: LoginFlowResult,
     ) : LoginFlowStatus

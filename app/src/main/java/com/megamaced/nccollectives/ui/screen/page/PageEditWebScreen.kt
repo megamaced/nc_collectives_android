@@ -1,7 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.page
 
 import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -17,7 +16,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +60,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.ui.attachment.openInBrowser
+import com.megamaced.nccollectives.ui.attachment.openWithSystemHandler
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import kotlinx.coroutines.delay
 import timber.log.Timber
@@ -883,14 +883,13 @@ private fun openExternalLink(
         Timber.tag(TAG).d("Refusing to hand scheme '%s' to the system", scheme)
         return
     }
-    try {
-        if (scheme == "http" || scheme == "https") {
-            CustomTabsIntent.Builder().build().launchUrl(context, uri)
-        } else {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-    } catch (e: ActivityNotFoundException) {
-        Timber.tag(TAG).w(e, "No handler for in-editor link: %s", uri)
+    val opened = if (scheme == "http" || scheme == "https") {
+        openInBrowser(context, uri)
+    } else {
+        openWithSystemHandler(context, uri)
+    }
+    if (!opened) {
+        Timber.tag(TAG).w("No handler for in-editor link: %s", uri)
     }
 }
 

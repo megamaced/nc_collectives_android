@@ -78,9 +78,8 @@ sealed interface ManualCheckResult {
 }
 
 /**
- * Loosely-parsed semver triple. Strips an optional leading `v` and any
- * `-something` / `+something` suffix, then compares numerically. Returns
- * `null` if the tag doesn't have at least one numeric component.
+ * A parsed semver triple. Strips an optional leading `v` and any
+ * `-prerelease` / `+build` suffix, then compares numerically.
  */
 internal data class SemVer(
     val major: Int,
@@ -90,14 +89,33 @@ internal data class SemVer(
     override fun compareTo(other: SemVer): Int = compareValuesBy(this, other, SemVer::major, SemVer::minor, SemVer::patch)
 }
 
+/**
+ * One to three wholly numeric dot-separated components, or null.
+ *
+ * Issue #26: the previous `split('.').mapNotNull { it.toIntOrNull() }`
+ * *dropped* the components it couldn't parse rather than rejecting the
+ * input, so `1.foo.3` parsed as `1.3.0` and `foo.2` as `2.0.0` — both
+ * contradicting the numeric contract and both comparing wrongly against the
+ * installed version. Low severity because the input is the GitHub Releases
+ * API reporting this project's own tags, which are well-formed; the point is
+ * that a malformed one should now fail the check rather than misreport it.
+ *
+ * Missing trailing components still default to zero — `2.11` is `2.11.0`,
+ * which is how the tags are written — but a component that is *present* has
+ * to be a number. An overflowing component is a non-number as far as
+ * `toIntOrNull` is concerned, so it is rejected rather than silently
+ * truncated.
+ */
 internal fun parseSemVer(raw: String): SemVer? {
     val trimmed = raw.trim().removePrefix("v").removePrefix("V")
     val core = trimmed.substringBefore('-').substringBefore('+')
-    val parts = core.split('.').mapNotNull { it.toIntOrNull() }
-    if (parts.isEmpty()) return null
+    val parts = core.split('.')
+    if (parts.isEmpty() || parts.size > 3) return null
+    val numbers = parts.map { it.toIntOrNull() ?: return null }
+    if (numbers.any { it < 0 }) return null
     return SemVer(
-        major = parts.getOrElse(0) { 0 },
-        minor = parts.getOrElse(1) { 0 },
-        patch = parts.getOrElse(2) { 0 },
+        major = numbers[0],
+        minor = numbers.getOrElse(1) { 0 },
+        patch = numbers.getOrElse(2) { 0 },
     )
 }

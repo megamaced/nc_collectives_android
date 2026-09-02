@@ -139,10 +139,6 @@ class LoginViewModel
                             it.copy(isPolling = false, error = status.message)
                         }
                     }
-
-                    LoginFlowStatus.Polling -> {
-                        // Unreachable: poll() only returns terminal states.
-                    }
                 }
             }
         }

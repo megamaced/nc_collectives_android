@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.components
 import android.text.method.LinkMovementMethod
 import android.text.util.Linkify
 import android.widget.TextView
+import android.widget.Toast
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -232,6 +233,18 @@ fun MarkdownView(
                                 pageId = pageIdLatest,
                                 onWikiLink = onWikiLinkLatest,
                                 onAttachmentLink = onAttachmentLinkLatest,
+                                // Issue #26: a device with no enabled
+                                // browser used to throw out of the tap
+                                // handler. A Toast rather than a snackbar
+                                // because this composable is used across
+                                // screens and has no host to post to — and
+                                // saying nothing is the silent-tap failure
+                                // the attachment path exists to remove.
+                                onNoBrowser = {
+                                    Toast
+                                        .makeText(context, "No browser app to open this link", Toast.LENGTH_SHORT)
+                                        .show()
+                                },
                             )
                         }
                     }

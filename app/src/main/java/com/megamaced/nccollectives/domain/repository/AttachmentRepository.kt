@@ -76,12 +76,6 @@ interface AttachmentRepository {
         fileName: String,
     ): String?
 
-    /** Build the WebDAV URL Coil should hit for this attachment. */
-    suspend fun urlFor(
-        pageId: Long,
-        fileName: String,
-    ): String?
-
     /**
      * Download the attachment at [relativePath] (relative to [pageId]'s own
      * directory, e.g. `.attachments.12/report.pdf`) into the app cache and

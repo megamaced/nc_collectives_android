@@ -2,7 +2,7 @@ package com.megamaced.nccollectives.util
 
 import android.content.Context
 import android.net.Uri
-import androidx.browser.customtabs.CustomTabsIntent
+import com.megamaced.nccollectives.ui.attachment.openInBrowser
 import timber.log.Timber
 import java.net.URLDecoder
 
@@ -24,7 +24,8 @@ import java.net.URLDecoder
  * `.md`, and URL-encoding are stripped before the callback fires.
  *
  * [pageId] is the page being rendered; it is what a bare-filename
- * attachment target resolves against.
+ * attachment target resolves against. [onNoBrowser] fires when there is no
+ * browser to hand an external link to.
  */
 fun handleMarkdownLink(
     context: Context,
@@ -32,13 +33,18 @@ fun handleMarkdownLink(
     pageId: Long?,
     onWikiLink: (String) -> Unit,
     onAttachmentLink: (AttachmentRef) -> Unit,
+    onNoBrowser: () -> Unit = {},
 ) {
     val uri = runCatching { Uri.parse(url) }.getOrNull()
     val scheme = uri?.scheme?.lowercase()
     when (scheme) {
         "http", "https" -> {
             checkNotNull(uri)
-            CustomTabsIntent.Builder().build().launchUrl(context, uri)
+            // Issue #26: a device with no enabled browser throws out of the
+            // launch, which used to propagate out of the tap handler and
+            // crash. `onNoBrowser` defaults to doing nothing so callers with
+            // nowhere to put a message aren't forced to invent one.
+            if (!openInBrowser(context, uri)) onNoBrowser()
         }
 
         null -> {

@@ -3,6 +3,8 @@ package com.megamaced.nccollectives.ui.attachment
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import timber.log.Timber
 
@@ -34,3 +36,44 @@ fun openAttachmentExternally(
         false
     }
 }
+
+/**
+ * Opens [uri] in a Custom Tab, and says whether anything took it.
+ *
+ * Issue #26: a device with no enabled browser — routine in managed and kiosk
+ * deployments — throws `ActivityNotFoundException` out of `launchUrl`. Two of
+ * the three places that hand a URI to the system already caught it; the
+ * markdown link handler didn't, so tapping an external link there crashed
+ * out of the tap handler. The inconsistency is the tell: it was missed, not
+ * decided.
+ *
+ * Returning false rather than throwing keeps the caller's choice about what
+ * the user sees, which is the same shape [openAttachmentExternally] uses.
+ */
+fun openInBrowser(
+    context: Context,
+    uri: Uri,
+): Boolean =
+    try {
+        CustomTabsIntent.Builder().build().launchUrl(context, uri)
+        true
+    } catch (e: ActivityNotFoundException) {
+        Timber.w(e, "No browser on this device to open %s", uri)
+        false
+    }
+
+/**
+ * Opens [uri] with whatever app claims it, and says whether one did. The
+ * non-http(s) sibling of [openInBrowser]; same reasoning (issue #26).
+ */
+fun openWithSystemHandler(
+    context: Context,
+    uri: Uri,
+): Boolean =
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: ActivityNotFoundException) {
+        Timber.w(e, "No handler on this device for %s", uri)
+        false
+    }
