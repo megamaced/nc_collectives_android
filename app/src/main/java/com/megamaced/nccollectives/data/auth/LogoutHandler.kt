@@ -49,7 +49,7 @@ class LogoutHandler
             // still be sitting in the process-wide singleton when user B
             // signs in on the same install, and would pop the share UI
             // with user A's payload targeting user B's Nextcloud.
-            sharePayloadHolder.consume()
+            sharePayloadHolder.discard()
             scope.launch {
                 localDataWiper.wipe(keepDevicePreferences = false)
                 sessionManager.endSignOut()

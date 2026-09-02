@@ -211,7 +211,7 @@ class AccountSwitcher
             // S-16, restated for switching: a share intent captured against
             // the outgoing account must not be replayed into the incoming
             // one's Nextcloud.
-            sharePayloadHolder.consume()
+            sharePayloadHolder.discard()
         }
 
         private fun finishSwitch() {

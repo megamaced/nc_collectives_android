@@ -29,6 +29,22 @@ import javax.inject.Inject
 
 enum class ShareMode { NEW_PAGE, APPEND }
 
+/**
+ * A capture that created its page but didn't finish writing the markdown
+ * references to the images it staged (issue #25).
+ *
+ * Creating a page from a share is several commits with no shared operation
+ * identity — create the page, save its body, stage the images, append the
+ * refs — so a failure part-way leaves work behind that a retry has to
+ * *resume*. Without this the retry called `createPage` again and made a
+ * second page on the server, with the first still there holding the text.
+ */
+data class PartialCreate(
+    val pageId: Long,
+    val pageTitle: String,
+    val imageRefs: String,
+)
+
 data class ShareCaptureUiState(
     val payload: SharePayload? = null,
     val mode: ShareMode = ShareMode.NEW_PAGE,
@@ -40,6 +56,8 @@ data class ShareCaptureUiState(
     val finished: Boolean = false,
     val finishedMessage: String? = null,
     val errorMessage: String? = null,
+    /** Set when a create got as far as the page but not its image refs. */
+    val partialCreate: PartialCreate? = null,
 )
 
 @HiltViewModel
@@ -86,11 +104,16 @@ class ShareCaptureViewModel
                         } else {
                             // New content: the derived title goes back to the
                             // new payload's default rather than keeping a title
-                            // the user typed for something else.
+                            // the user typed for something else, and any
+                            // half-finished create belongs to the payload
+                            // that is being replaced (issue #25) — resuming
+                            // it would append this share's images to the
+                            // previous share's page.
                             state.copy(
                                 payload = payload,
                                 title = defaultTitle(payload),
                                 errorMessage = null,
+                                partialCreate = null,
                             )
                         }
                     }
@@ -157,6 +180,7 @@ class ShareCaptureViewModel
                         parentId = state.selectedParentPageId,
                         payload = payload,
                         title = state.title,
+                        resume = state.partialCreate,
                     )
 
                     ShareMode.APPEND -> handleAppend(
@@ -172,7 +196,16 @@ class ShareCaptureViewModel
             parentId: Long?,
             payload: SharePayload,
             title: String,
+            resume: PartialCreate?,
         ) {
+            // Issue #25: the page and the staged images already exist from
+            // the attempt that failed; all that is left is the append. Going
+            // back through `createPage` would make a second page and
+            // `queueImages` would stage a second copy of every image.
+            if (resume != null) {
+                finishCreate(payload = payload, created = resume)
+                return
+            }
             if (parentId == null) {
                 _uiState.update { it.copy(isSaving = false, errorMessage = "Pick a parent page first") }
                 return
@@ -189,15 +222,61 @@ class ShareCaptureViewModel
             // If any image actually staged, append their markdown refs using
             // the resolved (collision-resolved, sanitised) filenames returned
             // by enqueueUpload — B-30/R-39 + S-13.
-            if (resolvedNames.isNotEmpty()) {
-                pageRepository.appendToPage(newPage.id, imageRefMarkdown(resolvedNames))
+            //
+            // Issue #25: the outcome is read now. It used to be discarded,
+            // so a page whose image references were never saved reported a
+            // clean capture — the images staged and uploading, and nothing in
+            // the body pointing at them.
+            finishCreate(
+                payload = payload,
+                created = PartialCreate(
+                    pageId = newPage.id,
+                    pageTitle = newPage.title,
+                    imageRefs = if (resolvedNames.isEmpty()) "" else imageRefMarkdown(resolvedNames),
+                ),
+            )
+        }
+
+        /**
+         * The last commit of a create: put the staged images' markdown
+         * references into the page body, and report.
+         *
+         * Split out so a retry can re-enter here. Issue #25: the outcome is
+         * read now — it used to be discarded, so a page whose image
+         * references were never saved reported a clean capture, with the
+         * images uploading and nothing in the body pointing at them.
+         */
+        private suspend fun finishCreate(
+            payload: SharePayload,
+            created: PartialCreate,
+        ) {
+            val refsOutcome = if (created.imageRefs.isEmpty()) {
+                SaveOutcome.Saved
+            } else {
+                pageRepository.appendToPage(created.pageId, created.imageRefs)
             }
-            sharePayloadHolder.consume()
+            if (refsOutcome is SaveOutcome.Error) {
+                // The page and its text are saved and the images are queued;
+                // only the references failed. Say so rather than reporting
+                // success, keep the payload, and remember what has already
+                // happened so a retry finishes this page instead of making
+                // another one.
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        errorMessage = savedMessage(created.pageTitle, refsOutcome),
+                        partialCreate = created,
+                    )
+                }
+                return
+            }
+            sharePayloadHolder.consume(payload.id)
             _uiState.update {
                 it.copy(
                     isSaving = false,
                     finished = true,
-                    finishedMessage = "Saved as \"${newPage.title}\"",
+                    finishedMessage = savedMessage(created.pageTitle, refsOutcome),
+                    partialCreate = null,
                 )
             }
         }
@@ -226,7 +305,7 @@ class ShareCaptureViewModel
                 is SaveOutcome.Error -> null
             }
             val error = (outcome as? SaveOutcome.Error)?.message
-            if (error == null) sharePayloadHolder.consume()
+            if (error == null) sharePayloadHolder.consume(payload.id)
             _uiState.update {
                 it.copy(
                     isSaving = false,
@@ -278,4 +357,25 @@ class ShareCaptureViewModel
             }
             return "Shared note"
         }
+    }
+
+/**
+ * What to tell the user after a share created a page.
+ *
+ * Issue #25: a capture whose image references only reached the edit queue is
+ * a success — the offline design working — but it is not the same success as
+ * one already on the server, and reporting it as though it were is how a
+ * partial result passes for a clean one. The other two arms cannot come from
+ * a page created seconds ago on this device, and are spelled out rather than
+ * folded into an `else` so a change to `SaveOutcome` has to come back here.
+ */
+internal fun savedMessage(
+    title: String,
+    refsOutcome: SaveOutcome,
+): String =
+    when (refsOutcome) {
+        SaveOutcome.Saved -> "Saved as \"$title\""
+        SaveOutcome.Queued -> "Saved as \"$title\" (image links will sync when online)"
+        SaveOutcome.Conflict -> "Saved as \"$title\"; the image links are waiting as a draft"
+        is SaveOutcome.Error -> "Saved as \"$title\", but the image links didn't: ${refsOutcome.message}"
     }

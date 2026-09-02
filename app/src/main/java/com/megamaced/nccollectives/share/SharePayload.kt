@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import java.util.UUID
 
 /**
  * Parsed `ACTION_SEND` / `ACTION_SEND_MULTIPLE` content the user fed in
@@ -15,6 +16,23 @@ data class SharePayload(
     val subject: String? = null,
     val text: String? = null,
     val images: List<Uri> = emptyList(),
+    /**
+     * Identity of this share, distinct from its content (issue #25).
+     *
+     * Two things need it. `SharePayloadHolder.consume` takes it so a save
+     * finishing can only clear the payload it was actually handling —
+     * unconditionally nulling the field meant a share arriving while an
+     * earlier one was still saving was discarded by that earlier one's
+     * completion. And B-80's identity keying in `NcCollectivesScaffold`
+     * only re-fires on a payload that isn't `==` the last one, so without
+     * an id two shares of the same text were indistinguishable and the
+     * second was dropped before anything noticed it.
+     *
+     * Fresh per construction, and preserved by `copy`, which is what makes
+     * a re-emission of the same payload compare equal while a genuinely new
+     * share never does.
+     */
+    val id: String = UUID.randomUUID().toString(),
 ) {
     val isEmpty: Boolean get() = text.isNullOrBlank() && images.isEmpty()
 

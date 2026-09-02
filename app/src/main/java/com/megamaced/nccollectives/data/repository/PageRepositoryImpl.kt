@@ -691,26 +691,26 @@ class PageRepositoryImpl
                 ),
             )
             refresh(collectiveId)
-            // If the caller supplied an initial body, WebDAV PUT it to the
-            // new page's path. OCS POST creates an empty page; body content
-            // is set via the file in the user's Files area. Failure here
-            // doesn't unwind the create — the page exists and the user can
-            // edit it. We just surface the failure so they know the body
-            // didn't land.
+            // The OCS POST creates an empty page; its markdown is a separate
+            // WebDAV write. Issue #25: that write goes through `saveBody`
+            // now, so a failure *queues* the body instead of being handed
+            // back as an error.
+            //
+            // The old shape returned only the error and dropped the created
+            // page's id with it, so the caller — a share capture, typically
+            // — had a page on the server it could no longer name, and its
+            // retry created a second one. Queueing means the body is
+            // durably the user's, `EditFlushWorker` carries it, and the
+            // caller gets the page either way. It also gives the initial
+            // body the same offline story every other save in the app has.
             if (body.isNotEmpty()) {
-                val bodyResult = bodyService.uploadFile(
-                    collectivePath = createdDto.collectivePath,
-                    filePath = createdDto.filePath,
-                    fileName = createdDto.fileName,
-                    body = body.toRequestBody("text/markdown; charset=utf-8".toMediaType()),
-                )
-                when (bodyResult) {
-                    is ApiResult.Success -> Unit
-                    is ApiResult.NetworkError -> return bodyResult
-                    is ApiResult.HttpError -> return bodyResult
-                    ApiResult.Unauthorised -> return ApiResult.Unauthorised
-                    ApiResult.Conflict -> return ApiResult.Conflict
-                    is ApiResult.Unexpected -> return bodyResult
+                when (val outcome = saveBody(createdDto.id, body)) {
+                    SaveOutcome.Saved, SaveOutcome.Queued, SaveOutcome.Conflict -> Unit
+
+                    // Pathological rather than a failed write: the row was
+                    // upserted above, so this is "the page vanished from the
+                    // cache", which the check below reports anyway.
+                    is SaveOutcome.Error -> Timber.w("Initial body for page %d: %s", createdDto.id, outcome.message)
                 }
             }
             val saved = pageDao.getById(createdDto.id)

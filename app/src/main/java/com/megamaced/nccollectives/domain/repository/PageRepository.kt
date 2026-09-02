@@ -148,9 +148,15 @@ interface PageRepository {
     /**
      * Create a new page under [parentPageId]. The server handles
      * filesystem naming, indexing, and leaf-to-folder promotion of the
-     * parent atomically (Batch 18h, OCS-1). If [body] is non-empty it's
-     * written as the new page's markdown via WebDAV after the OCS POST
-     * succeeds. Returns the resolved domain page on success.
+     * parent atomically (Batch 18h, OCS-1).
+     *
+     * If [body] is non-empty it is written as the new page's markdown after
+     * the OCS POST succeeds — through the ordinary save path, so a write
+     * that can't reach the server is queued rather than lost. A success
+     * therefore means "the page exists and its body is durably local", not
+     * "the body is on the server" (issue #25). Only the *create* failing is
+     * reported as an error, because that is the only failure where there is
+     * no page to hand back.
      */
     suspend fun createPage(
         collectiveId: Long,
