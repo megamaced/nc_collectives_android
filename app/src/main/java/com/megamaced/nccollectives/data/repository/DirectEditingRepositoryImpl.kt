@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,27 +22,44 @@ class DirectEditingRepositoryImpl
         private val service: DirectEditingService,
         private val tokenStore: TokenStore,
     ) : DirectEditingRepository {
-        // Process-lifetime memoisation. The capability response only
-        // changes when the admin installs / removes the Text app, which
-        // we don't need to react to mid-session. `Mutex` so concurrent
-        // first-touches don't race on the network call.
-        @Volatile private var cachedAvailable: Boolean? = null
+        /**
+         * The last verdict, and the account it was about.
+         *
+         * Issue #22: this was a bare process-lifetime `Boolean?`, which two
+         * things made wrong. The comment it carried — that the answer "only
+         * changes when the admin installs / removes the Text app" — was true
+         * when one account existed per process and stopped being true when
+         * v2.10.0 let the user switch: account A's verdict was applied to
+         * account B, silently downgrading B to the plain editor or routing it
+         * into an editor its server may not support. And *every* non-success
+         * was folded into `false` and then cached forever, so a single probe
+         * made while offline disabled the collaborative editor until the
+         * process restarted.
+         *
+         * `@Volatile` on an immutable holder is enough for readers: a caller
+         * sees either the old reference or the new one, never a verdict
+         * paired with the wrong account.
+         */
+        @Volatile private var cached: CachedCapability? = null
         private val capabilityLock = Mutex()
 
         override suspend fun isAvailable(): Boolean {
-            cachedAvailable?.let { return it }
+            // Signed out, or mid-switch. Nothing to key a verdict on, and
+            // the probe would 401 anyway.
+            val accountId = tokenStore.activeAccountId() ?: return false
+            cached?.takeIf { it.accountId == accountId }?.let { return it.available }
             return capabilityLock.withLock {
-                cachedAvailable?.let { return@withLock it }
+                cached?.takeIf { it.accountId == accountId }?.let { return@withLock it.available }
                 val result = apiCall { service.getCapability() }
-                val available = when (result) {
-                    is ApiResult.Success -> editorHandlesMarkdown(result.data.ocs.data)
-
-                    // Treat any non-success — including 404 on older servers
-                    // that don't expose the endpoint — as "not available".
-                    // The native editor is the fallback.
-                    else -> false
+                val available = result is ApiResult.Success && editorHandlesMarkdown(result.data.ocs.data)
+                if (capabilityCacheability(result) == CapabilityCache.Decided) {
+                    cached = CachedCapability(accountId = accountId, available = available)
+                } else {
+                    // We never got an answer, so don't record one. The
+                    // native editor covers this run; the next call asks
+                    // again.
+                    Timber.i("Direct-editing capability probe was inconclusive; not caching it")
                 }
-                cachedAvailable = available
                 available
             }
         }
@@ -146,4 +164,44 @@ class DirectEditingRepositoryImpl
             const val TEXT_EDITOR_ID = "text"
             val MARKDOWN_MIMES = listOf("text/markdown", "text/x-markdown")
         }
+    }
+
+/** One account's direct-editing verdict. See `DirectEditingRepositoryImpl.cached`. */
+private data class CachedCapability(
+    val accountId: String,
+    val available: Boolean,
+)
+
+/** Whether a capability probe's outcome is worth remembering. */
+internal enum class CapabilityCache {
+    /** The server answered. The verdict holds until the account changes. */
+    Decided,
+
+    /** We never got an answer. Fall back for this call and ask again later. */
+    Undecided,
+}
+
+/**
+ * Issue #22: a network failure is not a server saying "I don't have Text".
+ * Folding every non-success into a cached `false` meant one probe made while
+ * offline — which, for an offline-first app, is the likely first probe —
+ * disabled the collaborative editor for the rest of the process.
+ *
+ * A 404 is the one negative worth keeping: an older server, or one without
+ * the Text app, genuinely has no `directEditing` endpoint, and that will not
+ * change until an admin installs it. Everything else is the server declining
+ * to tell us, including a 401 (the session is about to be re-established,
+ * not permanently gone) and a 5xx.
+ */
+internal fun capabilityCacheability(result: ApiResult<*>): CapabilityCache =
+    when (result) {
+        is ApiResult.Success -> CapabilityCache.Decided
+
+        is ApiResult.HttpError -> if (result.code == 404) CapabilityCache.Decided else CapabilityCache.Undecided
+
+        is ApiResult.NetworkError,
+        ApiResult.Unauthorised,
+        ApiResult.Conflict,
+        is ApiResult.Unexpected,
+        -> CapabilityCache.Undecided
     }

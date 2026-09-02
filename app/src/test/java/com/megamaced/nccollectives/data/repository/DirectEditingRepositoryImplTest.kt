@@ -1,9 +1,11 @@
 package com.megamaced.nccollectives.data.repository
 
+import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Page
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.IOException
 
 /**
  * Pins [DirectEditingRepositoryImpl.serverPathFor] — the only piece of
@@ -95,4 +97,62 @@ class DirectEditingRepositoryImplTest {
             bodyMd = null,
             draftBodyMd = null,
         )
+}
+
+/**
+ * Issue #22: which capability probe outcomes are worth remembering.
+ *
+ * The bug was folding every non-success into a cached `false`, so one probe
+ * made while offline — the likely first probe in an offline-first app —
+ * disabled the collaborative editor until the process restarted.
+ */
+class CapabilityCacheabilityTest {
+    @Test
+    fun `a successful probe is remembered`() {
+        assertEquals(
+            CapabilityCache.Decided,
+            capabilityCacheability(ApiResult.Success(Unit)),
+        )
+    }
+
+    @Test
+    fun `a 404 is a real negative and is remembered`() {
+        // An older server, or one without the Text app, genuinely has no
+        // directEditing endpoint, and that will not change until an admin
+        // installs it.
+        assertEquals(
+            CapabilityCache.Decided,
+            capabilityCacheability(ApiResult.HttpError(code = 404, message = "Not Found")),
+        )
+    }
+
+    @Test
+    fun `a network failure is not remembered`() {
+        assertEquals(
+            CapabilityCache.Undecided,
+            capabilityCacheability(ApiResult.NetworkError(IOException("offline"))),
+        )
+    }
+
+    @Test
+    fun `a server error is not remembered`() {
+        assertEquals(
+            CapabilityCache.Undecided,
+            capabilityCacheability(ApiResult.HttpError(code = 503, message = "Service Unavailable")),
+        )
+    }
+
+    @Test
+    fun `an unauthorised probe is not remembered`() {
+        // The session is about to be re-established, not permanently gone.
+        assertEquals(CapabilityCache.Undecided, capabilityCacheability(ApiResult.Unauthorised))
+    }
+
+    @Test
+    fun `an unexpected failure is not remembered`() {
+        assertEquals(
+            CapabilityCache.Undecided,
+            capabilityCacheability(ApiResult.Unexpected(IllegalStateException("boom"))),
+        )
+    }
 }
