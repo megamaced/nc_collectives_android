@@ -149,21 +149,9 @@ internal fun SearchScreen(
 
                 filteredResults.isNotEmpty() -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        // Issue #38: `pageId ?: title.hashCode()` is not
-                        // unique among siblings. `SearchRepositoryImpl`
-                        // explicitly permits a null pageId when the server
-                        // entry has neither a fileId attribute nor a usable
-                        // resource URL, and two unresolved hits with the same
-                        // title — routine across collectives — then shared a
-                        // key; distinct strings can also share a hash. A
-                        // duplicate key in a lazy layout throws and takes the
-                        // screen down. The index disambiguates without
-                        // pretending an identity the data doesn't carry, and
-                        // the id still leads so a resolved hit keeps a stable
-                        // key across re-emissions.
                         itemsIndexed(
                             filteredResults,
-                            key = { index, hit -> hit.pageId?.let { "page-$it" } ?: "hit-$index-${hit.title}" },
+                            key = ::searchHitKey,
                         ) { _, hit ->
                             SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
                             HorizontalDivider()
@@ -174,6 +162,29 @@ internal fun SearchScreen(
         }
     }
 }
+
+/**
+ * Lazy-list key for the search result at [index].
+ *
+ * Issue #38: this was `pageId ?: title.hashCode()`, which is not unique among
+ * siblings. `SearchRepositoryImpl` explicitly permits a null `pageId` when a
+ * server entry has neither a fileId attribute nor a usable resource URL, so
+ * two unresolved hits with the same title — routine across collectives —
+ * shared a key, and distinct titles can collide on a hash besides. A
+ * duplicate key in a lazy layout throws and takes the whole screen down.
+ *
+ * The index disambiguates without pretending an identity the data does not
+ * carry, and the page id still leads so a resolved hit keeps a stable key
+ * across re-emissions and does not lose its scroll position.
+ *
+ * A named function rather than a lambda so the collision cases can be tested
+ * against the real thing, which is what the issue asked for — the previous
+ * expression read as obviously fine.
+ */
+internal fun searchHitKey(
+    index: Int,
+    hit: SearchHit,
+): Any = hit.pageId?.let { "page-$it" } ?: "hit-$index-${hit.title}"
 
 @Composable
 private fun RecentsSection(
