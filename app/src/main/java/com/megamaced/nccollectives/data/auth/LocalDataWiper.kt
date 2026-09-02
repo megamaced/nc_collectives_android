@@ -31,6 +31,11 @@ import javax.inject.Singleton
  * Callers are responsible for flipping `SessionManager` into a state that
  * unmounts the UI *before* calling this, so no Room flow observer is live
  * when the tables go.
+ *
+ * The UI is only half of it: background workers are still running, and
+ * cancelling them is asynchronous. [AccountGeneration] is what stops one of
+ * their in-flight writes landing behind the wipe; the ordering in [wipe] is
+ * what keeps that case rare.
  */
 @Singleton
 class LocalDataWiper
@@ -41,6 +46,7 @@ class LocalDataWiper
         private val syncScheduler: SyncScheduler,
         private val userPreferences: UserPreferences,
         private val okHttpClient: OkHttpClient,
+        private val accountGeneration: AccountGeneration,
     ) {
         /**
          * @param keepDevicePreferences when true, settings that describe the
@@ -52,7 +58,29 @@ class LocalDataWiper
          * the same person.
          */
         suspend fun wipe(keepDevicePreferences: Boolean) {
+            // Issue #20: the order below is the barrier, and it used to run
+            // roughly backwards — work was cancelled without waiting, Room
+            // was cleared immediately after, and HTTP was only evicted at the
+            // very end, by which point a write it might have prevented had
+            // already landed.
+            //
+            // 1. Invalidate first, before anything else and in particular
+            //    before the transaction that clears the tables. Every guarded
+            //    upsert compares against a generation captured before its
+            //    request went out, so from here on a response in flight can
+            //    no longer be committed.
+            accountGeneration.invalidate()
+            // 2. Ask the workers to stop, and wait until WorkManager says
+            //    they have.
             syncScheduler.cancelAll()
+            // 3. Kill the transport before the tables, not after. An
+            //    in-flight request now fails rather than returning a body
+            //    somebody wants to write. B-50: evicting the pool also stops
+            //    a quick account-A -> account-B change reusing a connection
+            //    negotiated under the previous credentials.
+            okHttpClient.dispatcher.cancelAll()
+            okHttpClient.connectionPool.evictAll()
+            // 4. Only now clear Room.
             database.withTransaction {
                 database.attachmentDao().clear()
                 database.editQueueDao().clear()
@@ -81,14 +109,6 @@ class LocalDataWiper
             // Main thread: every WebView API below asserts it, and callers
             // run this on `Dispatchers.IO`.
             withContext(Dispatchers.Main) { clearWebViewState() }
-            // B-50: evict the OkHttp connection pool so a quick
-            // account-A → account-B change can't reuse a still-warm
-            // connection negotiated under the previous credentials.
-            // `dispatcher.cancelAll()` aborts any in-flight requests
-            // (e.g. a sync job racing the wipe) so they don't hit the
-            // server after it.
-            okHttpClient.dispatcher.cancelAll()
-            okHttpClient.connectionPool.evictAll()
         }
 
         /**

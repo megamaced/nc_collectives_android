@@ -8,6 +8,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
@@ -41,8 +42,15 @@ class AttachmentUploadWorker
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
         private val bodyService: PageBodyService,
+        private val accountGeneration: AccountGeneration,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
+            // Issue #20: the account this run's writes belong to. The status
+            // updates below are `UPDATE`s and match nothing once the tables
+            // have been cleared, but the success arm's upsert is an insert —
+            // it would hand the incoming account an attachment row, and a
+            // readable file, belonging to the outgoing one.
+            val generation = accountGeneration.current()
             val pending = attachmentDao.pendingUploads()
             if (pending.isEmpty()) return Result.success()
 
@@ -117,6 +125,11 @@ class AttachmentUploadWorker
                     )
                     when (put) {
                         is ApiResult.Success -> {
+                            if (!accountGeneration.isCurrent(generation)) {
+                                Timber.i("Account changed mid-upload; not recording %s", row.id)
+                                gcStaged(row.id)
+                                return Result.success()
+                            }
                             val size = sizeOf(uri)
                             attachmentDao.upsert(
                                 row.copy(

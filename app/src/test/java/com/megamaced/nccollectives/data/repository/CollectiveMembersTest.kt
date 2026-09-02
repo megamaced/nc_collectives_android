@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.api.Envelope
 import com.megamaced.nccollectives.data.api.EnvelopeBody
 import com.megamaced.nccollectives.data.api.OcsMeta
 import com.megamaced.nccollectives.data.api.dto.CircleMemberDto
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
@@ -49,6 +50,9 @@ class CollectiveMembersTest {
             attachmentDao = mockk<AttachmentDao>(),
             editQueueDao = mockk<EditQueueDao>(),
             database = mockk<NcCollectivesDatabase>(),
+            // Real, not a mock: it has no dependencies and the member path
+            // does no Room writes for it to guard.
+            accountGeneration = AccountGeneration(),
         )
 
     private fun envelopeOf(vararg members: CircleMemberDto) =

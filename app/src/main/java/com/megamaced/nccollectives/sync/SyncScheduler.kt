@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.await
 import androidx.work.workDataOf
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.UserPreferences
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -147,14 +149,28 @@ class SyncScheduler
 
         /**
          * Cancels every WorkManager job this scheduler owns — used by the
-         * logout flow so background workers don't fire against a stale
-         * session.
+         * logout and account-switch flows so background workers don't fire
+         * against a stale session.
+         *
+         * Issue #20: suspends until WorkManager has actually recorded the
+         * cancellations. It previously discarded the returned `Operation`,
+         * which made it a request rather than a barrier — the caller went
+         * straight on to clear Room with the workers still running. Awaiting
+         * is not sufficient on its own (a `NonCancellable` block finishes
+         * regardless, and a worker mid-commit is not "cancelled" in any
+         * useful sense), which is what [com.megamaced.nccollectives.data.auth.AccountGeneration]
+         * is for; it does close the ordinary case, and it means the HTTP
+         * eviction that follows lands on a shrinking set of callers.
          */
-        fun cancelAll() {
-            workManager.cancelUniqueWork(PERIODIC_SYNC)
-            workManager.cancelUniqueWork(ONE_SHOT_SYNC)
-            workManager.cancelUniqueWork(EDIT_FLUSH)
-            workManager.cancelUniqueWork(ATTACHMENT_FLUSH)
+        suspend fun cancelAll() {
+            for (name in listOf(PERIODIC_SYNC, ONE_SHOT_SYNC, EDIT_FLUSH, ATTACHMENT_FLUSH)) {
+                // Broad catch: a failure to confirm a cancellation must not
+                // abort the wipe that follows it. Leaving the account's data
+                // on the device is a worse outcome than a worker that runs
+                // once more against a dead credential.
+                runCatching { workManager.cancelUniqueWork(name).await() }
+                    .onFailure { Timber.w(it, "Couldn't confirm cancellation of %s", name) }
+            }
         }
 
         private fun applyCadence(

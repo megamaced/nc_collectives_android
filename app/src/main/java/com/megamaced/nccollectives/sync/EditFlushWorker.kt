@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
@@ -49,8 +50,15 @@ class EditFlushWorker
         private val editQueueDao: EditQueueDao,
         private val bodyService: PageBodyService,
         private val database: NcCollectivesDatabase,
+        private val accountGeneration: AccountGeneration,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
+            // Issue #20: the account this run's writes belong to. Compared
+            // inside the transaction that settles each row, because
+            // `recordPutOutcome` runs `NonCancellable` — cancelling this
+            // worker cannot stop it, so an account switch has no other way
+            // to keep its writes out of the incoming account's cache.
+            val generation = accountGeneration.current()
             val entries = editQueueDao.pendingEntries()
             if (entries.isEmpty()) return Result.success()
 
@@ -160,7 +168,7 @@ class EditFlushWorker
                 // the server accepted with no local record of it — and the
                 // next run then reports a conflict against the user's own
                 // successful write.
-                val outcome = withContext(NonCancellable) { recordPutOutcome(entry, putResult) }
+                val outcome = withContext(NonCancellable) { recordPutOutcome(entry, putResult, generation) }
                 when (outcome) {
                     FlushRowOutcome.Settled -> Unit
                     FlushRowOutcome.RetryLater -> retry = true
@@ -174,6 +182,7 @@ class EditFlushWorker
         private suspend fun recordPutOutcome(
             entry: EditQueueEntity,
             result: ApiResult<String?>,
+            generation: Long,
         ): FlushRowOutcome =
             when (result) {
                 is ApiResult.Success -> {
@@ -185,6 +194,15 @@ class EditFlushWorker
                     // is re-read under a transaction and only dropped if it
                     // still holds what we sent.
                     database.withTransaction {
+                        // Issue #20: the account went away while the PUT was
+                        // on the wire. The updates below would match no rows
+                        // and be harmless, but the survivor upsert is an
+                        // insert — it would put one account's queued edit
+                        // into the next account's cache.
+                        if (!accountGeneration.isCurrent(generation)) {
+                            Timber.i("Account changed mid-flush; not recording the write for page %d", entry.pageId)
+                            return@withTransaction FlushRowOutcome.Settled
+                        }
                         pageDao.updateBody(
                             entry.pageId,
                             entry.newBodyMd,

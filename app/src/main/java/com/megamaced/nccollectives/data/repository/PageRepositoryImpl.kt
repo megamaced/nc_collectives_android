@@ -10,6 +10,7 @@ import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
@@ -54,6 +55,7 @@ class PageRepositoryImpl
         private val attachmentDao: AttachmentDao,
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
+        private val accountGeneration: AccountGeneration,
     ) : PageRepository {
         override fun observePageList(collectiveId: Long): Flow<List<PageListItem>> =
             pageDao
@@ -123,6 +125,14 @@ class PageRepositoryImpl
 
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
             apiCall {
+                // Issue #20: captured before the requests go out, checked
+                // inside the transaction that writes their response. A wipe
+                // landing in between abandons the write rather than
+                // resurrecting the outgoing account's pages under the
+                // incoming one — which matters more here than anywhere,
+                // because `PageEntity` keys on the raw *server* id and two
+                // servers will happily both have a page 17.
+                val generation = accountGeneration.current()
                 val now = System.currentTimeMillis()
                 // R-48: the tag lookup and the page list are independent
                 // requests, so they go out together. Sequentially they
@@ -160,6 +170,10 @@ class PageRepositoryImpl
                 // `WHERE id NOT IN ()` SQL syntax error by short-circuiting
                 // on an empty keep-list to `deleteForCollective`.
                 database.withTransaction {
+                    if (!accountGeneration.isCurrent(generation)) {
+                        Timber.i("Account changed mid-sync; abandoning the page refresh")
+                        return@withTransaction
+                    }
                     pageDao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
                     val keepSet = keepIds.toSet()

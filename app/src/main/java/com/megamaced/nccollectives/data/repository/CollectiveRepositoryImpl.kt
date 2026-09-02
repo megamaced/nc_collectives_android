@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.ifSuccess
 import com.megamaced.nccollectives.data.api.mapSuccess
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
@@ -22,6 +23,7 @@ import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +38,7 @@ class CollectiveRepositoryImpl
         private val attachmentDao: AttachmentDao,
         private val editQueueDao: EditQueueDao,
         private val database: NcCollectivesDatabase,
+        private val accountGeneration: AccountGeneration,
     ) : CollectiveRepository {
         override fun observeCollectives(): Flow<List<Collective>> = dao.observeAll().map { rows -> rows.map { it.toDomain() } }
 
@@ -43,6 +46,12 @@ class CollectiveRepositoryImpl
 
         override suspend fun refresh(): ApiResult<Unit> =
             apiCall {
+                // Issue #20: captured before the request goes out, checked
+                // inside the transaction that writes its response, so a wipe
+                // landing in between abandons the write instead of
+                // resurrecting the outgoing account's collectives under the
+                // incoming one.
+                val generation = accountGeneration.current()
                 val now = System.currentTimeMillis()
                 val response = api.listCollectives()
                 val entities = response.ocs.data.collectives
@@ -50,6 +59,10 @@ class CollectiveRepositoryImpl
                 // B-43: one transaction. B-42: short-circuit the empty-list
                 // case to `clear()` to avoid `WHERE id NOT IN ()` SQL.
                 database.withTransaction {
+                    if (!accountGeneration.isCurrent(generation)) {
+                        Timber.i("Account changed mid-sync; abandoning the collective refresh")
+                        return@withTransaction
+                    }
                     dao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
                     val keepSet = keepIds.toSet()
