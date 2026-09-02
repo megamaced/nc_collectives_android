@@ -320,12 +320,53 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The emulator version has to be part of the AVD cache key, and getting
+      # it there means installing the package before the cache step rather
+      # than letting the action do it later.
+      #
+      # `android-emulator-runner` installs the *latest* stable emulator on
+      # every run (`--channel=0`, no pin), while the test step runs with
+      # `force-avd-creation: false`. So when a new emulator ships, the action
+      # restores an AVD created by the previous one and boots it anyway. That
+      # is what broke this job between 2026-08-26 (green) and 2026-08-27
+      # (every run since): the emulator moved to 37.1.11.0 / gfxstream, the
+      # cached AVD no longer booted under it, and the emulator died ten
+      # seconds in — after which the action sat idle until the job timeout,
+      # which is why the failures all reported as "cancelled".
+      #
+      # Keying on the resolved version makes that self-healing: a new emulator
+      # is a new key, a cold cache, and a freshly created AVD. Pinning
+      # `emulator-build` instead would also work, but it trades an automatic
+      # recovery for a manual bump and a build number that eventually stops
+      # being downloadable.
+      - name: Resolve emulator version
+        id: emulator-version
+        run: |
+          # Licences are pre-accepted on the hosted image, but `yes |` keeps a
+          # prompt from blocking the step if that ever stops being true, and
+          # the step runs under `bash -e` so a no-op failure must not abort.
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install emulator --channel=0 > /dev/null
+          # `|| true` because the assignment's status is the pipeline's, and a
+          # `grep` miss under `-e` would abort before the explicit check below
+          # could say what actually went wrong.
+          version=$("$ANDROID_HOME/emulator/emulator" -version 2>/dev/null \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
+            | head -1) || true
+          if [ -z "$version" ]; then
+            echo "::error::could not read the installed emulator version"
+            exit 1
+          fi
+          echo "Emulator version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       # Exact key, no restore-keys: the test step runs with
       # force-avd-creation:false, so a snapshot restored from a *different*
       # system image would be booted as if it matched. Keying on the three
-      # inputs that define the image means changing EMULATOR_API_LEVEL
-      # invalidates the snapshot by itself. Bump the -v1 suffix to discard a
-      # cache that has gone bad without changing the image.
+      # inputs that define the image plus the emulator that will boot it means
+      # changing EMULATOR_API_LEVEL, or Google shipping a new emulator,
+      # invalidates the snapshot by itself. Bump the -v2 suffix to discard a
+      # cache that has gone bad without either of those changing.
       - name: Cache AVD snapshot
         id: avd-cache
         uses: actions/cache@v6
@@ -333,7 +374,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ runner.os }}-api${{ env.EMULATOR_API_LEVEL }}-${{ env.EMULATOR_TARGET }}-${{ env.EMULATOR_ARCH }}-v1
+          key: avd-${{ runner.os }}-api${{ env.EMULATOR_API_LEVEL }}-${{ env.EMULATOR_TARGET }}-${{ env.EMULATOR_ARCH }}-emu${{ steps.emulator-version.outputs.version }}-v2
 
       # First boot of a cold cache: create the AVD and let it save a snapshot
       # (note the absence of -no-snapshot) so every later run restores instead
@@ -358,6 +399,13 @@ jobs:
       # exact failure mode this job exists to close. Narrow it only if
       # androidTest later grows something genuinely slow.
       - name: Run instrumented tests
+        # Step-level, well inside the job's 45. The action does not fail when
+        # the emulator dies during boot — it blocks — so without this the
+        # whole job budget is spent idling and there is no report, no
+        # androidTest artifact, and a conclusion that reads as "cancelled".
+        # 30 clears the warm path (~12-15 min) and a cold one, and turns a
+        # dead emulator into a failure in half the time.
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ env.EMULATOR_API_LEVEL }}
