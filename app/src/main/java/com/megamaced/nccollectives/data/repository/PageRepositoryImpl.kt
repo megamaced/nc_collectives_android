@@ -276,6 +276,14 @@ class PageRepositoryImpl
                         ),
                     ),
                 )
+                // `pageId` is the queue's primary key, so repointing onto an
+                // id that already has a row is a constraint failure, and one
+                // that would abort this transaction and take the migration
+                // with it. A row sitting at a reissued id can only be a stale
+                // cache entry for a page the server no longer has there —
+                // flushing it would write the renamed page's file with some
+                // other page's body — so it goes.
+                editQueueDao.deleteForPage(moved.id)
                 editQueueDao.repointPage(old.id, moved.id)
                 attachmentRepository.get().rekeyForPage(old.id, moved.id)
                 pageDao.deleteById(old.id)

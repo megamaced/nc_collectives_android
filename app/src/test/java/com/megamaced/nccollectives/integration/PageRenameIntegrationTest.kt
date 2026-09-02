@@ -173,6 +173,41 @@ class PageRenameIntegrationTest {
             assertEquals("# queued", env.db.editQueueDao().pendingBody(99))
         }
 
+    @Test
+    fun renameOntoAnIdAStaleRowAlreadyOccupies_migratesRatherThanFailing() =
+        runTest {
+            // `edit_queue.pageId` is the primary key (B-41), so repointing
+            // onto an occupied id is a constraint failure that would abort
+            // the whole migration — and leave the state loss this fix exists
+            // to prevent. Contrived, but the cost of surviving it is one
+            // DELETE.
+            env.seedPage(id = 41, title = "Old", bodyMd = "# body")
+            env.seedPage(id = 99, title = "Stale cache entry", bodyMd = "# stale")
+            env.db.editQueueDao().upsert(queuedEdit(pageId = 41, body = "# the edit that matters"))
+            env.db.editQueueDao().upsert(queuedEdit(pageId = 99, body = "# stale queued edit"))
+
+            dispatcher
+                .on("/pages/41", OcsResponses.singlePage(id = 99, title = "New"), method = "PUT")
+                .on("/tags", OcsResponses.emptyTagList(), method = "GET")
+                .on("/pages", OcsResponses.pageList(OcsResponses.page(id = 99, title = "New")), method = "GET")
+
+            val result = env.pageRepository.renamePage(pageId = 41, newTitle = "New")
+
+            assertTrue("rename should succeed, was $result", result is ApiResult.Success)
+            assertEquals(
+                "the migrated edit wins; the stale one was for a page the server no longer has there",
+                "# the edit that matters",
+                env.db.editQueueDao().pendingBody(99),
+            )
+            assertEquals(
+                "# body",
+                env.db
+                    .pageDao()
+                    .getById(99)
+                    ?.bodyMd,
+            )
+        }
+
     private fun queuedEdit(
         pageId: Long,
         body: String,
