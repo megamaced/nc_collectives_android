@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.components
 
+import android.net.Uri
 import android.text.method.LinkMovementMethod
 import android.text.util.Linkify
 import android.widget.TextView
@@ -38,7 +39,9 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListDrawable
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.image.ImageItem
 import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.SchemeHandler
 import io.noties.markwon.image.network.OkHttpNetworkSchemeHandler
 import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.syntax.Prism4jThemeM3
@@ -47,6 +50,8 @@ import io.noties.prism4j.Prism4j
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
+import timber.log.Timber
+import java.io.IOException
 
 /**
  * Renders [markdown] into an Android `TextView` via Markwon, themed against
@@ -167,7 +172,14 @@ fun MarkdownView(
     // rebuild Markwon. Spelling out 14+ individual ARGB ints as remember
     // keys forced Compose to compare them all each recomposition, with
     // no behavioural difference from keying on the `colorScheme` itself.
-    val markwon = remember(colorScheme) {
+    // Issue #41: the boundary the *network* gate enforces, captured
+    // immutably alongside the Markwon instance that closes over it. Keying
+    // the instance on it as well as on `colorScheme` is what lets the
+    // handler hold a plain value instead of cross-thread mutable state —
+    // `imageBaseUrl` changes once per page open, not per recomposition, so
+    // R-25's point about not rebuilding Markwon needlessly still holds.
+    val imageBoundary = remember(imageBaseUrl) { pageImageBoundary(imageBaseUrl) }
+    val markwon = remember(colorScheme, imageBoundary) {
         val prism4j = Prism4j(
             com.megamaced.nccollectives.util
                 .CollectivesGrammarLocator(),
@@ -194,7 +206,12 @@ fun MarkdownView(
             .usePlugin(HtmlPlugin.create())
             .usePlugin(
                 ImagesPlugin.create { plugin ->
-                    plugin.addSchemeHandler(OkHttpNetworkSchemeHandler.create(okHttpClient))
+                    plugin.addSchemeHandler(
+                        PageDirectorySchemeHandler(
+                            delegate = OkHttpNetworkSchemeHandler.create(okHttpClient),
+                            boundary = imageBoundary,
+                        ),
+                    )
                 },
             ).usePlugin(
                 TablePlugin.create { builder ->
@@ -288,6 +305,72 @@ fun MarkdownView(
 }
 
 /**
+ * The directory every image the renderer is allowed to fetch must resolve
+ * inside: the page file's own directory, which is the parent of the
+ * `.attachments.<pageId>/` URL the page screens resolve from the stored
+ * credential — so a page body cannot nominate its own boundary.
+ *
+ * The page directory rather than the attachments directory itself, because
+ * `.attachments.<siblingPageId>/x.png` is a shape Nextcloud Text really
+ * writes (pages in one folder share a directory) and it has to keep
+ * rendering.
+ *
+ * Fails closed: null when there is no usable base URL, and narrowed to the
+ * attachments directory when the base isn't the expected shape. Shared by
+ * [absolutizeImageRefs] and [PageDirectorySchemeHandler] so the text pass
+ * and the network gate cannot come to different answers.
+ */
+internal fun pageImageBoundary(imageBaseUrl: String?): HttpUrl? {
+    if (imageBaseUrl.isNullOrEmpty()) return null
+    val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
+    return (pageDirectoryUrlFrom(base) ?: base).toHttpUrlOrNull()
+}
+
+/**
+ * Confines Markwon's image fetches to [boundary] — issue #41.
+ *
+ * [absolutizeImageRefs] enforces the same boundary on the markdown, but it
+ * can only see what its regex matches: inline `![alt](target)`. CommonMark
+ * also has reference images (`![alt][ref]`, with the target on a `[ref]: …`
+ * line of its own), and the enabled `HtmlPlugin` renders `<img src="…">`.
+ * Both reach `ImagesPlugin` carrying an absolute URL that never passed
+ * through the rewrite, which restored exactly the primitive S-24 and issue
+ * #21 were closing: a co-member plants a ref elsewhere in the victim's
+ * WebDAV tree, `HostInterceptor.isAppBuiltPath` sees a `/remote.php/dav/`
+ * path on the stored host and vouches for it, `AuthInterceptor` signs it,
+ * and merely *viewing* the shared page fires an authenticated GET the page's
+ * author chose.
+ *
+ * Enforcing it here rather than chasing markdown syntaxes makes provenance a
+ * property of the request instead of the notation that produced it, so a
+ * shape nobody thought of — or one a future Markwon plugin adds — is covered
+ * by construction. The text pass stays because demoting an inline ref to a
+ * tappable link is friendlier than a blank image slot; that is what makes it
+ * a nicety rather than the boundary.
+ *
+ * Refusal is an [IOException] from [handle], which Markwon's
+ * `AsyncDrawableLoaderImpl` already catches per image: that slot renders
+ * empty and the rest of the document is unaffected.
+ */
+internal class PageDirectorySchemeHandler(
+    private val delegate: SchemeHandler,
+    private val boundary: HttpUrl?,
+) : SchemeHandler() {
+    override fun handle(
+        raw: String,
+        uri: Uri,
+    ): ImageItem {
+        if (!withinPageDirectory(boundary, raw)) {
+            Timber.w("Refusing an image fetch outside the page directory: %s", uri.host ?: "<unparsable>")
+            throw IOException("Image reference outside the page directory")
+        }
+        return delegate.handle(raw, uri)
+    }
+
+    override fun supportedSchemes(): Collection<String> = delegate.supportedSchemes()
+}
+
+/**
  * Rewrites every `![alt](relativeRef)` whose URL has no scheme + no leading
  * slash so it points at `imageBaseUrl/relativeRef`. **Drops** `data:`,
  * `file://`, and other schemes by resolving them as relative (S-8). Image
@@ -333,10 +416,7 @@ internal fun absolutizeImageRefs(
 ): String {
     val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
     val pageDirBase = pageDirectoryUrlFrom(base)
-    // The wider of the two, and the boundary every kept ref must resolve
-    // inside. Falls back to the attachments directory when `imageBaseUrl`
-    // wasn't the expected shape — narrower, i.e. fails closed.
-    val boundary = (pageDirBase ?: base).toHttpUrlOrNull()
+    val boundary = pageImageBoundary(imageBaseUrl)
     return IMAGE_REF_PATTERN.replace(markdown) { match ->
         val image = match.groups["image"]
         if (image == null) {
@@ -402,7 +482,7 @@ internal fun absolutizeImageRefs(
  * a scheme change, or embedded userinfo — which would otherwise let a ref
  * name credentials of its own on a URL that still passes a host check.
  */
-private fun withinPageDirectory(
+internal fun withinPageDirectory(
     boundary: HttpUrl?,
     resolvedRef: String,
 ): Boolean {
