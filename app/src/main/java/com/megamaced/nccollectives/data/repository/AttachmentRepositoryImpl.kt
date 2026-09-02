@@ -225,6 +225,11 @@ class AttachmentRepositoryImpl
                 // Pending / failed uploads never made it to the server; just
                 // drop the local row.
                 attachmentDao.delete(key)
+                // Issue #23: and the bytes behind it. Dropping only the row
+                // orphaned the staging copy — invisible to the UI, still on
+                // disk, and now that a `FAILED` row keeps its bytes on
+                // purpose this is the path that has to collect them.
+                deleteStagedFile(key)
                 return ApiResult.Success(Unit)
             }
             // OCS-4: delete by server-assigned id (Batch 18j). Replaces the
@@ -246,6 +251,36 @@ class AttachmentRepositoryImpl
                 attachmentDao.delete(key)
             }
             return result
+        }
+
+        override suspend fun retryUpload(
+            pageId: Long,
+            fileName: String,
+        ): ApiResult<Unit> {
+            val key = AttachmentEntity.key(pageId, fileName)
+            val existing = attachmentDao.getById(key)
+                ?: return ApiResult.Unexpected(IllegalStateException("Attachment $fileName not found"))
+            if (existing.status == AttachmentEntity.STATUS_REMOTE) return ApiResult.Success(Unit)
+            val staged = stagedFileFor(context, key)
+            if (!staged.exists() || staged.length() == 0L) {
+                // Better to say so than to re-queue a row the worker will
+                // fail again for a reason the user can't see. The cache
+                // directory is evictable, and the two worker arms that drop
+                // the staging copy do it because there was nothing to keep.
+                return ApiResult.Unexpected(
+                    IllegalStateException("The staged copy of $fileName is no longer on the device"),
+                )
+            }
+            attachmentDao.setStatus(key, AttachmentEntity.STATUS_PENDING)
+            syncScheduler.flushAttachmentUploadsWhenOnline()
+            return ApiResult.Success(Unit)
+        }
+
+        private fun deleteStagedFile(attachmentId: String) {
+            val staged = stagedFileFor(context, attachmentId)
+            if (staged.exists() && !staged.delete()) {
+                Timber.w("Couldn't delete the staged copy at %s", staged.absolutePath)
+            }
         }
 
         override suspend fun urlFor(

@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
+import com.megamaced.nccollectives.ui.screen.isRetryableFailure
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -30,8 +31,21 @@ import timber.log.Timber
  *  - resolve the page so we know the collective + file path
  *  - MKCOL the `.attachments.<pageId>` directory (no-op if it exists)
  *  - stream the local content:// URI through OkHttp without copying into RAM
- *  - flip the row to `REMOTE` on success, `FAILED` on hard error, leave
- *    `PENDING` and retry on transient network error
+ *  - flip the row to `REMOTE` on success, `FAILED` on a failure retrying
+ *    can't fix, or leave it `PENDING` for another run
+ *
+ * Issue #23: which of the last two a failure gets is [uploadFailureAction]'s
+ * decision, and it used to be neither — every HTTP status, every `Conflict`
+ * and every unexpected exception went straight to `FAILED`, so a 503 behind
+ * a reverse proxy or a 429 from rate limiting lost the upload as surely as a
+ * 403 did. A `FAILED` row also kept its staged bytes only by accident, and
+ * `pendingUploads()` never selects one again, so the file was gone with the
+ * grid still drawing a spinner over it.
+ *
+ * A `FAILED` row now keeps its staged bytes on purpose, so
+ * `AttachmentRepository.retryUpload` has something to send. The two arms that
+ * still drop them are the two where there is nothing to keep: bytes that
+ * can't be opened, and a row with no local URI at all.
  */
 @HiltWorker
 class AttachmentUploadWorker
@@ -72,8 +86,10 @@ class AttachmentUploadWorker
                     }
                     val uriString = row.localUriString
                     if (uriString.isNullOrEmpty()) {
+                        // Nothing to send and nothing a retry could fix.
                         Timber.w("Attachment %s has no local URI; marking failed", row.id)
                         attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                        gcStaged(row.id)
                         continue
                     }
 
@@ -103,7 +119,16 @@ class AttachmentUploadWorker
 
                         is ApiResult.HttpError, is ApiResult.Unexpected, ApiResult.Conflict -> {
                             Timber.w("MKCOL failed for %s: %s", row.id, ensure)
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                            when (uploadFailureAction(ensure, runAttemptCount)) {
+                                UploadFailureAction.RetryLater -> {
+                                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
+                                    retry = true
+                                }
+
+                                UploadFailureAction.Terminal -> {
+                                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                                }
+                            }
                             continue
                         }
                     }
@@ -129,6 +154,17 @@ class AttachmentUploadWorker
                                 Timber.i("Account changed mid-upload; not recording %s", row.id)
                                 gcStaged(row.id)
                                 return Result.success()
+                            }
+                            // Issue #23: `row` is a snapshot from before the
+                            // PUT, and the upsert below is an insert. Deleting
+                            // an attachment mid-upload would otherwise see it
+                            // reappear as `REMOTE` the moment the transfer
+                            // finished — the user's delete undone by their own
+                            // upload.
+                            if (attachmentDao.getById(row.id) == null) {
+                                Timber.i("Attachment %s was deleted mid-upload; not recording it", row.id)
+                                gcStaged(row.id)
+                                continue
                             }
                             val size = sizeOf(uri)
                             attachmentDao.upsert(
@@ -159,20 +195,17 @@ class AttachmentUploadWorker
 
                         is ApiResult.HttpError -> {
                             Timber.w("Upload HTTP %d for %s: %s", put.code, row.id, put.message)
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                            gcStaged(row.id)
+                            if (settleUploadFailure(row.id, put)) retry = true
                         }
 
                         is ApiResult.Unexpected -> {
                             Timber.w(put.cause, "Upload unexpected error for %s", row.id)
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                            gcStaged(row.id)
+                            if (settleUploadFailure(row.id, put)) retry = true
                         }
 
                         ApiResult.Conflict -> {
                             Timber.w("Upload conflict for %s", row.id)
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                            gcStaged(row.id)
+                            if (settleUploadFailure(row.id, put)) retry = true
                         }
                     }
                 } catch (e: CancellationException) {
@@ -180,9 +213,13 @@ class AttachmentUploadWorker
                     // must tear the worker down, not mark anything failed.
                     throw e
                 } catch (e: Exception) {
+                    // B-63: one row must never take the drain down with it,
+                    // and `FAILED` is what stops `pendingUploads()` handing
+                    // it back. Issue #23: the staged bytes stay, so the user
+                    // can retry from the grid rather than re-pick a file
+                    // they may no longer have.
                     Timber.w(e, "Upload of %s threw; marking it failed and carrying on", row.id)
                     attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                    gcStaged(row.id)
                 }
             }
             return if (retry) Result.retry() else Result.success()
@@ -245,6 +282,28 @@ class AttachmentUploadWorker
                 resolver.openAssetFileDescriptor(uri, "r").use { afd -> afd?.length ?: -1L }
             }.getOrDefault(-1L)
 
+        /**
+         * Mark one row's failure, and say whether the drain should ask for
+         * another run. Staged bytes are kept either way: a `PENDING` row
+         * needs them for the retry, and a `FAILED` one needs them for the
+         * user's (issue #23).
+         */
+        private suspend fun settleUploadFailure(
+            attachmentId: String,
+            result: ApiResult<*>,
+        ): Boolean =
+            when (uploadFailureAction(result, runAttemptCount)) {
+                UploadFailureAction.RetryLater -> {
+                    attachmentDao.setStatus(attachmentId, AttachmentEntity.STATUS_PENDING)
+                    true
+                }
+
+                UploadFailureAction.Terminal -> {
+                    attachmentDao.setStatus(attachmentId, AttachmentEntity.STATUS_FAILED)
+                    false
+                }
+            }
+
         private fun gcStaged(attachmentId: String) {
             val staged = AttachmentRepositoryImpl.stagedFileFor(appContext, attachmentId)
             if (staged.exists() && !staged.delete()) {
@@ -252,3 +311,45 @@ class AttachmentUploadWorker
             }
         }
     }
+
+/** What a failed upload attempt means for the row. */
+internal enum class UploadFailureAction {
+    /** Left `PENDING`; ask WorkManager for another run. */
+    RetryLater,
+
+    /** Marked `FAILED`. Its staged bytes are kept for a user-driven retry. */
+    Terminal,
+}
+
+/**
+ * Whether a failed upload attempt is worth repeating (issue #23).
+ *
+ * Delegates the status taxonomy to `isRetryableFailure` rather than restating
+ * it — that function exists because two screens grew disagreeing copies of
+ * the same rule, and a third copy here would have been the same mistake. It
+ * is the reason a 408, 429 or 5xx now waits instead of losing the upload,
+ * and the reason a 403 or a 507 doesn't retry: the first is the server saying
+ * the request itself is wrong, the second needs the *server* to change first.
+ *
+ * [runAttemptCount] backstops it the way [MAX_FLUSH_ATTEMPTS] backstops the
+ * edit queue, and for the same reason: WorkManager applies no cap of its own,
+ * so a retryable arm alone would retry on an exponential backoff for as long
+ * as the app stayed installed — invisibly, because only a settled row puts
+ * anything on screen.
+ */
+internal fun uploadFailureAction(
+    result: ApiResult<*>,
+    runAttemptCount: Int,
+): UploadFailureAction =
+    when {
+        runAttemptCount >= MAX_UPLOAD_ATTEMPTS -> UploadFailureAction.Terminal
+        isRetryableFailure(result) -> UploadFailureAction.RetryLater
+        else -> UploadFailureAction.Terminal
+    }
+
+/**
+ * Attempts to spend on one upload before marking it failed. Matches
+ * [MAX_FLUSH_ATTEMPTS]: WorkManager's backoff is exponential and capped at
+ * five hours, so ten attempts is already several days of trying.
+ */
+internal const val MAX_UPLOAD_ATTEMPTS = 10

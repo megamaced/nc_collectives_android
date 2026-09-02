@@ -37,6 +37,24 @@ interface AttachmentRepository {
         fileName: String,
     ): ApiResult<Unit>
 
+    /**
+     * Put a failed upload back in the queue (issue #23).
+     *
+     * `FAILED` used to be a dead end: the worker only ever selects `PENDING`
+     * and `UPLOADING`, and nothing anywhere moved a row back, so an upload
+     * that failed once was unrecoverable — while the grid drew a progress
+     * spinner over it, because it drew one over every non-`REMOTE` status.
+     *
+     * Fails when the staged bytes are gone, which is what makes this
+     * honest rather than a button that silently fails again: the cache
+     * directory is evictable, and several of the worker's arms delete the
+     * staging copy deliberately.
+     */
+    suspend fun retryUpload(
+        pageId: Long,
+        fileName: String,
+    ): ApiResult<Unit>
+
     /** Build the WebDAV URL Coil should hit for this attachment. */
     suspend fun urlFor(
         pageId: Long,

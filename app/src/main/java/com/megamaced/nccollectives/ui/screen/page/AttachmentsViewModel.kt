@@ -137,6 +137,26 @@ class AttachmentsViewModel
             }
         }
 
+        /**
+         * Issue #23: put a failed upload back in the queue. Reports rather
+         * than silently re-queueing when the staged bytes have gone, which
+         * is the one failure the user can act on — by picking the file again.
+         */
+        fun retryUpload(fileName: String) {
+            viewModelScope.launch {
+                val result = repository.retryUpload(pageId, fileName)
+                _uiState.update {
+                    it.copy(
+                        statusMessage = if (result is ApiResult.Success) {
+                            "Retrying $fileName"
+                        } else {
+                            result.userMessage() ?: "Couldn't retry $fileName"
+                        },
+                    )
+                }
+            }
+        }
+
         fun delete(fileName: String) {
             viewModelScope.launch {
                 val result = repository.delete(pageId, fileName)

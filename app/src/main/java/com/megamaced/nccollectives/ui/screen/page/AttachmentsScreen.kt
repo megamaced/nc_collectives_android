@@ -24,8 +24,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -193,6 +195,7 @@ internal fun AttachmentsScreen(
                                 attachment = attachment,
                                 onOpen = { viewModel.open(attachment.fileName) },
                                 onDelete = { pendingDelete = attachment.fileName },
+                                onRetry = { viewModel.retryUpload(attachment.fileName) },
                             )
                         }
                     }
@@ -244,8 +247,10 @@ private fun AttachmentTile(
     attachment: Attachment,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val isOpenable = attachment.status == Attachment.Status.REMOTE
+    val hasFailed = attachment.status == Attachment.Status.FAILED
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -272,6 +277,19 @@ private fun AttachmentTile(
             contentAlignment = Alignment.Center,
         ) {
             when {
+                // Issue #23: a failed upload used to render as a progress
+                // spinner, forever — the grid drew one for every non-REMOTE
+                // status, and nothing ever moved a FAILED row out of it. It
+                // reads as an error and offers Retry now.
+                hasFailed -> {
+                    Icon(
+                        Icons.Filled.ErrorOutline,
+                        contentDescription = "Upload failed",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+
                 attachment.status != Attachment.Status.REMOTE -> {
                     CircularProgressIndicator(strokeWidth = 2.dp)
                 }
@@ -305,6 +323,11 @@ private fun AttachmentTile(
                     .padding(top = 6.dp, start = 4.dp),
                 maxLines = 2,
             )
+            if (hasFailed) {
+                IconButton(onClick = onRetry) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Retry upload of ${attachment.fileName}")
+                }
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Filled.Delete, contentDescription = "Delete")
             }
