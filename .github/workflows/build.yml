@@ -272,12 +272,10 @@ jobs:
     # version. The workflow-level concurrency group already cancels
     # superseded PR runs, so pushing again does not stack up emulators.
     #
-    # Warm path (AVD snapshot cached, Gradle cache warm) is ~12-15 min. The
-    # cold path adds a system-image download and a second emulator boot, and
-    # the action allows each boot 600s, so the 30-minute discipline used
-    # elsewhere would flake on the first run and after every cache eviction.
-    # 45 is a ceiling, not a target.
-    timeout-minutes: 45
+    # Measured at ~2.5 min end to end now that the AVD is created fresh each
+    # run (see the test step). 30 is a ceiling with room for a system-image
+    # download on a runner image that does not ship one, not a target.
+    timeout-minutes: 30
     env:
       # == minSdk, on purpose. These migrations are hand-written SQL, so the
       # hazard is the *oldest* SQLite the app can be installed on, not the
@@ -320,117 +318,50 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # The emulator version has to be part of the AVD cache key, and getting
-      # it there means installing the package before the cache step rather
-      # than letting the action do it later.
-      #
-      # `android-emulator-runner` installs the *latest* stable emulator on
-      # every run (`--channel=0`, no pin), while the test step runs with
-      # `force-avd-creation: false`. So when a new emulator ships, the action
-      # restores an AVD created by the previous one and boots it anyway. That
-      # is what broke this job between 2026-08-26 (green) and 2026-08-27
-      # (every run since): the emulator moved to 37.1.11.0 / gfxstream, the
-      # cached AVD no longer booted under it, and the emulator died ten
-      # seconds in — after which the action sat idle until the job timeout,
-      # which is why the failures all reported as "cancelled".
-      #
-      # Keying on the resolved version makes that self-healing: a new emulator
-      # is a new key, a cold cache, and a freshly created AVD. Pinning
-      # `emulator-build` instead would also work, but it trades an automatic
-      # recovery for a manual bump and a build number that eventually stops
-      # being downloadable.
-      - name: Resolve emulator version
-        id: emulator-version
-        run: |
-          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          # `sdkmanager` is not on PATH on the hosted image -- it lives under
-          # cmdline-tools, and the version directory is not always `latest`.
-          # PATH is still checked first in case a future image adds it.
-          sdkmanager=$(command -v sdkmanager || true)
-          if [ -z "$sdkmanager" ]; then
-            sdkmanager=$(ls -d "$sdk"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort | tail -1)
-          fi
-          if [ -n "$sdkmanager" ]; then
-            # Licences are pre-accepted on the hosted image; `yes |` keeps a
-            # prompt from blocking if that stops being true.
-            yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
-            "$sdkmanager" --install emulator --channel=0 > /dev/null || true
-          fi
-          # Read the package's own metadata rather than running `emulator
-          # -version`: source.properties is plain text written by sdkmanager
-          # for every installed package, so it needs no display, no working
-          # GL stack and no successful emulator launch. `Pkg.BuildId` is
-          # included because it changes with every emulator build, which is
-          # exactly the granularity the cache key wants.
-          props="$sdk/emulator/source.properties"
-          revision=$(sed -n 's/^Pkg\.Revision=//p' "$props" 2>/dev/null | tr -d '\r' | head -1)
-          build_id=$(sed -n 's/^Pkg\.BuildId=//p' "$props" 2>/dev/null | tr -d '\r' | head -1)
-          version="${revision:-unknown}${build_id:+-$build_id}"
-          # Deliberately never fatal. This value is a cache-key input, and
-          # failing the job because we could not compute one would be a worse
-          # bug than the stale-snapshot problem the key exists to solve: the
-          # tests would stop running again, which is the whole failure mode
-          # 359d25d was written to close. Degrade to a constant and say so.
-          if [ -z "$revision" ]; then
-            echo "::warning::could not read $props; the AVD cache key will not track the emulator version"
-          else
-            echo "Emulator revision $revision (build $build_id)"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # Exact key, no restore-keys: the test step runs with
-      # force-avd-creation:false, so a snapshot restored from a *different*
-      # system image would be booted as if it matched. Keying on the three
-      # inputs that define the image plus the emulator that will boot it means
-      # changing EMULATOR_API_LEVEL, or Google shipping a new emulator,
-      # invalidates the snapshot by itself. Bump the -v2 suffix to discard a
-      # cache that has gone bad without either of those changing.
-      - name: Cache AVD snapshot
-        id: avd-cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ runner.os }}-api${{ env.EMULATOR_API_LEVEL }}-${{ env.EMULATOR_TARGET }}-${{ env.EMULATOR_ARCH }}-emu${{ steps.emulator-version.outputs.version }}-v2
-
-      # First boot of a cold cache: create the AVD and let it save a snapshot
-      # (note the absence of -no-snapshot) so every later run restores instead
-      # of cold-booting.
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        with:
-          api-level: ${{ env.EMULATOR_API_LEVEL }}
-          target: ${{ env.EMULATOR_TARGET }}
-          arch: ${{ env.EMULATOR_ARCH }}
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
-
       # The whole variant, not a runner-argument filter narrowed to the
       # data.db package. androidTest holds only MigrationTest today, so a
-      # package filter would save nothing measurable against a ~10 min
-      # emulator boot, and it would silently exclude the next instrumented
+      # package filter would save nothing measurable against the emulator
+      # boot, and it would silently exclude the next instrumented
       # test someone adds — a filter that quietly stops running tests is the
       # exact failure mode this job exists to close. Narrow it only if
       # androidTest later grows something genuinely slow.
+      #
+      # No AVD snapshot cache, and therefore no cache key to compute and no
+      # separate snapshot-generation step. Both of this job's outages came
+      # from that cache, and it was never paying for itself:
+      #
+      #   cold (33666884725): 0s restore + 50s create + 82s test + 11s save
+      #                       = 143s, green
+      #   warm (33675799329): 22s restore + 162s test = 184s, and it hung
+      #
+      # The warm path was *slower* than the cold one — same day, same
+      # emulator — because extracting the tarball and cold-booting the
+      # restored image costs more than creating the AVD next to a warm page
+      # cache. Against that, the cache broke the job twice in a week: a
+      # snapshot created by an older emulator no longer booted under 37.1.11
+      # (green 2026-08-26, then five days of 45-minute idles), and a restored
+      # snapshot then failed to bring up its console — `Failed to start
+      # Emulator console for 5554` — so `adb emu kill` could not complete and
+      # the step sat in teardown for 27 minutes *after* BUILD SUCCESSFUL.
+      #
+      # `force-avd-creation: true` and `-no-snapshot` say the same thing
+      # twice on purpose: always build the AVD, always cold boot, never write
+      # a snapshot. The snapshot write is also what the hung teardown was in
+      # the middle of, so not having one to save removes that step entirely.
       - name: Run instrumented tests
-        # Step-level, well inside the job's 45. The action does not fail when
-        # the emulator dies during boot — it blocks — so without this the
-        # whole job budget is spent idling and there is no report, no
+        # Step-level, well inside the job's 30. The action does not fail when
+        # the emulator dies or refuses to shut down — it blocks — so without
+        # this the whole job budget is spent idling and there is no report, no
         # androidTest artifact, and a conclusion that reads as "cancelled".
-        # 30 clears the warm path (~12-15 min) and a cold one, and turns a
-        # dead emulator into a failure in half the time.
-        timeout-minutes: 30
+        # 20 is 8x the measured path and halves the time to a signal.
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ env.EMULATOR_API_LEVEL }}
           target: ${{ env.EMULATOR_TARGET }}
           arch: ${{ env.EMULATOR_ARCH }}
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          force-avd-creation: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew --no-daemon connectedDebugAndroidTest
 
