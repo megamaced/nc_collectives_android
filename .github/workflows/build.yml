@@ -350,26 +350,32 @@ jobs:
           if [ -z "$sdkmanager" ]; then
             sdkmanager=$(ls -d "$sdk"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort | tail -1)
           fi
-          if [ -z "$sdkmanager" ]; then
-            echo "::error::no sdkmanager found under $sdk"
-            exit 1
+          if [ -n "$sdkmanager" ]; then
+            # Licences are pre-accepted on the hosted image; `yes |` keeps a
+            # prompt from blocking if that stops being true.
+            yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager" --install emulator --channel=0 > /dev/null || true
           fi
-          # Licences are pre-accepted on the hosted image, but `yes |` keeps a
-          # prompt from blocking the step if that ever stops being true, and
-          # the step runs under `bash -e` so a no-op failure must not abort.
-          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$sdkmanager" --install emulator --channel=0 > /dev/null
-          # `|| true` because the assignment's status is the pipeline's, and a
-          # `grep` miss under `-e` would abort before the explicit check below
-          # could say what actually went wrong.
-          version=$("$sdk/emulator/emulator" -version 2>/dev/null \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
-            | head -1) || true
-          if [ -z "$version" ]; then
-            echo "::error::could not read the installed emulator version"
-            exit 1
+          # Read the package's own metadata rather than running `emulator
+          # -version`: source.properties is plain text written by sdkmanager
+          # for every installed package, so it needs no display, no working
+          # GL stack and no successful emulator launch. `Pkg.BuildId` is
+          # included because it changes with every emulator build, which is
+          # exactly the granularity the cache key wants.
+          props="$sdk/emulator/source.properties"
+          revision=$(sed -n 's/^Pkg\.Revision=//p' "$props" 2>/dev/null | tr -d '\r' | head -1)
+          build_id=$(sed -n 's/^Pkg\.BuildId=//p' "$props" 2>/dev/null | tr -d '\r' | head -1)
+          version="${revision:-unknown}${build_id:+-$build_id}"
+          # Deliberately never fatal. This value is a cache-key input, and
+          # failing the job because we could not compute one would be a worse
+          # bug than the stale-snapshot problem the key exists to solve: the
+          # tests would stop running again, which is the whole failure mode
+          # 359d25d was written to close. Degrade to a constant and say so.
+          if [ -z "$revision" ]; then
+            echo "::warning::could not read $props; the AVD cache key will not track the emulator version"
+          else
+            echo "Emulator revision $revision (build $build_id)"
           fi
-          echo "Emulator version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Exact key, no restore-keys: the test step runs with
