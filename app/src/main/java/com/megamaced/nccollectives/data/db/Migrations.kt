@@ -21,10 +21,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v8: `pages (collectiveId, serverTimestamp)` index added (R-50)
  *  - v9: `collectives.circleId` / `.level` / `.userShowMembers`
  *    added (B-83)
+ *  - v10: `edit_queue.attempts` / `attachments.attempts` added (issue #30)
  *
  * Each [Migration] is verified by `MigrationTest` in `androidTest`, which
  * evolves a fresh DB through the chain and asserts the final schema
- * matches the v9 JSON.
+ * matches the latest JSON.
  */
 internal val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -162,6 +163,29 @@ internal val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/**
+ * Issue #30: give each queued row its own retry budget.
+ *
+ * Both workers advertised a ten-attempt cap and were reading
+ * `CoroutineWorker.runAttemptCount`, which counts runs of the *WorkRequest*.
+ * Each worker re-queries every pending row on every run, and both enqueue
+ * with `APPEND_OR_REPLACE`, so a row that joined the database while an older
+ * request was in high-count backoff met a classifier that already saw attempt
+ * 10 — and its first retryable failure was settled as terminal. For an edit
+ * that meant parked as `CONFLICTED`; for an upload, `FAILED`. Neither status
+ * is selected again, so the newer request could not rescue it.
+ *
+ * Plain `ADD COLUMN`s defaulting to 0, so every row already queued starts
+ * with a full budget — which is the right answer for rows that may have been
+ * failed early by exactly the bug this fixes.
+ */
+internal val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `edit_queue` ADD COLUMN `attempts` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `attachments` ADD COLUMN `attempts` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -171,4 +195,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_6_7,
     MIGRATION_7_8,
     MIGRATION_8_9,
+    MIGRATION_9_10,
 )

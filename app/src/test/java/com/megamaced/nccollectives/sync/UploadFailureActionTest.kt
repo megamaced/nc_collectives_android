@@ -14,7 +14,7 @@ import java.io.IOException
 class UploadFailureActionTest {
     private fun action(
         result: ApiResult<*>,
-        attempt: Int = 0,
+        attempt: Int = 1,
     ) = uploadFailureAction(result, attempt)
 
     @Test
@@ -94,6 +94,22 @@ class UploadFailureActionTest {
         assertEquals(
             UploadFailureAction.RetryLater,
             action(ApiResult.NetworkError(IOException("offline")), attempt = MAX_UPLOAD_ATTEMPTS - 1),
+        )
+    }
+
+    @Test
+    fun `a row on its first attempt is never terminal for a retryable failure`() {
+        // Issue #30: the count used to come from the worker's
+        // runAttemptCount, so a row that joined the database while an older
+        // WorkRequest was at attempt 10 had this, its first failure,
+        // classified terminal -- and FAILED rows are never selected again.
+        assertEquals(
+            UploadFailureAction.RetryLater,
+            action(ApiResult.NetworkError(IOException("offline")), attempt = 1),
+        )
+        assertEquals(
+            UploadFailureAction.RetryLater,
+            action(ApiResult.HttpError(code = 503, message = "Service Unavailable"), attempt = 1),
         )
     }
 }

@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 9
+private const val LATEST_VERSION = 10
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -35,7 +35,7 @@ private const val LATEST_VERSION = 9
  *
  * [migrateAll] is the load-bearing test: it walks a v1 database through every
  * migration and lets Room compare the result against the committed
- * `app/schemas/…/9.json`, column by column and index by index. Schema
+ * `app/schemas/…/10.json`, column by column and index by index. Schema
  * validation cannot see a *lost row*, though, so the migrations that move
  * data rather than just adding a column get their own test below.
  *
@@ -220,6 +220,79 @@ class MigrationTest {
                     "(`pageId`, `baseEtag`, `newBodyMd`, `queuedAt`, `status`, `forceWrite`) " +
                     "VALUES (4242, NULL, '# Second edit', 1, 'PENDING', 0)",
             )
+        }
+        db.close()
+    }
+
+    /**
+     * MIGRATION_9_10 gives each queued row its own retry budget (issue #30).
+     * Two plain `ADD COLUMN`s, so as with 8→9 the risk is the *default* a
+     * pre-v10 row reads back with: it has to be 0, i.e. a full budget, and
+     * not whatever the ALTER happened to leave. Rows already in the queue
+     * may well have been failed early by the very bug this fixes, so
+     * starting them over is the point.
+     */
+    @Test
+    fun migrate9To10_addsTheAttemptCountersWithAFullBudget() {
+        helper.createDatabase(TEST_DB, 9).use { db ->
+            db.insert(
+                "edit_queue",
+                SQLiteDatabase.CONFLICT_ABORT,
+                ContentValues().apply {
+                    put("pageId", 4242L)
+                    put("baseEtag", "\"etag-9\"")
+                    put("newBodyMd", "# Written offline")
+                    put("queuedAt", 1_700_000_000_000L)
+                    put("status", "PENDING")
+                    put("forceWrite", 0)
+                },
+            )
+            db.insert(
+                "attachments",
+                SQLiteDatabase.CONFLICT_ABORT,
+                ContentValues().apply {
+                    put("id", "4242/shot.png")
+                    put("pageId", 4242L)
+                    put("fileName", "shot.png")
+                    put("contentType", "image/png")
+                    put("size", 1024L)
+                    put("lastModifiedMs", 1_700_000_000_000L)
+                    put("status", "FAILED")
+                    put("lastSyncedAt", 1_700_000_000_000L)
+                },
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 10, true, MIGRATION_9_10)
+
+        assertTrue(
+            "MIGRATION_9_10 did not add edit_queue.attempts",
+            db.columnNames("edit_queue").contains("attempts"),
+        )
+        assertTrue(
+            "MIGRATION_9_10 did not add attachments.attempts",
+            db.columnNames("attachments").contains("attempts"),
+        )
+        db.query("SELECT * FROM `edit_queue`").use { cursor ->
+            assertEquals(1, cursor.count)
+            assertTrue(cursor.moveToFirst())
+            assertEquals("# Written offline", cursor.stringAt("newBodyMd"))
+            // A full budget, not a spent one.
+            assertEquals(0L, cursor.longAt("attempts"))
+        }
+        db.query("SELECT * FROM `attachments`").use { cursor ->
+            assertEquals(1, cursor.count)
+            assertTrue(cursor.moveToFirst())
+            assertEquals("shot.png", cursor.stringAt("fileName"))
+            assertEquals(0L, cursor.longAt("attempts"))
+        }
+
+        // Writable at v10, i.e. the affinity is what the entity expects
+        // rather than whatever the ALTER produced.
+        db.execSQL("UPDATE `edit_queue` SET `attempts` = `attempts` + 1 WHERE `pageId` = 4242")
+        db.query("SELECT `attempts` FROM `edit_queue` WHERE `pageId` = 4242").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1L, cursor.longAt("attempts"))
         }
         db.close()
     }

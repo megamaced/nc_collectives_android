@@ -108,7 +108,11 @@ class AttachmentUploadWorker
                         continue
                     }
 
-                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_UPLOADING)
+                    // Issue #30: claiming the row spends one of its own
+                    // attempts, which is what the classifier reads instead of
+                    // this worker's `runAttemptCount`.
+                    attachmentDao.markUploading(row.id)
+                    val attemptsSoFar = row.attempts + 1
 
                     val dir = AttachmentRepositoryImpl.attachmentsDirectoryFor(row.pageId)
                     val ensure = bodyService.ensureCollection(
@@ -121,29 +125,24 @@ class AttachmentUploadWorker
                             Unit
                         }
 
-                        is ApiResult.NetworkError -> {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
-                            retry = true
-                            continue
-                        }
-
                         ApiResult.Unauthorised -> {
                             attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
                             return Result.success() // SessionManager surfaces re-auth.
                         }
 
-                        is ApiResult.HttpError, is ApiResult.Unexpected, ApiResult.Conflict -> {
+                        // Issue #30: NetworkError joins the others rather than
+                        // retrying outside the budget. A device can satisfy
+                        // WorkManager's CONNECTED constraint while the server
+                        // times out, and an upload retrying forever is
+                        // invisible — only a settled row puts anything on
+                        // screen, and a FAILED one now offers Retry.
+                        is ApiResult.NetworkError,
+                        is ApiResult.HttpError,
+                        is ApiResult.Unexpected,
+                        ApiResult.Conflict,
+                        -> {
                             Timber.w("MKCOL failed for %s: %s", row.id, ensure)
-                            when (uploadFailureAction(ensure, runAttemptCount)) {
-                                UploadFailureAction.RetryLater -> {
-                                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
-                                    retry = true
-                                }
-
-                                UploadFailureAction.Terminal -> {
-                                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                                }
-                            }
+                            if (settleUploadFailure(row.id, ensure, attemptsSoFar)) retry = true
                             continue
                         }
                     }
@@ -215,8 +214,7 @@ class AttachmentUploadWorker
                         }
 
                         is ApiResult.NetworkError -> {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
-                            retry = true
+                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
                         }
 
                         ApiResult.Unauthorised -> {
@@ -226,12 +224,12 @@ class AttachmentUploadWorker
 
                         is ApiResult.HttpError -> {
                             Timber.w("Upload HTTP %d for %s: %s", put.code, row.id, put.message)
-                            if (settleUploadFailure(row.id, put)) retry = true
+                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
                         }
 
                         is ApiResult.Unexpected -> {
                             Timber.w(put.cause, "Upload unexpected error for %s", row.id)
-                            if (settleUploadFailure(row.id, put)) retry = true
+                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
                         }
 
                         ApiResult.Conflict -> {
@@ -242,7 +240,7 @@ class AttachmentUploadWorker
                             Timber.w("Upload name for %s is taken on the server", row.id)
                             if (attachmentRepository.renameForRemoteCollision(row.pageId, row.fileName) != null) {
                                 retry = true
-                            } else if (settleUploadFailure(row.id, put)) {
+                            } else if (settleUploadFailure(row.id, put, attemptsSoFar)) {
                                 retry = true
                             }
                         }
@@ -330,8 +328,9 @@ class AttachmentUploadWorker
         private suspend fun settleUploadFailure(
             attachmentId: String,
             result: ApiResult<*>,
+            attemptsSoFar: Int,
         ): Boolean =
-            when (uploadFailureAction(result, runAttemptCount)) {
+            when (uploadFailureAction(result, attemptsSoFar)) {
                 UploadFailureAction.RetryLater -> {
                     attachmentDao.setStatus(attachmentId, AttachmentEntity.STATUS_PENDING)
                     true
@@ -370,18 +369,23 @@ internal enum class UploadFailureAction {
  * and the reason a 403 or a 507 doesn't retry: the first is the server saying
  * the request itself is wrong, the second needs the *server* to change first.
  *
- * [runAttemptCount] backstops it the way [MAX_FLUSH_ATTEMPTS] backstops the
+ * [attemptsSoFar] backstops it the way [MAX_FLUSH_ATTEMPTS] backstops the
  * edit queue, and for the same reason: WorkManager applies no cap of its own,
  * so a retryable arm alone would retry on an exponential backoff for as long
  * as the app stayed installed — invisibly, because only a settled row puts
  * anything on screen.
+ *
+ * Issue #30: [attemptsSoFar] comes from `AttachmentEntity.attempts`, not from
+ * the worker's `runAttemptCount`. The latter belongs to the WorkRequest, and
+ * a row that joined the database while an older request was deep in backoff
+ * had its very first failure classified terminal.
  */
 internal fun uploadFailureAction(
     result: ApiResult<*>,
-    runAttemptCount: Int,
+    attemptsSoFar: Int,
 ): UploadFailureAction =
     when {
-        runAttemptCount >= MAX_UPLOAD_ATTEMPTS -> UploadFailureAction.Terminal
+        attemptsSoFar >= MAX_UPLOAD_ATTEMPTS -> UploadFailureAction.Terminal
         isRetryableFailure(result) -> UploadFailureAction.RetryLater
         else -> UploadFailureAction.Terminal
     }
@@ -389,6 +393,7 @@ internal fun uploadFailureAction(
 /**
  * Attempts to spend on one upload before marking it failed. Matches
  * [MAX_FLUSH_ATTEMPTS]: WorkManager's backoff is exponential and capped at
- * five hours, so ten attempts is already several days of trying.
+ * five hours, so ten attempts is already several days of trying. Counted per
+ * row in `AttachmentEntity.attempts` (issue #30).
  */
 internal const val MAX_UPLOAD_ATTEMPTS = 10

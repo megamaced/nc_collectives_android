@@ -39,4 +39,21 @@ data class EditQueueEntity(
      * worker on a 412.
      */
     val forceWrite: Boolean = false,
+    /**
+     * Attempts `EditFlushWorker` has spent on *this row*, incremented as each
+     * one begins.
+     *
+     * Issue #30: the cap used to be read off `CoroutineWorker.runAttemptCount`,
+     * which counts runs of the **WorkRequest**, not attempts on a row. The
+     * worker re-queries every pending row on each run and
+     * `flushEditsWhenOnline` appends, so a row queued while an older request
+     * was already in high-count backoff met a classifier that saw attempt 10
+     * and parked its very first failure as `CONFLICTED` — after which
+     * `pendingEntries` never selected it again and the follow-up request
+     * could not help.
+     *
+     * Reset to zero whenever the row's body changes, because a new edit is a
+     * new chance rather than a continuation of a failing one.
+     */
+    val attempts: Int = 0,
 )

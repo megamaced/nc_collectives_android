@@ -64,7 +64,11 @@ class EditFlushWorker
 
             var retry = false
             for (entry in entries) {
-                editQueueDao.setStatus(entry.pageId, "IN_FLIGHT")
+                // Issue #30: claiming the row is also what spends one of its
+                // own attempts. `attemptsSoFar` is what the classifier below
+                // is given, in place of this worker's `runAttemptCount`.
+                editQueueDao.markInFlight(entry.pageId)
+                val attemptsSoFar = entry.attempts + 1
                 val page = pageDao.getById(entry.pageId)
                 if (page == null) {
                     // The page disappeared locally (collective removed?). Drop
@@ -91,8 +95,17 @@ class EditFlushWorker
                         }
 
                         is ApiResult.NetworkError -> {
-                            editQueueDao.setStatus(entry.pageId, "PENDING")
-                            retry = true
+                            // Issue #30: through the same per-row budget as
+                            // every other retryable arm. This used to go
+                            // straight back to PENDING, so a device that
+                            // satisfies WorkManager's CONNECTED constraint
+                            // while the server times out retried forever —
+                            // invisibly, because only a settled row puts
+                            // anything on screen. Parking as CONFLICTED after
+                            // the budget is not data loss: the text lands on
+                            // the page row as a draft and the ConflictBanner
+                            // offers it.
+                            if (settleFlushFailure(entry, currentServer, attemptsSoFar)) retry = true
                             continue
                         }
 
@@ -103,16 +116,7 @@ class EditFlushWorker
 
                         else -> {
                             Timber.w("Flush preflight failed for page %d: %s", entry.pageId, currentServer)
-                            when (flushFailureAction(httpStatusOf(currentServer), runAttemptCount)) {
-                                FlushFailureAction.Terminal -> {
-                                    parkAsConflict(entry)
-                                }
-
-                                FlushFailureAction.RetryLater -> {
-                                    editQueueDao.setStatus(entry.pageId, "PENDING")
-                                    retry = true
-                                }
-                            }
+                            if (settleFlushFailure(entry, currentServer, attemptsSoFar)) retry = true
                             continue
                         }
                     }
@@ -168,7 +172,9 @@ class EditFlushWorker
                 // the server accepted with no local record of it — and the
                 // next run then reports a conflict against the user's own
                 // successful write.
-                val outcome = withContext(NonCancellable) { recordPutOutcome(entry, putResult, generation) }
+                val outcome = withContext(NonCancellable) {
+                    recordPutOutcome(entry, putResult, generation, attemptsSoFar)
+                }
                 when (outcome) {
                     FlushRowOutcome.Settled -> Unit
                     FlushRowOutcome.RetryLater -> retry = true
@@ -183,6 +189,7 @@ class EditFlushWorker
             entry: EditQueueEntity,
             result: ApiResult<String?>,
             generation: Long,
+            attemptsSoFar: Int,
         ): FlushRowOutcome =
             when (result) {
                 is ApiResult.Success -> {
@@ -241,9 +248,11 @@ class EditFlushWorker
                     FlushRowOutcome.Settled
                 }
 
+                // Issue #30: no longer an unconditional retry — the per-row
+                // budget covers a server that is reachable by WorkManager's
+                // reckoning and unreachable in fact.
                 is ApiResult.NetworkError -> {
-                    editQueueDao.setStatus(entry.pageId, "PENDING")
-                    FlushRowOutcome.RetryLater
+                    settleFailure(entry, result, attemptsSoFar)
                 }
 
                 ApiResult.Unauthorised -> {
@@ -253,20 +262,31 @@ class EditFlushWorker
 
                 is ApiResult.HttpError -> {
                     Timber.w("Flush HTTP %d for page %d: %s", result.code, entry.pageId, result.message)
-                    settleFailure(entry, result)
+                    settleFailure(entry, result, attemptsSoFar)
                 }
 
                 is ApiResult.Unexpected -> {
                     Timber.w(result.cause, "Flush unexpected error for page %d", entry.pageId)
-                    settleFailure(entry, result)
+                    settleFailure(entry, result, attemptsSoFar)
                 }
             }
+
+        /**
+         * As [settleFailure], for the arms outside `recordPutOutcome` that
+         * only need to know whether to ask for another run.
+         */
+        private suspend fun settleFlushFailure(
+            entry: EditQueueEntity,
+            result: ApiResult<*>,
+            attemptsSoFar: Int,
+        ): Boolean = settleFailure(entry, result, attemptsSoFar) == FlushRowOutcome.RetryLater
 
         private suspend fun settleFailure(
             entry: EditQueueEntity,
             result: ApiResult<*>,
+            attemptsSoFar: Int,
         ): FlushRowOutcome =
-            when (flushFailureAction(httpStatusOf(result), runAttemptCount)) {
+            when (flushFailureAction(httpStatusOf(result), attemptsSoFar)) {
                 FlushFailureAction.Terminal -> {
                     parkAsConflict(entry)
                     FlushRowOutcome.Settled
@@ -322,7 +342,7 @@ internal fun settledQueueRow(
     when {
         current == null -> null
         current.newBodyMd == flushedBody -> null
-        else -> current.copy(baseEtag = newEtag, status = "PENDING")
+        else -> current.copy(baseEtag = newEtag, status = "PENDING", attempts = 0)
     }
 
 /** What [EditFlushWorker] does with one row after an attempt failed. */
@@ -364,8 +384,9 @@ internal enum class FlushFailureAction {
  * run repeats it anyway, whereas here the row *is* the user's only copy of
  * their edit, so a 502/503 behind a reverse proxy is worth waiting out.
  * [MAX_FLUSH_ATTEMPTS] is what stops that from being unbounded, and it
- * backstops every other arm — including the ones with no HTTP status at all
- * (an `Unexpected`, e.g. a WebDAV URL that can't be built).
+ * backstops every other arm — including the ones with no HTTP status at all,
+ * which is an `Unexpected` (a WebDAV URL that can't be built) or, since
+ * issue #30, a `NetworkError`.
  *
  * 408 and 429 are 4xx by number and transient by meaning: request timeout
  * and rate limiting are exactly the cases retrying is *for*.
@@ -388,10 +409,11 @@ internal fun flushFailureAction(
  * WorkManager's backoff is exponential and capped at five hours, so ten
  * attempts is already several days of trying.
  *
- * Counted per work request, not per row: a fresh `flushEditsWhenOnline()`
- * appends a new request whose `runAttemptCount` starts at zero. That is why
- * the status-based arms above carry the real weight — this only bounds the
- * failures that arrive with no status to classify.
+ * Counted per *row*, in `EditQueueEntity.attempts`. Issue #30: it used to be
+ * the worker's `runAttemptCount`, which belongs to the WorkRequest — so a row
+ * queued while an older request was deep in backoff had its first failure
+ * classified terminal, and `pendingEntries` then never offered it to the
+ * newer request that could have flushed it.
  */
 internal const val MAX_FLUSH_ATTEMPTS = 10
 

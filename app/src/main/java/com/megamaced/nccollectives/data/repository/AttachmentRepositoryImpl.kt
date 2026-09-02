@@ -307,7 +307,9 @@ class AttachmentRepositoryImpl
                     IllegalStateException("The staged copy of $fileName is no longer on the device"),
                 )
             }
-            attachmentDao.setStatus(key, AttachmentEntity.STATUS_PENDING)
+            // Issue #30: a fresh budget. The user asked for this attempt
+            // explicitly, so it is not a continuation of the ones that failed.
+            attachmentDao.rearmForRetry(key)
             syncScheduler.flushAttachmentUploadsWhenOnline()
             return ApiResult.Success(Unit)
         }
@@ -377,6 +379,8 @@ class AttachmentRepositoryImpl
                         fileName = newName,
                         status = AttachmentEntity.STATUS_PENDING,
                         localUriString = Uri.fromFile(newStaged).toString(),
+                        // A new filename is a new attempt chain (issue #30).
+                        attempts = 0,
                         // The old row's server id, if it had one, belonged to
                         // whatever is sitting at the old name.
                         serverAttachmentId = null,

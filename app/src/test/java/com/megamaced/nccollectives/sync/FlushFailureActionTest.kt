@@ -79,4 +79,27 @@ class FlushFailureActionTest {
         assertNull(httpStatusOf(ApiResult.Unexpected(IllegalStateException("no url"))))
         assertNull(httpStatusOf(ApiResult.Success("etag")))
     }
+
+    @Test
+    fun `a dropped network waits, and is now inside the budget`() {
+        // Issue #30: NetworkError used to go straight back to PENDING
+        // without consulting this at all, so a device that satisfies
+        // WorkManager's CONNECTED constraint while the server times out
+        // retried forever -- invisibly, since only a settled row puts
+        // anything on screen. A null status is what a NetworkError presents
+        // as, so the cap now reaches it.
+        assertEquals(FlushFailureAction.RetryLater, flushFailureAction(httpCode = null, runAttemptCount = 1))
+        assertEquals(
+            FlushFailureAction.Terminal,
+            flushFailureAction(httpCode = null, runAttemptCount = MAX_FLUSH_ATTEMPTS),
+        )
+    }
+
+    @Test
+    fun `a row on its first attempt is never terminal for a retryable failure`() {
+        // The per-row budget: a row queued while an older WorkRequest sat at
+        // attempt 10 used to have its first failure parked as CONFLICTED.
+        assertEquals(FlushFailureAction.RetryLater, flushFailureAction(httpCode = 503, runAttemptCount = 1))
+        assertEquals(FlushFailureAction.RetryLater, flushFailureAction(httpCode = 429, runAttemptCount = 1))
+    }
 }

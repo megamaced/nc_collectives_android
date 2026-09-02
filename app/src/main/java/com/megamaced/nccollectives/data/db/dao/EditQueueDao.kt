@@ -55,6 +55,16 @@ interface EditQueueDao {
     @Query("SELECT newBodyMd FROM edit_queue WHERE pageId = :pageId AND status != 'CONFLICTED' LIMIT 1")
     suspend fun pendingBody(pageId: Long): String?
 
+    /**
+     * Claim a row for an attempt: `IN_FLIGHT`, and one more attempt spent.
+     *
+     * Issue #30: the count has to live on the row, because the worker's own
+     * `runAttemptCount` belongs to the WorkRequest and a row can join the
+     * database under an old one that is already deep in backoff.
+     */
+    @Query("UPDATE edit_queue SET status = 'IN_FLIGHT', attempts = attempts + 1 WHERE pageId = :pageId")
+    suspend fun markInFlight(pageId: Long)
+
     @Query("UPDATE edit_queue SET status = :status WHERE pageId = :pageId")
     suspend fun setStatus(
         pageId: Long,

@@ -43,6 +43,21 @@ interface AttachmentDao {
     @Upsert
     suspend fun upsertAll(entities: List<AttachmentEntity>)
 
+    /**
+     * Claim a row for an upload attempt: `UPLOADING`, and one more attempt
+     * spent. See `EditQueueDao.markInFlight` — issue #30.
+     */
+    @Query("UPDATE attachments SET status = 'UPLOADING', attempts = attempts + 1 WHERE id = :id")
+    suspend fun markUploading(id: String)
+
+    /**
+     * Put a settled row back in the queue with a fresh budget. The user asked
+     * for this one explicitly (issue #23), so it is not a continuation of the
+     * attempts that failed.
+     */
+    @Query("UPDATE attachments SET status = 'PENDING', attempts = 0 WHERE id = :id")
+    suspend fun rearmForRetry(id: String)
+
     @Query("UPDATE attachments SET status = :status WHERE id = :id")
     suspend fun setStatus(
         id: String,

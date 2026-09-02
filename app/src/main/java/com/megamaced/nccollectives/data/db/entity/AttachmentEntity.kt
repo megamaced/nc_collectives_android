@@ -45,6 +45,15 @@ data class AttachmentEntity(
      * successful list; used by [deleteAttachment] for stable deletion.
      */
     val serverAttachmentId: Long? = null,
+    /**
+     * Attempts `AttachmentUploadWorker` has spent on *this row*, incremented
+     * as each one begins. Issue #30 — see `EditQueueEntity.attempts` for why
+     * `runAttemptCount` could not answer this.
+     *
+     * Reset to zero when the user asks for a retry, and when a remote
+     * collision moves the upload to a new filename.
+     */
+    val attempts: Int = 0,
 ) {
     companion object {
         const val STATUS_REMOTE = "REMOTE"
