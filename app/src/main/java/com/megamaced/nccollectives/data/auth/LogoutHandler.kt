@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,22 @@ import javax.inject.Singleton
  * Signing out is all-accounts by design: it is the "this is not my phone
  * any more" action. Removing one account and keeping the rest is
  * [AccountSwitcher.removeAccount].
+ *
+ * Issue #32: step 3 runs in a `finally`, because step 2 can throw — Room, a
+ * DataStore edit, a cache directory, the WebView's own store, all device
+ * I/O. Without it the coroutine ended before the credentials were cleared,
+ * leaving the login screen showing over a store that could still answer
+ * `getCredentials()` and a `sessionChangeInProgress` flag stuck true for the
+ * life of the process. The next launch read that credential back and signed
+ * the user in again — a sign-out that failed open.
+ *
+ * That is the one respect in which this differs from `AccountSwitcher`,
+ * which on a wipe failure deliberately *keeps* the outgoing account
+ * ([AccountSwitcher.wipeOrAbandon]) rather than activating a new one over a
+ * half-cleared cache. Abandoning is the safe answer for a switch and the
+ * wrong one here: the user asked to be signed out, so the credential goes
+ * whatever else fails, and the incomplete local cleanup is logged rather
+ * than hidden.
  */
 @Singleton
 class LogoutHandler
@@ -51,8 +68,18 @@ class LogoutHandler
             // with user A's payload targeting user B's Nextcloud.
             sharePayloadHolder.discard()
             scope.launch {
-                localDataWiper.wipe(keepDevicePreferences = false)
-                sessionManager.endSignOut()
+                try {
+                    localDataWiper.wipe(keepDevicePreferences = false)
+                } catch (e: Exception) {
+                    // Broad, and deliberately not rethrown: a failure to
+                    // remove cached *data* must not stop the credentials
+                    // going. Logged loudly because what is left behind is
+                    // one account's pages and files on a device whose owner
+                    // believes they have signed out.
+                    Timber.e(e, "Local wipe failed during sign-out; clearing credentials anyway")
+                } finally {
+                    sessionManager.endSignOut()
+                }
             }
         }
     }

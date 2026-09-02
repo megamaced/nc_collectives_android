@@ -12,11 +12,14 @@ import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.sync.SyncScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 /**
  * Removes every trace of the signed-in account's data from the device.
@@ -107,7 +110,9 @@ class LocalDataWiper
                 diskCache?.clear()
             }
             // Main thread: every WebView API below asserts it, and callers
-            // run this on `Dispatchers.IO`.
+            // run this on `Dispatchers.IO`. Issue #33: this now waits for the
+            // cookie removal to report back, so the wipe cannot return with
+            // the previous account's session still in the jar.
             withContext(Dispatchers.Main) { clearWebViewState() }
         }
 
@@ -133,16 +138,51 @@ class LocalDataWiper
          * clear state that isn't there must not abort the wipe.
          */
         @Suppress("DEPRECATION") // WebViewDatabase.clearFormData has no replacement.
-        private fun clearWebViewState() {
+        private suspend fun clearWebViewState() {
             runCatching {
-                CookieManager.getInstance().apply {
-                    removeAllCookies(null)
-                    // Cookies are removed asynchronously in-memory; without
-                    // the flush the on-disk store can survive the wipe.
-                    flush()
-                }
+                val cookies = CookieManager.getInstance()
+                // Issue #33: `removeAllCookies` is documented asynchronous
+                // and its callback is the only signal that removal finished.
+                // Passing null threw that away, so the wipe returned — and
+                // `AccountSwitcher` activated the next account — while the
+                // previous `directediting` session cookie could still be in
+                // the jar. On the same host, which is the ordinary
+                // re-authentication case, that cookie is one account's live
+                // session handed to another's WebView.
+                //
+                // It also fixes an ordering bug: `flush()` ran immediately
+                // after the request, so it could persist the *pre*-removal
+                // state and defeat itself.
+                awaitCookieRemoval(cookies)
+                cookies.flush()
                 WebStorage.getInstance().deleteAllData()
                 WebViewDatabase.getInstance(context).clearFormData()
             }.onFailure { Timber.w(it, "Couldn't clear WebView state") }
+        }
+
+        /**
+         * Suspend until [cookies] reports the removal complete, or until
+         * [COOKIE_REMOVAL_TIMEOUT_MS] passes.
+         *
+         * The timeout is the fail-safe: a WebView provider that never invokes
+         * the callback would otherwise hang the account transition behind a
+         * spinner forever, which is a worse outcome than a cookie jar that
+         * may not be empty yet. `resume`-once is guarded because a provider
+         * calling back twice would crash the coroutine machinery.
+         */
+        private suspend fun awaitCookieRemoval(cookies: CookieManager) {
+            val removed = withTimeoutOrNull(COOKIE_REMOVAL_TIMEOUT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    cookies.removeAllCookies { continuation.resume(it) }
+                }
+            }
+            if (removed == null) {
+                Timber.w("WebView cookie removal did not report back within %d ms", COOKIE_REMOVAL_TIMEOUT_MS)
+            }
+        }
+
+        private companion object {
+            /** See [awaitCookieRemoval]. */
+            const val COOKIE_REMOVAL_TIMEOUT_MS = 5_000L
         }
     }
