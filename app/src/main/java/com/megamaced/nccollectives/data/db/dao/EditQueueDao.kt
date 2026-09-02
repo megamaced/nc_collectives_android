@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface EditQueueDao {
@@ -22,6 +23,37 @@ interface EditQueueDao {
 
     @Query("SELECT * FROM edit_queue WHERE pageId = :pageId LIMIT 1")
     suspend fun forPage(pageId: Long): EditQueueEntity?
+
+    /**
+     * The markdown of an unresolved queued edit, or null when there isn't
+     * one.
+     *
+     * A queued edit *is* the local truth for a page's body. The page row
+     * deliberately keeps holding the server's markdown and ETag, because
+     * `If-Match` and conflict resolution have to compare against them — so
+     * every reader that renders or extends a body has to overlay this on
+     * top of `pages.bodyMd`. Issue #18: without the overlay a save that
+     * only reached the queue was invisible. The page view kept rendering
+     * the pre-edit text, and the next edit therefore started from that text
+     * and `@Upsert` replaced the queued row, discarding the first edit with
+     * no error.
+     *
+     * `CONFLICTED` rows are excluded. Their text is already on the page row
+     * as `draftBodyMd`, where `ConflictBanner` offers it beside the server
+     * version; overlaying it as the body would hide the very thing the user
+     * is being asked to compare it against.
+     */
+    @Query("SELECT newBodyMd FROM edit_queue WHERE pageId = :pageId AND status != 'CONFLICTED' LIMIT 1")
+    fun observePendingBody(pageId: Long): Flow<String?>
+
+    /**
+     * As [observePendingBody], for the one-shot reads. Kept as a separate
+     * query rather than `forPage(...)?.takeIf { ... }` so the `CONFLICTED`
+     * exclusion is stated once, in SQL, and can't drift between the
+     * observing and one-shot paths.
+     */
+    @Query("SELECT newBodyMd FROM edit_queue WHERE pageId = :pageId AND status != 'CONFLICTED' LIMIT 1")
+    suspend fun pendingBody(pageId: Long): String?
 
     @Query("UPDATE edit_queue SET status = :status WHERE pageId = :pageId")
     suspend fun setStatus(

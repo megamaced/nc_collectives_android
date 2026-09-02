@@ -28,10 +28,14 @@ import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -81,9 +85,41 @@ class PageRepositoryImpl
                 .distinctUntilChanged()
                 .map { rows -> rows.map { it.toDomain() } }
 
-        override fun observePage(pageId: Long): Flow<Page?> = pageDao.observeById(pageId).map { it?.toDomain() }
+        /**
+         * Issue #18: a queued offline edit is the local truth for the body,
+         * so the page row's cached server markdown is overlaid with it. The
+         * two flows are combined rather than joined in SQL so `pages` keeps
+         * its plain `SELECT *` and the ETag on the row keeps meaning "the
+         * version the server has".
+         */
+        override fun observePage(pageId: Long): Flow<Page?> =
+            combine(
+                pageDao.observeById(pageId),
+                editQueueDao.observePendingBody(pageId),
+            ) { entity, pendingBody -> entity?.toDomain(pendingBody) }
 
-        override fun observeLandingPage(collectiveId: Long): Flow<Page?> = pageDao.observeLandingPage(collectiveId).map { it?.toDomain() }
+        /**
+         * The landing card renders a snippet of this body, so it needs the
+         * same overlay as [observePage] — otherwise a collective whose
+         * landing page was edited offline advertises the pre-edit text.
+         *
+         * `flatMapLatest` because the page id isn't known until the row
+         * arrives. The re-subscription it costs per emission is one indexed
+         * single-row lookup on a table with at most one row per unsynced
+         * page, against an upstream that already re-reads a whole markdown
+         * body each time.
+         */
+        @OptIn(ExperimentalCoroutinesApi::class)
+        override fun observeLandingPage(collectiveId: Long): Flow<Page?> =
+            pageDao
+                .observeLandingPage(collectiveId)
+                .flatMapLatest { entity ->
+                    if (entity == null) {
+                        flowOf(null)
+                    } else {
+                        editQueueDao.observePendingBody(entity.id).map { entity.toDomain(it) }
+                    }
+                }
 
         override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
             apiCall {
@@ -186,7 +222,7 @@ class PageRepositoryImpl
             editQueueDao.deleteForPageIds(pageIds)
         }
 
-        override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain()
+        override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain(editQueueDao.pendingBody(pageId))
 
         override suspend fun fetchBody(pageId: Long): ApiResult<String> {
             val entity = pageDao.getById(pageId)
@@ -318,13 +354,19 @@ class PageRepositoryImpl
                     if (existing?.status == "CONFLICTED") {
                         SaveOutcome.Conflict
                     } else {
+                        // Issue #18: `newBody` already contains whatever was
+                        // queued before, because the editor and the append
+                        // path both read the queued body back. What must not
+                        // be lost in the replacement is the metadata saying
+                        // what the edit chain is written against — see
+                        // `coalesceQueuedEdit`.
                         editQueueDao.upsert(
-                            EditQueueEntity(
+                            coalesceQueuedEdit(
+                                existing = existing,
                                 pageId = pageId,
-                                baseEtag = entity.bodyEtag,
-                                newBodyMd = newBody,
-                                queuedAt = System.currentTimeMillis(),
-                                status = "PENDING",
+                                serverEtag = entity.bodyEtag,
+                                newBody = newBody,
+                                now = System.currentTimeMillis(),
                             ),
                         )
                         syncScheduler.flushEditsWhenOnline()
@@ -811,26 +853,22 @@ class PageRepositoryImpl
                 ?: return SaveOutcome.Error("Page not cached")
             // Make sure we have the current body before appending, otherwise
             // we'd overwrite the page with just the appended snippet.
-            val baseBody = if (entity.bodyMd == null) {
-                val fetched = fetchBody(pageId)
-                if (fetched !is ApiResult.Success) {
-                    return SaveOutcome.Error(fetched.userMessage() ?: "Couldn't load page body")
+            //
+            // Issue #18: a queued edit outranks the row's cached body, which
+            // is the server's. Appending to the row instead meant a share
+            // into a page edited offline dropped that edit — and it must not
+            // fall through to `fetchBody` either, since the queue only holds
+            // anything when the network already refused us.
+            val baseBody = editQueueDao.pendingBody(pageId)
+                ?: entity.bodyMd
+                ?: run {
+                    val fetched = fetchBody(pageId)
+                    if (fetched !is ApiResult.Success) {
+                        return SaveOutcome.Error(fetched.userMessage() ?: "Couldn't load page body")
+                    }
+                    fetched.data
                 }
-                fetched.data
-            } else {
-                entity.bodyMd
-            }
-            // Two newlines, not one — otherwise an append to a body ending
-            // in `# Heading` produces `# Heading\nshared text` which parses
-            // *inside* the heading (B-16). The blank line forces a fresh
-            // markdown block.
-            val newBody = when {
-                baseBody.isEmpty() -> text
-                baseBody.endsWith("\n\n") -> baseBody + text
-                baseBody.endsWith("\n") -> baseBody + "\n" + text
-                else -> baseBody + "\n\n" + text
-            }
-            return saveBody(pageId, newBody)
+            return saveBody(pageId, appendedBody(baseBody, text))
         }
 
         override suspend fun movePage(
@@ -960,4 +998,67 @@ internal fun bodyFetchPlan(
         BodyFetchPlan.Revalidate(bodyEtag)
     } else {
         BodyFetchPlan.FetchWhole
+    }
+
+/**
+ * The queue row a fresh offline save should leave behind, given the row
+ * already there (if any).
+ *
+ * `EditQueueEntity.pageId` is the primary key and the write is an `@Upsert`,
+ * so a second offline save *replaces* the first row rather than adding one.
+ * That is the right shape — every reader overlays the queued body, so
+ * [newBody] already contains the earlier edit — but only if the metadata
+ * describing what the edit is written *against* survives the replacement.
+ * Issue #18:
+ *
+ *  - [EditQueueEntity.baseEtag] stays the ETag the chain started from rather
+ *    than being re-read off the page row. A null on an existing row is
+ *    meaningful — a force-write, or a server that sends no `ETag` — and
+ *    healing it back to the page's ETag would re-arm an `If-Match` the user
+ *    has already overridden.
+ *  - [EditQueueEntity.forceWrite] is sticky. Once the user has chosen
+ *    "replace with my draft", the edits they go on to make are still theirs
+ *    to force; dropping the flag hands the next flush a precondition to fail
+ *    and turns their override back into a conflict (B-46).
+ *  - [EditQueueEntity.queuedAt] keeps the earliest time, so one page being
+ *    edited over and over can't keep pushing itself behind older pages in
+ *    `pendingEntries`' ordering.
+ *
+ * `status` is deliberately reset to `PENDING`: the caller has already
+ * refused to queue on top of a `CONFLICTED` row, so the only status this can
+ * overwrite is `IN_FLIGHT` — a row whose PUT is in progress, which the
+ * worker re-reads before settling (`settledQueueRow`).
+ */
+internal fun coalesceQueuedEdit(
+    existing: EditQueueEntity?,
+    pageId: Long,
+    serverEtag: String?,
+    newBody: String,
+    now: Long,
+): EditQueueEntity =
+    EditQueueEntity(
+        pageId = pageId,
+        baseEtag = if (existing != null) existing.baseEtag else serverEtag,
+        newBodyMd = newBody,
+        queuedAt = existing?.queuedAt ?: now,
+        status = "PENDING",
+        forceWrite = existing?.forceWrite ?: false,
+    )
+
+/**
+ * [text] appended to [base] as a fresh markdown block.
+ *
+ * Two newlines, not one: an append to a body ending in `# Heading` would
+ * otherwise produce `# Heading\nshared text`, which parses *inside* the
+ * heading (B-16). The blank line forces a new block.
+ */
+internal fun appendedBody(
+    base: String,
+    text: String,
+): String =
+    when {
+        base.isEmpty() -> text
+        base.endsWith("\n\n") -> base + text
+        base.endsWith("\n") -> base + "\n" + text
+        else -> base + "\n\n" + text
     }

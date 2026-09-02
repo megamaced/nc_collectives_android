@@ -2,10 +2,12 @@ package com.megamaced.nccollectives.sync
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
+import androidx.room.withTransaction
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
@@ -46,6 +48,7 @@ class EditFlushWorker
         private val pageDao: PageDao,
         private val editQueueDao: EditQueueDao,
         private val bodyService: PageBodyService,
+        private val database: NcCollectivesDatabase,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
             val entries = editQueueDao.pendingEntries()
@@ -132,8 +135,7 @@ class EditFlushWorker
                             currentEtag,
                             System.currentTimeMillis(),
                         )
-                        pageDao.updateDraft(entry.pageId, entry.newBodyMd)
-                        editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+                        parkAsConflict(entry)
                         Timber.i("Edit on page %d conflicted; kept local draft", entry.pageId)
                         continue
                     }
@@ -175,15 +177,36 @@ class EditFlushWorker
         ): FlushRowOutcome =
             when (result) {
                 is ApiResult.Success -> {
-                    pageDao.updateBody(
-                        entry.pageId,
-                        entry.newBodyMd,
-                        result.data,
-                        System.currentTimeMillis(),
-                    )
-                    pageDao.updateDraft(entry.pageId, null)
-                    editQueueDao.deleteForPage(entry.pageId)
-                    FlushRowOutcome.Settled
+                    // Issue #18: `entry` is a snapshot taken before the PUT,
+                    // and the user can save again while the row is
+                    // `IN_FLIGHT` — `saveBody` upserts a newer body over it.
+                    // Deleting the row on the strength of the snapshot would
+                    // discard an edit the server has never seen, so the row
+                    // is re-read under a transaction and only dropped if it
+                    // still holds what we sent.
+                    database.withTransaction {
+                        pageDao.updateBody(
+                            entry.pageId,
+                            entry.newBodyMd,
+                            result.data,
+                            System.currentTimeMillis(),
+                        )
+                        pageDao.updateDraft(entry.pageId, null)
+                        val survivor = settledQueueRow(
+                            current = editQueueDao.forPage(entry.pageId),
+                            flushedBody = entry.newBodyMd,
+                            newEtag = result.data,
+                        )
+                        if (survivor == null) {
+                            editQueueDao.deleteForPage(entry.pageId)
+                            FlushRowOutcome.Settled
+                        } else {
+                            editQueueDao.upsert(survivor)
+                            // There is still unsent work for this page, and
+                            // this run is past it.
+                            FlushRowOutcome.RetryLater
+                        }
+                    }
                 }
 
                 ApiResult.Conflict -> {
@@ -192,10 +215,11 @@ class EditFlushWorker
                     // (which `replaceWithDraft` may have just refreshed),
                     // surface the conflict. The user resolves via the
                     // banner; the queue row is left as CONFLICTED.
-                    if (!entry.forceWrite) {
-                        pageDao.updateDraft(entry.pageId, entry.newBodyMd)
+                    if (entry.forceWrite) {
+                        editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+                    } else {
+                        parkAsConflict(entry)
                     }
-                    editQueueDao.setStatus(entry.pageId, "CONFLICTED")
                     FlushRowOutcome.Settled
                 }
 
@@ -245,10 +269,42 @@ class EditFlushWorker
          * how to offer a way out of — copy, discard, or force-replace.
          */
         private suspend fun parkAsConflict(entry: EditQueueEntity) {
-            pageDao.updateDraft(entry.pageId, entry.newBodyMd)
-            editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+            database.withTransaction {
+                // Issue #18: park the body the row holds *now*, not the one
+                // this run snapshotted. A save that landed while the PUT was
+                // in flight replaced it with a newer body containing the
+                // user's latest work, and `CONFLICTED` rows are read by
+                // nothing — parking the snapshot would strand that work
+                // where neither the editor nor the banner can reach it.
+                val latest = editQueueDao.forPage(entry.pageId)?.newBodyMd ?: entry.newBodyMd
+                pageDao.updateDraft(entry.pageId, latest)
+                editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+            }
             Timber.w("Giving up on the queued edit for page %d; kept it as a draft", entry.pageId)
         }
+    }
+
+/**
+ * The queue row to leave behind after a PUT the server accepted, or null if
+ * the row can be deleted.
+ *
+ * Issue #18: [current] is re-read after the PUT because a save landing while
+ * the row was `IN_FLIGHT` upserts a newer body over it. A surviving edit is
+ * re-based on [newEtag] — it was authored on top of the body just written,
+ * so that body's ETag, not the one the chain started from, is the
+ * precondition it should be flushed against. Leaving the stale `baseEtag`
+ * would guarantee the next flush reported a conflict against the user's own
+ * successful write.
+ */
+internal fun settledQueueRow(
+    current: EditQueueEntity?,
+    flushedBody: String,
+    newEtag: String?,
+): EditQueueEntity? =
+    when {
+        current == null -> null
+        current.newBodyMd == flushedBody -> null
+        else -> current.copy(baseEtag = newEtag, status = "PENDING")
     }
 
 /** What [EditFlushWorker] does with one row after an attempt failed. */

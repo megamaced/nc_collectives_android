@@ -166,7 +166,22 @@ internal fun PageListRow.toDomain(): PageListItem =
         hasDraft = hasDraft,
     )
 
-internal fun PageEntity.toDomain(): Page =
+/**
+ * The detail model for one page.
+ *
+ * [pendingBodyMd] is the markdown of an unresolved queued edit, from
+ * `EditQueueDao.observePendingBody`, and takes precedence over the row's
+ * cached body. Issue #18: the row keeps the *server* body so `If-Match` and
+ * conflict resolution still have something to compare against, which means a
+ * save that only reached the queue is not on the row at all — anything that
+ * renders or extends a body has to overlay it, or the user's saved text is
+ * invisible and the next edit silently replaces it.
+ *
+ * It defaults to null for the callers that map a page they will never show a
+ * body for: the move- and share-target pickers, search hits, and the rows
+ * returned straight after a create or copy (whose body is null regardless).
+ */
+internal fun PageEntity.toDomain(pendingBodyMd: String? = null): Page =
     Page(
         id = id,
         collectiveId = collectiveId,
@@ -184,6 +199,6 @@ internal fun PageEntity.toDomain(): Page =
         collectivePath = collectivePath,
         linkedPageIds = linkedPageIdsCsv.toLongCsvList(),
         lastUserDisplayName = lastUserDisplayName,
-        bodyMd = bodyMd,
+        bodyMd = pendingBodyMd ?: bodyMd,
         draftBodyMd = draftBodyMd,
     )
