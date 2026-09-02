@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -149,7 +149,22 @@ internal fun SearchScreen(
 
                 filteredResults.isNotEmpty() -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(filteredResults, key = { it.pageId ?: it.title.hashCode().toLong() }) { hit ->
+                        // Issue #38: `pageId ?: title.hashCode()` is not
+                        // unique among siblings. `SearchRepositoryImpl`
+                        // explicitly permits a null pageId when the server
+                        // entry has neither a fileId attribute nor a usable
+                        // resource URL, and two unresolved hits with the same
+                        // title — routine across collectives — then shared a
+                        // key; distinct strings can also share a hash. A
+                        // duplicate key in a lazy layout throws and takes the
+                        // screen down. The index disambiguates without
+                        // pretending an identity the data doesn't carry, and
+                        // the id still leads so a resolved hit keeps a stable
+                        // key across re-emissions.
+                        itemsIndexed(
+                            filteredResults,
+                            key = { index, hit -> hit.pageId?.let { "page-$it" } ?: "hit-$index-${hit.title}" },
+                        ) { _, hit ->
                             SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
                             HorizontalDivider()
                         }

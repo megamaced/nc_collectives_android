@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -177,7 +177,12 @@ private fun SharedContentPreview(
         }
         if (payload.images.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(payload.images, key = { it.toString() }) { uri ->
+                // Issue #38: `SharePayload.fromIntent` doesn't deduplicate
+                // EXTRA_STREAM against ClipData, so a sender can legally
+                // include the same content URI twice and two siblings then
+                // shared a key — which a lazy layout throws on. Keyed by
+                // occurrence, so duplicates stay distinct.
+                itemsIndexed(payload.images, key = { index, uri -> "$index-$uri" }) { _, uri ->
                     AsyncImage(
                         model = uri,
                         contentDescription = null,

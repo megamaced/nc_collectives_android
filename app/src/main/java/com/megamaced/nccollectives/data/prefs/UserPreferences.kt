@@ -106,21 +106,9 @@ data class UserPrefs(
 )
 
 /**
- * State for the manual GitHub update check (see [UpdateChecker]), which runs
- * only when the user taps Settings → About → "Check for updates". Persisted
- * in DataStore so the Settings screen can show when the last check happened
- * and which release tag has already been surfaced.
- */
-data class UpdateCheckState(
-    val lastCheckedAt: Long,
-    val lastNotifiedVersion: String?,
-)
-
-/**
  * Outcome of the last full sync (`FullSync`). App state rather than a user
- * preference, but it shares DataStore with [UpdateCheckState] for the same
- * reasons: it's two scalars, it has to survive a restart, and sign-out
- * clears it along with everything else.
+ * preference, but it lives in DataStore because it's two scalars, it has to
+ * survive a restart, and sign-out clears it along with everything else.
  *
  * Exists so the Settings screen can answer the question the issue-5 reporter
  * couldn't: is this cache stale because nothing changed, or because syncing
@@ -248,8 +236,6 @@ class UserPreferences
                 val textScale = prefs[KEY_TEXT_SCALE]
                 val syncCadence = prefs[KEY_SYNC_CADENCE]
                 val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
-                val updateCheckedAt = prefs[KEY_UPDATE_LAST_CHECKED_AT]
-                val updateNotifiedVersion = prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION]
 
                 prefs.clear()
 
@@ -257,25 +243,7 @@ class UserPreferences
                 textScale?.let { prefs[KEY_TEXT_SCALE] = it }
                 syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
                 editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
-                updateCheckedAt?.let { prefs[KEY_UPDATE_LAST_CHECKED_AT] = it }
-                updateNotifiedVersion?.let { prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION] = it }
             }
-        }
-
-        suspend fun getUpdateState(): UpdateCheckState {
-            val prefs = context.dataStore.data.first()
-            return UpdateCheckState(
-                lastCheckedAt = prefs[KEY_UPDATE_LAST_CHECKED_AT] ?: 0L,
-                lastNotifiedVersion = prefs[KEY_UPDATE_LAST_NOTIFIED_VERSION],
-            )
-        }
-
-        suspend fun setUpdateLastCheckedAt(epochMillis: Long) {
-            context.dataStore.edit { it[KEY_UPDATE_LAST_CHECKED_AT] = epochMillis }
-        }
-
-        suspend fun setUpdateLastNotifiedVersion(version: String) {
-            context.dataStore.edit { it[KEY_UPDATE_LAST_NOTIFIED_VERSION] = version }
         }
 
         /**
@@ -335,8 +303,6 @@ class UserPreferences
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
-            val KEY_UPDATE_LAST_CHECKED_AT = longPreferencesKey("update_last_checked_at")
-            val KEY_UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
             val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")

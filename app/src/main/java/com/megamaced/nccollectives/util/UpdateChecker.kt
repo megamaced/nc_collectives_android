@@ -2,7 +2,6 @@ package com.megamaced.nccollectives.util
 
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
-import com.megamaced.nccollectives.data.prefs.UserPreferences
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,13 +19,21 @@ class UpdateChecker
     @Inject
     constructor(
         private val service: GitHubReleaseService,
-        private val userPreferences: UserPreferences,
     ) {
         /**
          * Manual check triggered from Settings → About → "Check for updates".
          * Returns a structured result the caller uses to drive the UI.
-         * Updates `lastCheckedAt` and `lastNotifiedVersion` so the
-         * surfacing logic stays consistent across calls.
+         *
+         * Issue #37: it used to also write `lastCheckedAt` and
+         * `lastNotifiedVersion` to DataStore "so the surfacing logic stays
+         * consistent across calls". Nothing ever read them. The only reader,
+         * `UserPreferences.getUpdateState`, had no call sites of its own, and
+         * Settings answers from its in-memory `UpdateCheckUiState` — so this
+         * was a write-only feature costing two DataStore edits per check plus
+         * a model, an accessor, two keys and two special cases in
+         * `clearAccountScoped`. Removed rather than wired up, because the
+         * check is manual: the user taps it and reads the answer on the same
+         * screen, and there is nothing to resurface later.
          */
         suspend fun checkNow(): ManualCheckResult {
             val release =
@@ -34,8 +41,6 @@ class UpdateChecker
                     .onFailure { Timber.tag(TAG).w(it, "Manual update check failed") }
                     .getOrNull()
                     ?: return ManualCheckResult.Failed("Couldn't reach GitHub. Check your connection and try again.")
-
-            userPreferences.setUpdateLastCheckedAt(System.currentTimeMillis())
 
             if (release.draft || release.preRelease) {
                 return ManualCheckResult.UpToDate
@@ -47,7 +52,6 @@ class UpdateChecker
                 ?: return ManualCheckResult.Failed("This build's version (${BuildConfig.VERSION_NAME}) doesn't look like a version.")
 
             return if (latest > current) {
-                userPreferences.setUpdateLastNotifiedVersion(release.tagName)
                 ManualCheckResult.UpdateAvailable(tag = release.tagName, htmlUrl = release.htmlUrl)
             } else {
                 ManualCheckResult.UpToDate
