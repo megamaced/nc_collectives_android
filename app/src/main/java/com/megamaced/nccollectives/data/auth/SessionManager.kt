@@ -1,10 +1,11 @@
 package com.megamaced.nccollectives.data.auth
 
+import dagger.Lazy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +35,13 @@ class SessionManager
     @Inject
     constructor(
         private val tokenStore: TokenStore,
+        /**
+         * `Lazy` breaks the construction cycle: the handler is
+         * `AccountSwitcher`, which needs this class. Resolved on the first
+         * expiry, from an OkHttp thread — `dagger.Lazy` is safe there, and
+         * the same idiom the `Application` uses for the `OkHttpClient`.
+         */
+        private val expiredSessionHandler: Lazy<ExpiredSessionHandler>,
     ) {
         private val _authState = MutableStateFlow<AuthState>(AuthState.Unknown)
         val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -56,14 +64,11 @@ class SessionManager
         private val sessionChangeInProgress = AtomicBoolean(false)
 
         /**
-         * Count of consecutive 401 responses on authenticated requests. A 2xx
-         * resets it. Requires at least [CONSECUTIVE_401_THRESHOLD] in a row
-         * before we treat the session as truly invalid — see B-2 in the audit
-         * findings: a single 401 from a proxy / shared resource / transient
-         * Nextcloud blip used to log the user out and lose any in-flight
-         * saves.
+         * Decides when a run of 401s means the active account's credential
+         * is dead. See [AuthFailureTracker] — the policy lives there so it
+         * can be tested without `EncryptedSharedPreferences` underneath it.
          */
-        private val consecutive401s = AtomicInteger(0)
+        private val authFailures = AuthFailureTracker()
 
         init {
             refreshState()
@@ -88,7 +93,7 @@ class SessionManager
         /** Called from [LogoutHandler] once the local wipe is complete. */
         fun endSignOut() {
             tokenStore.clear()
-            consecutive401s.set(0)
+            authFailures.reset()
             sessionChangeInProgress.set(false)
             refreshState()
         }
@@ -111,19 +116,9 @@ class SessionManager
          * of the last account.
          */
         fun endAccountSwitch() {
-            consecutive401s.set(0)
+            authFailures.reset()
             sessionChangeInProgress.set(false)
             refreshState()
-        }
-
-        /**
-         * Legacy entry point — used by tests and the user-driven Sign Out
-         * flow. Equivalent to begin + end with no work in between. Prefer
-         * the [LogoutHandler] for the full multi-step wipe.
-         */
-        fun logout() {
-            beginSignOut()
-            endSignOut()
         }
 
         /**
@@ -140,42 +135,38 @@ class SessionManager
             appPassword: String,
         ) {
             tokenStore.upsertAndActivate(host, loginName, appPassword)
-            consecutive401s.set(0)
+            authFailures.reset()
             sessionChangeInProgress.set(false)
             refreshState()
         }
 
         /**
-         * Record a response from an authenticated request. A 2xx resets the
-         * counter; an `Unauthorised` ticks it and, once we cross the
-         * threshold, flips the session to `Unauthenticated`. Silently
-         * no-ops while a sign-out or account switch is already in progress.
+         * Record a response from an authenticated request. Once a run of
+         * 401s says the active account's credential is dead, hand it to
+         * [ExpiredSessionHandler]. Silently no-ops while a sign-out or
+         * account switch is already in progress.
          *
          * Called from [com.megamaced.nccollectives.data.api.AuthInterceptor].
+         *
+         * Issue #19: this used to call a local `logout()` — `beginSignOut()`
+         * + `endSignOut()` with nothing between them — which wiped no local
+         * data and cleared the credentials of every account rather than the
+         * one the server had rejected. `AuthInterceptor` only ever attaches
+         * the *active* account's credential, so a 401 streak is attributable
+         * to exactly one account, and that is the only one that should pay
+         * for it.
          */
         fun onAuthenticatedResponse(code: Int) {
             if (sessionChangeInProgress.get()) return
-            if (code == 401) {
-                val n = consecutive401s.incrementAndGet()
-                if (n >= CONSECUTIVE_401_THRESHOLD) {
-                    logout()
-                }
-            } else {
-                // B-51: reset on *any* non-401, not just 2xx. The previous
-                // `code in 200..299` branch meant a transient `401 → 500 →
-                // 401` sequence (e.g. flaky reverse proxy) would still
-                // sign the user out — the 5xx wasn't evidence of a working
-                // auth exchange but also wasn't evidence of an invalid
-                // token. Only stack consecutive 401s.
-                consecutive401s.set(0)
+            if (!authFailures.onResponse(code)) return
+            val expired = tokenStore.activeAccountId()
+            if (expired == null) {
+                // Nothing to remove — the store emptied under us. Just make
+                // sure the observed state agrees with it.
+                refreshState()
+                return
             }
-        }
-
-        private companion object {
-            // Two in a row before we treat the session as invalid. Picks up
-            // genuine token rejection on the next failure while ignoring a
-            // single transient proxy 401 or a 401 from a non-Collectives
-            // resource the user happens to have requested.
-            const val CONSECUTIVE_401_THRESHOLD = 2
+            Timber.i("Server rejected the active account's credential; expiring it")
+            expiredSessionHandler.get().onSessionExpired(expired)
         }
     }

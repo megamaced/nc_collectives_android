@@ -30,6 +30,11 @@ import javax.inject.Singleton
  * The cost is a re-sync on each switch, which is why [pendingEditCount]
  * exists: queued writes that have not reached the server do not survive the
  * wipe, and the user is told how many before they commit to it.
+ *
+ * Also the [ExpiredSessionHandler]: a credential the server has stopped
+ * accepting leaves the device by the same route a user-initiated removal
+ * takes, because the local state it must not leave behind is the same
+ * (issue #19).
  */
 @Singleton
 class AccountSwitcher
@@ -41,7 +46,7 @@ class AccountSwitcher
         private val syncScheduler: SyncScheduler,
         private val sharePayloadHolder: SharePayloadHolder,
         private val database: NcCollectivesDatabase,
-    ) {
+    ) : ExpiredSessionHandler {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         /**
@@ -124,16 +129,45 @@ class AccountSwitcher
          * switch to whichever account remains, or a sign-out if it was the
          * last.
          */
-        fun removeAccount(accountId: String) {
+        fun removeAccount(accountId: String) = remove(accountId, what = "removing an account")
+
+        /**
+         * The server has stopped accepting this account's credential — an app
+         * password revoked in Nextcloud's security settings, a user disabled,
+         * a password change that invalidated it.
+         *
+         * Identical to a user-initiated [removeAccount], deliberately. What
+         * expiry must not do is what it used to: skip the wipe and clear the
+         * credentials of every stored account (issue #19). `AuthInterceptor`
+         * only ever attaches the active account's credential, so the streak
+         * of 401s is attributable to one account, and the accounts either
+         * side of it in the switcher have done nothing wrong.
+         *
+         * Note this keeps device preferences even when it empties the store,
+         * where [LogoutHandler] would clear them: an expiry says "sign in
+         * again", not "this is not my phone any more", and resetting the
+         * user's theme because their app password lapsed would be its own
+         * small bug.
+         */
+        override fun onSessionExpired(accountId: String) {
+            remove(accountId, what = "an expired session")
+        }
+
+        private fun remove(
+            accountId: String,
+            what: String,
+        ) {
             if (tokenStore.accounts().none { it.id == accountId }) return
             if (accountId != tokenStore.activeAccountId()) {
+                // None of this account's data is on the device, so there is
+                // nothing to wipe and no reason to disturb the live session.
                 tokenStore.removeAccount(accountId)
                 sessionManager.refreshState()
                 return
             }
             beginSwitch()
             scope.launch {
-                if (!wipeOrAbandon("removing an account")) return@launch
+                if (!wipeOrAbandon(what)) return@launch
                 val nextActive = tokenStore.removeAccount(accountId)
                 if (nextActive == null) {
                     // That was the last account. `endAccountSwitch` re-derives
