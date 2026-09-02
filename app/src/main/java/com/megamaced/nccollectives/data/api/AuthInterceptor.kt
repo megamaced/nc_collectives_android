@@ -53,14 +53,22 @@ class AuthInterceptor
                 val builder = original
                     .newBuilder()
                     .header("Authorization", "Basic $basic")
-                    .header("OCS-APIRequest", "true")
-                // Nextcloud OCS endpoints reply with XML by default; ask
-                // for JSON explicitly. Skip for binary/WebDAV endpoints and
-                // for callers that already set an Accept header.
-                if (original.url.encodedPath.contains("/ocs/") &&
-                    original.header("Accept") == null
-                ) {
-                    builder.header("Accept", "application/json")
+                // Issue #21: the OCS headers go on OCS calls only. This one
+                // used to be unconditional while the `Accept` below was
+                // already path-conditional, which meant every WebDAV request
+                // carried it — and, worse, that a URL which had talked its
+                // way into being signed arrived at an OCS endpoint already
+                // wearing the one header Nextcloud requires before it will
+                // act on the call.
+                //
+                // Nextcloud OCS endpoints also reply with XML by default, so
+                // ask for JSON explicitly — unless the caller has set its own
+                // Accept header.
+                if (original.url.encodedPath.contains("/ocs/")) {
+                    builder.header("OCS-APIRequest", "true")
+                    if (original.header("Accept") == null) {
+                        builder.header("Accept", "application/json")
+                    }
                 }
                 builder.build()
             } else {

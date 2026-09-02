@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
-import com.megamaced.nccollectives.data.auth.serverHostOf
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import com.megamaced.nccollectives.util.AttachmentRef
 import com.megamaced.nccollectives.util.demoteNonImageEmbeds
@@ -44,6 +43,7 @@ import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.syntax.Prism4jThemeM3
 import io.noties.markwon.syntax.SyntaxHighlightPlugin
 import io.noties.prism4j.Prism4j
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
@@ -288,18 +288,31 @@ fun MarkdownView(
  * would be doubled up (`…/.attachments.12/.attachments.12/x.png`) and the
  * image would 404.
  *
- * **S-24**: an absolute `http(s)` ref is only kept as an *image* when its
- * host is the Nextcloud host — read off [imageBaseUrl], which is built from
- * the stored credential, so a page body can't nominate its own allowed
- * host. Off-host refs are demoted to plain links instead, the same shape
+ * **S-24 / issue #21**: a ref is only kept as an *image* when it resolves
+ * inside the page's own directory — the parent of [imageBaseUrl], which is
+ * built from the stored credential, so a page body can't nominate its own
+ * boundary. Anything else is demoted to a plain link instead, the same shape
  * `demoteNonImageEmbeds` uses, so the content stays visible and reachable
- * but only via a Custom Tab the user opened deliberately. Rendering them
+ * but only via a Custom Tab the user opened deliberately. Rendering it
  * inline would make merely *viewing* a shared page fire a request the page
  * author chose: Markwon fetches image refs through the app's authenticated
- * `OkHttpClient`, which is what turned a planted ref into a blind
- * request-forgery / tracking-pixel primitive. `HostInterceptor` refuses
- * off-host requests too (S-23) — this pass keeps the rendered page honest
- * about it rather than leaving a broken image behind.
+ * `OkHttpClient`, which is what turns a planted ref into a blind
+ * request-forgery / tracking-pixel primitive.
+ *
+ * S-24 checked only the *host*, which stopped a co-member nominating an
+ * arbitrary server but not an arbitrary path on the user's own one:
+ * `![](https://your-nextcloud/some/path?query)` passed, and
+ * `HostInterceptor` then vouched for it on host equality alone so
+ * `AuthInterceptor` signed it. The boundary is a directory now, and
+ * [withinPageDirectory] canonicalises before comparing, so a `..` sequence
+ * spliced into an otherwise well-formed attachment ref can't walk out of it
+ * either. `HostInterceptor` no longer infers provenance from the hostname
+ * (issue #21), which is the second, independent half of the same fix.
+ *
+ * The page directory rather than the attachments directory itself, because
+ * `.attachments.<siblingPageId>/x.png` is a shape Nextcloud Text really
+ * writes — pages in one folder share a directory — and it has to keep
+ * rendering.
  */
 internal fun absolutizeImageRefs(
     markdown: String,
@@ -307,7 +320,10 @@ internal fun absolutizeImageRefs(
 ): String {
     val base = if (imageBaseUrl.endsWith('/')) imageBaseUrl else "$imageBaseUrl/"
     val pageDirBase = pageDirectoryUrlFrom(base)
-    val allowedHost = serverHostOf(base)
+    // The wider of the two, and the boundary every kept ref must resolve
+    // inside. Falls back to the attachments directory when `imageBaseUrl`
+    // wasn't the expected shape — narrower, i.e. fails closed.
+    val boundary = (pageDirBase ?: base).toHttpUrlOrNull()
     return IMAGE_REF_PATTERN.replace(markdown) { match ->
         val image = match.groups["image"]
         if (image == null) {
@@ -322,15 +338,15 @@ internal fun absolutizeImageRefs(
             .any { isAttachmentDirSegment(it) }
         val isAbsoluteHttp = target.startsWith("http://", ignoreCase = true) ||
             target.startsWith("https://", ignoreCase = true)
-        if (isAbsoluteHttp && !isOnHost(target, allowedHost)) {
-            // S-24: demote rather than drop, so the ref is still visible and
-            // tappable. A blank alt would render an invisible link, so fall
-            // back to the ref's own host.
-            val label = alt.ifBlank { target.toHttpUrlOrNull()?.host ?: target }
-            return@replace "[$label]($target$trailing)"
+        if (!isAbsoluteHttp && target.startsWith('/')) {
+            // Root-relative, so it has no scheme, so `ImagesPlugin` has no
+            // handler for it and nothing fetches it. Left exactly as written
+            // — it is not part of the fetch surface this pass guards, and
+            // rewriting it would only change what the reader sees.
+            return@replace match.value
         }
         val resolved = when {
-            isAbsoluteHttp || target.startsWith('/') -> {
+            isAbsoluteHttp -> {
                 target
             }
 
@@ -348,22 +364,43 @@ internal fun absolutizeImageRefs(
                 base + target.substringAfter("://")
             }
         }
+        if (!withinPageDirectory(boundary, resolved)) {
+            // Demote rather than drop, so the ref is still visible and
+            // tappable. A blank alt would render an invisible link, so fall
+            // back to the ref's own host, or to the ref itself.
+            val label = alt.ifBlank { target.toHttpUrlOrNull()?.host ?: target }
+            return@replace "[$label]($target$trailing)"
+        }
         "![$alt]($resolved$trailing)"
     }
 }
 
 /**
- * True when [target] is an absolute URL whose host is [allowedHost]. Fails
- * closed: an unparsable target, or a null [allowedHost] (the base URL
- * wasn't the expected shape), is not on the host.
+ * True when [resolvedRef] lands inside [boundary]'s directory.
+ *
+ * Resolution is [HttpUrl.resolve]'s, so `.` and `..` are canonicalised away
+ * *before* the prefix comparison — a textual `startsWith` on the
+ * concatenated string would have accepted
+ * `.attachments.12/../../../../secret.png`, which is under the page
+ * directory as written and nowhere near it once the server has walked it.
+ *
+ * Fails closed on every uncertainty: a null [boundary] (the attachments URL
+ * wasn't the expected shape), an unparsable ref, a different host or port,
+ * a scheme change, or embedded userinfo — which would otherwise let a ref
+ * name credentials of its own on a URL that still passes a host check.
  */
-private fun isOnHost(
-    target: String,
-    allowedHost: String?,
+private fun withinPageDirectory(
+    boundary: HttpUrl?,
+    resolvedRef: String,
 ): Boolean {
-    if (allowedHost.isNullOrEmpty()) return false
-    val host = target.toHttpUrlOrNull()?.host ?: return false
-    return host.equals(allowedHost, ignoreCase = true)
+    if (boundary == null) return false
+    val url = boundary.resolve(resolvedRef) ?: return false
+    if (url.scheme != boundary.scheme) return false
+    if (!url.host.equals(boundary.host, ignoreCase = true)) return false
+    if (url.port != boundary.port) return false
+    if (url.encodedUsername.isNotEmpty() || url.encodedPassword.isNotEmpty()) return false
+    val directory = boundary.encodedPath.let { if (it.endsWith('/')) it else "$it/" }
+    return url.encodedPath.startsWith(directory)
 }
 
 // Same alternation strategy as `WIKILINK_PATTERN` in `MarkdownLinkResolver.kt`:

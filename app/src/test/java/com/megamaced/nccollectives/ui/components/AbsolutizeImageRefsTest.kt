@@ -8,12 +8,16 @@ import org.junit.Test
  *
  * Beyond the existing resolution rules (relative refs against the
  * attachments URL, attachment-directory refs against the page directory,
- * code regions skipped — B-4), these pin S-24: an absolute `http(s)` ref is
- * only rendered as an image when its host is the Nextcloud host. Page
- * bodies are shared, so a co-member with write access could otherwise
+ * code regions skipped — B-4), these pin S-24 and issue #21: a ref is only
+ * rendered as an image when it resolves inside the page's own directory.
+ * Page bodies are shared, so a co-member with write access could otherwise
  * plant `![](https://anything/index.php/…)` and have the victim's app fetch
  * it — through the app's *authenticated* OkHttp client — merely by opening
  * the page.
+ *
+ * S-24 checked the host, which stopped the ref naming a *server* of the
+ * attacker's choosing. It did not stop it naming a *path* of their choosing
+ * on the user's own server, which is what the directory boundary is for.
  */
 class AbsolutizeImageRefsTest {
     private val base =
@@ -38,17 +42,71 @@ class AbsolutizeImageRefsTest {
     }
 
     @Test
-    fun absoluteRefOnNextcloudHost_staysAnImage() {
-        val url = "https://cloud.example.com/remote.php/dav/files/bob/other.png"
+    fun absoluteRefInsideTheAttachmentsDirectory_staysAnImage() {
+        val url = "${base}other.png"
         assertEquals("![shot]($url)", absolutizeImageRefs("![shot]($url)", base))
     }
 
     @Test
-    fun absoluteHttpRefOnNextcloudHost_staysAnImage() {
-        // The host is what is being checked; `HostInterceptor` upgrades the
-        // scheme to https at request time (S-21).
-        val url = "http://cloud.example.com/remote.php/dav/files/bob/other.png"
+    fun absoluteRefInsideThePageDirectory_staysAnImage() {
+        // A sibling page's attachments directory: pages in one folder share
+        // a directory, and this is a shape Nextcloud Text really writes.
+        val url = "$pageDir.attachments.99/other.png"
         assertEquals("![shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun absoluteRefElsewhereOnTheNextcloudHost_isDemotedToALink() {
+        // Issue #21: same host, and previously kept as an image on that
+        // basis alone. `HostInterceptor` then vouched for it and
+        // `AuthInterceptor` signed it, so opening the page issued an
+        // authenticated GET to a path the page author chose.
+        val url = "https://cloud.example.com/remote.php/dav/files/bob/Private/tax-return.png"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun absoluteRefAtAnOcsEndpointOnTheNextcloudHost_isDemotedToALink() {
+        val url = "https://cloud.example.com/ocs/v2.php/apps/x/y?confirm=1"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun absoluteRefThatWalksOutOfThePageDirectory_isDemotedToALink() {
+        // The boundary is compared after canonicalisation, so a `..` that
+        // leaves the directory is caught even though the string starts
+        // inside it.
+        val url = "$pageDir../../../Private/tax-return.png"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun attachmentDirRefThatWalksOutOfThePageDirectory_isDemotedToALink() {
+        // Same escape reached through the branch that resolves an
+        // attachment-directory ref against the page directory.
+        val ref = ".attachments.12/../../../Private/tax-return.png"
+        assertEquals("[shot]($ref)", absolutizeImageRefs("![shot]($ref)", base))
+    }
+
+    @Test
+    fun absoluteHttpRefOnNextcloudHost_isDemotedToALink() {
+        // Cleartext is not a URL this app builds, and `HostInterceptor`
+        // would silently upgrade the scheme and fetch it with credentials
+        // attached. Fail closed on a scheme change instead.
+        val url = "http://cloud.example.com/remote.php/dav/files/bob/.Collectives/Wiki/x.png"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun refWithEmbeddedUserinfo_isDemotedToALink() {
+        val url = "https://attacker:pw@cloud.example.com/remote.php/dav/files/bob/.Collectives/Wiki/x.png"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
+    }
+
+    @Test
+    fun refOnAnUnexpectedPort_isDemotedToALink() {
+        val url = "https://cloud.example.com:8443/remote.php/dav/files/bob/.Collectives/Wiki/x.png"
+        assertEquals("[shot]($url)", absolutizeImageRefs("![shot]($url)", base))
     }
 
     @Test
@@ -126,10 +184,20 @@ class AbsolutizeImageRefsTest {
 
     @Test
     fun rootRelativeRef_isLeftAlone() {
-        // No scheme, so nothing fetches it; pre-existing behaviour.
+        // No scheme, so `ImagesPlugin` has no handler for it and nothing
+        // fetches it. Deliberately outside the boundary check: it is not
+        // part of the fetch surface, so rewriting it would change what the
+        // reader sees for no security gain.
         assertEquals(
             "![shot](/index.php/x.png)",
             absolutizeImageRefs("![shot](/index.php/x.png)", base),
         )
+    }
+
+    @Test
+    fun offHostRefWithBlankAltAndNoParsableHost_fallsBackToTheRefItself() {
+        // The demote label has to be non-blank or the link renders invisible.
+        val ref = ".attachments.12/../../../x.png"
+        assertEquals("[$ref]($ref)", absolutizeImageRefs("![]($ref)", base))
     }
 }
