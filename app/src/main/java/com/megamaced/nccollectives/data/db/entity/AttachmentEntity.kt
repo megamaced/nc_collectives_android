@@ -33,7 +33,7 @@ data class AttachmentEntity(
     val size: Long,
     val lastModifiedMs: Long,
     val etag: String?,
-    /** "REMOTE", "PENDING", "UPLOADING", "FAILED". */
+    /** "REMOTE", "PENDING", "UPLOADING", "FAILED", "DELETING". */
     val status: String,
     /** content:// URI to read bytes from for pending uploads. Null once REMOTE. */
     val localUriString: String?,
@@ -51,6 +51,22 @@ data class AttachmentEntity(
         const val STATUS_PENDING = "PENDING"
         const val STATUS_UPLOADING = "UPLOADING"
         const val STATUS_FAILED = "FAILED"
+
+        /**
+         * Tombstone: the user deleted this attachment while its bytes may
+         * already have reached the server (issue #35).
+         *
+         * A local-only delete could not honour the request — removing the
+         * Room row neither cancels an in-flight PUT nor undoes one that
+         * has landed, so the file stayed on the server and the next
+         * listing inserted it again as `REMOTE`, visibly resurrecting an
+         * attachment the UI had reported deleted. The row is kept instead,
+         * hidden from `observeForPage` and picked up by
+         * `AttachmentUploadWorker`, which issues the WebDAV DELETE and only
+         * then drops the row. Durable, so it survives process death between
+         * the upload landing and the delete going out.
+         */
+        const val STATUS_DELETING = "DELETING"
 
         fun key(
             pageId: Long,

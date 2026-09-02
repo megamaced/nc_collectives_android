@@ -80,6 +80,19 @@ class AttachmentUploadWorker
                 // moved. Anything unexpected now fails that one row (with its
                 // staged bytes collected) and the loop carries on.
                 try {
+                    // Issue #35: a tombstone is not an upload. The user
+                    // cancelled this attachment while its bytes may already
+                    // have reached the server, so the work is to remove the
+                    // remote object — the row is only still here so that can
+                    // survive a process restart.
+                    if (row.status == AttachmentEntity.STATUS_DELETING) {
+                        val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
+                        if (deleted !is ApiResult.Success) {
+                            Timber.w("Couldn't remove cancelled upload %s yet: %s", row.id, deleted)
+                            retry = true
+                        }
+                        continue
+                    }
                     val page = pageDao.getById(row.pageId)
                     if (page == null) {
                         Timber.w("Attachment %s references missing page %d", row.id, row.pageId)
@@ -158,14 +171,30 @@ class AttachmentUploadWorker
                                 return Result.success()
                             }
                             // Issue #23: `row` is a snapshot from before the
-                            // PUT, and the upsert below is an insert. Deleting
-                            // an attachment mid-upload would otherwise see it
-                            // reappear as `REMOTE` the moment the transfer
-                            // finished — the user's delete undone by their own
-                            // upload.
-                            if (attachmentDao.getById(row.id) == null) {
-                                Timber.i("Attachment %s was deleted mid-upload; not recording it", row.id)
+                            // PUT, and the upsert below is an insert. A row
+                            // that has gone or been tombstoned since must not
+                            // be recreated as REMOTE by its own upload
+                            // finishing.
+                            //
+                            // Issue #35: a delete leaves a DELETING row
+                            // rather than no row, so that arm hands the
+                            // just-uploaded object to `resolveDeletion` —
+                            // which is the difference between the UI's
+                            // "deleted" being true and the file reappearing
+                            // on the next listing. A missing row means the
+                            // page itself went (a collective cascade), and
+                            // there is nothing addressable left to delete.
+                            val current = attachmentDao.getById(row.id)
+                            if (current == null) {
+                                Timber.i("Attachment %s vanished mid-upload; not recording it", row.id)
                                 gcStaged(row.id)
+                                continue
+                            }
+                            if (current.status == AttachmentEntity.STATUS_DELETING) {
+                                Timber.i("Attachment %s was cancelled mid-upload; removing what landed", row.id)
+                                if (attachmentRepository.resolveDeletion(row.pageId, row.fileName) !is ApiResult.Success) {
+                                    retry = true
+                                }
                                 continue
                             }
                             val size = sizeOf(uri)

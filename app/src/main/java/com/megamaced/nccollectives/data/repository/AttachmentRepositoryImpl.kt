@@ -82,15 +82,29 @@ class AttachmentRepositoryImpl
                         val remoteEntities = result.data.ocs.data.attachments.map { dto ->
                             val key = AttachmentEntity.key(pageId, dto.name)
                             val current = existing[key]
-                            if (current != null &&
-                                (
-                                    current.status == AttachmentEntity.STATUS_PENDING ||
-                                        current.status == AttachmentEntity.STATUS_UPLOADING
-                                )
-                            ) {
-                                // B-36: preserve pending row, but catch up the
-                                // server-id so a subsequent OCS-4 delete can
-                                // target it correctly.
+                            if (current != null && current.status != AttachmentEntity.STATUS_REMOTE) {
+                                // B-36: preserve the local row, but catch up
+                                // the server-id so a subsequent OCS-4 delete
+                                // can target it correctly.
+                                //
+                                // Issue #36: *every* non-REMOTE status, not
+                                // just PENDING and UPLOADING. A row this
+                                // device owns describes an operation in
+                                // progress, and overwriting it with the
+                                // server's view discards that operation. It
+                                // mattered once #23 gave a FAILED row staged
+                                // bytes and a Retry button: a server file of
+                                // the same name — another client's, or this
+                                // upload's own lost-response twin — replaced
+                                // the row with `status = REMOTE` and
+                                // `localUriString = null`, so the retry
+                                // affordance vanished and the staged bytes
+                                // were left with nothing pointing at them.
+                                // `AttachmentsViewModel` refreshes on screen
+                                // open, so merely reopening the screen did
+                                // it. DELETING is protected by the same
+                                // clause, which is what stops a refresh
+                                // resurrecting a tombstoned upload.
                                 current.copy(serverAttachmentId = dto.id)
                             } else {
                                 AttachmentEntity(
@@ -228,15 +242,24 @@ class AttachmentRepositoryImpl
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             val key = AttachmentEntity.key(pageId, fileName)
             val existing = attachmentDao.getById(key)
-            if (existing != null && existing.status != AttachmentEntity.STATUS_REMOTE) {
-                // Pending / failed uploads never made it to the server; just
-                // drop the local row.
-                attachmentDao.delete(key)
-                // Issue #23: and the bytes behind it. Dropping only the row
-                // orphaned the staging copy — invisible to the UI, still on
-                // disk, and now that a `FAILED` row keeps its bytes on
-                // purpose this is the path that has to collect them.
-                deleteStagedFile(key)
+            if (deleteRoute(existing) == DeleteRoute.Tombstone) {
+                // Issue #35: a local-only delete could not honour the
+                // request. Dropping the Room row neither cancels a PUT
+                // already on the wire nor undoes one that has landed, so the
+                // bytes stayed on the server and the next listing inserted
+                // them again as REMOTE — an attachment visibly resurrecting
+                // after the UI said it was deleted.
+                //
+                // So the row becomes a tombstone: hidden from the grid, kept
+                // for `AttachmentUploadWorker` to resolve with a WebDAV
+                // DELETE, and durable across process death. Every non-REMOTE
+                // status takes this path rather than just UPLOADING, because
+                // a FAILED row can have a remote object too — a PUT whose
+                // response was lost is exactly how #24's If-None-Match
+                // handling can leave one — and uniformity is worth more here
+                // than saving a DELETE that 404s.
+                attachmentDao.setStatus(key, AttachmentEntity.STATUS_DELETING)
+                syncScheduler.flushAttachmentUploadsWhenOnline()
                 return ApiResult.Success(Unit)
             }
             // OCS-4: delete by server-assigned id (Batch 18j). Replaces the
@@ -268,6 +291,12 @@ class AttachmentRepositoryImpl
             val existing = attachmentDao.getById(key)
                 ?: return ApiResult.Unexpected(IllegalStateException("Attachment $fileName not found"))
             if (existing.status == AttachmentEntity.STATUS_REMOTE) return ApiResult.Success(Unit)
+            if (existing.status == AttachmentEntity.STATUS_DELETING) {
+                // Not reachable from the grid, which hides tombstones — but
+                // re-arming one as PENDING would upload bytes the user asked
+                // to be rid of (issue #35).
+                return ApiResult.Unexpected(IllegalStateException("$fileName is being deleted"))
+            }
             val staged = stagedFileFor(context, key)
             if (!staged.exists() || staged.length() == 0L) {
                 // Better to say so than to re-queue a row the worker will
@@ -281,6 +310,39 @@ class AttachmentRepositoryImpl
             attachmentDao.setStatus(key, AttachmentEntity.STATUS_PENDING)
             syncScheduler.flushAttachmentUploadsWhenOnline()
             return ApiResult.Success(Unit)
+        }
+
+        override suspend fun resolveDeletion(
+            pageId: Long,
+            fileName: String,
+        ): ApiResult<Unit> {
+            val key = AttachmentEntity.key(pageId, fileName)
+            val page = pageDao.getById(pageId)
+            if (page == null) {
+                // The page went with its collective. Nothing reachable to
+                // delete, and the cascade already dropped the sibling rows.
+                dropTombstone(key)
+                return ApiResult.Success(Unit)
+            }
+            val result = bodyService.deleteFile(
+                collectivePath = page.collectivePath,
+                filePath = combinePath(page.filePath, attachmentsDirectoryFor(pageId)),
+                fileName = fileName,
+            )
+            // `deleteFile` counts 404 as success, so reaching here with a
+            // Success means the object is gone whether or not it ever
+            // existed. Anything else keeps the tombstone for another run.
+            if (result is ApiResult.Success) dropTombstone(key)
+            return result
+        }
+
+        private suspend fun dropTombstone(key: String) {
+            attachmentDao.delete(key)
+            // Issue #23: and the bytes behind it. Dropping only the row
+            // orphaned the staging copy — invisible to the UI, still on disk,
+            // and now that a FAILED row keeps its bytes on purpose this is
+            // the path that has to collect them.
+            deleteStagedFile(key)
         }
 
         override suspend fun renameForRemoteCollision(
@@ -617,3 +679,34 @@ internal fun collisionCandidate(
     val ext = sanitised.substringAfterLast('.', "")
     return if (ext.isEmpty()) "$stem-$counter" else "$stem-$counter.$ext"
 }
+
+/** How [AttachmentRepository.delete] has to reach a given attachment. */
+internal enum class DeleteRoute {
+    /**
+     * Keep the row as a `DELETING` tombstone for the worker to resolve. The
+     * bytes may be on the server, in flight, or nowhere, and this device
+     * cannot tell which (issue #35).
+     */
+    Tombstone,
+
+    /** On the server and listed, so OCS-4 can delete it by its own id. */
+    ServerById,
+}
+
+/**
+ * Issue #35: which of the two shapes a delete takes.
+ *
+ * Any row this device still owns goes to a tombstone, including `FAILED` — a
+ * PUT whose response was lost leaves a remote object behind a failed row, and
+ * #24's `If-None-Match` handling is exactly how that happens. Uniformity is
+ * worth more here than saving a WebDAV DELETE that 404s.
+ *
+ * A row that is absent locally is treated as the server's: `delete` refreshes
+ * to pick up its id, and reports if the server has never heard of it either.
+ */
+internal fun deleteRoute(existing: AttachmentEntity?): DeleteRoute =
+    when {
+        existing == null -> DeleteRoute.ServerById
+        existing.status == AttachmentEntity.STATUS_REMOTE -> DeleteRoute.ServerById
+        else -> DeleteRoute.Tombstone
+    }

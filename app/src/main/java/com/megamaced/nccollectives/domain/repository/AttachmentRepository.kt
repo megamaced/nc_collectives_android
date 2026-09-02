@@ -56,6 +56,24 @@ interface AttachmentRepository {
     ): ApiResult<Unit>
 
     /**
+     * Finish a delete the user asked for while the attachment's bytes may
+     * already have reached the server (issue #35).
+     *
+     * `AttachmentRepository.delete` turns a non-REMOTE row into a `DELETING`
+     * tombstone rather than dropping it, because removing the row neither
+     * cancels an in-flight PUT nor undoes one that has landed. This is the
+     * other half: remove the remote object, then the row and its staged
+     * bytes. Called by `AttachmentUploadWorker`, which is what makes it
+     * survive process death and retry while offline.
+     *
+     * A failure leaves the tombstone in place for the next run.
+     */
+    suspend fun resolveDeletion(
+        pageId: Long,
+        fileName: String,
+    ): ApiResult<Unit>
+
+    /**
      * Move a queued upload to the next free filename, after the server
      * refused to create it because something is already there (issue #24).
      *

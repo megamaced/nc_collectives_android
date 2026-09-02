@@ -8,7 +8,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AttachmentDao {
-    @Query("SELECT * FROM attachments WHERE pageId = :pageId ORDER BY lastModifiedMs DESC, fileName ASC")
+    /**
+     * What the attachments grid shows. `DELETING` rows are excluded: the user
+     * has already been told the attachment is gone, and the row only survives
+     * so the worker can remove it from the server too (issue #35).
+     */
+    @Query(
+        "SELECT * FROM attachments WHERE pageId = :pageId AND status != 'DELETING' " +
+            "ORDER BY lastModifiedMs DESC, fileName ASC",
+    )
     fun observeForPage(pageId: Long): Flow<List<AttachmentEntity>>
 
     /** One-shot snapshot of [observeForPage] for repository-side reconciliation. */
@@ -18,8 +26,14 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE id = :id")
     suspend fun getById(id: String): AttachmentEntity?
 
+    /**
+     * Rows the upload worker has work to do on. `DELETING` is in the set
+     * because resolving a tombstone — the WebDAV DELETE that undoes a
+     * cancelled upload — is the worker's job too (issue #35).
+     */
     @Query(
-        "SELECT * FROM attachments WHERE status IN ('PENDING', 'UPLOADING') ORDER BY lastSyncedAt ASC",
+        "SELECT * FROM attachments WHERE status IN ('PENDING', 'UPLOADING', 'DELETING') " +
+            "ORDER BY lastSyncedAt ASC",
     )
     suspend fun pendingUploads(): List<AttachmentEntity>
 

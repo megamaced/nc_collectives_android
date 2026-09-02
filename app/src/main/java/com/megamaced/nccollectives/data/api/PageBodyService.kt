@@ -186,6 +186,34 @@ class PageBodyService
         }
 
         /**
+         * Removes the file at `(collectivePath, filePath, fileName)`.
+         *
+         * Issue #35: used to undo an upload the user cancelled while its PUT
+         * was already on the wire. `404` counts as success — the object not
+         * being there is the outcome asked for, and the tombstone that drives
+         * this is retried, so a second attempt against an already-deleted
+         * file must settle rather than loop.
+         *
+         * WebDAV rather than the OCS `deleteAttachment` endpoint because that
+         * one needs the server-assigned attachment id, which only arrives on
+         * the next listing — and the whole point here is to remove the object
+         * before any listing sees it.
+         */
+        suspend fun deleteFile(
+            collectivePath: String,
+            filePath: String,
+            fileName: String,
+        ): ApiResult<Unit> {
+            val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
+            val request = Request
+                .Builder()
+                .url(url)
+                .delete()
+                .build()
+            return webDavCall(request, extraSuccessCodes = setOf(404)) { }
+        }
+
+        /**
          * Streams the file at `(collectivePath, filePath, fileName)` into
          * [target], returning the `Content-Type` the server reported (which
          * is more trustworthy than guessing from the extension). Used to
