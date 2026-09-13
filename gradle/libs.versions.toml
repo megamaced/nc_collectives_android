@@ -1,5 +1,5 @@
 [versions]
-agp = "8.13.2"
+agp = "9.4.0"
 kotlin = "2.3.21"
 ksp = "2.3.7"
 
@@ -24,9 +24,9 @@ hiltWork = "1.3.0"
 # generator test compiles against ship from the same androidx.benchmark
 # release, and the plugin stamps its own version onto the artifact it hands
 # the consumer — a runtime from a different release is a configuration-time
-# failure, not a subtle one. 1.4.1 declares AGP [8.0.0, 9.0.0-alpha01),
-# which covers `agp` above; bump it when AGP goes to 9.
-benchmark = "1.4.1"
+# failure, not a subtle one. 1.5.0 declares AGP [8.0.0, 10.0.0-alpha01),
+# which covers `agp` above.
+benchmark = "1.5.0"
 # Consumer side, and it ships in the APK. Below 1.4.0 the profile written by
 # an API 34+ generator cannot be read back, which is exactly the device this
 # project generates on — see baselineprofile/build.gradle.kts.
@@ -51,8 +51,7 @@ prism4j = "2.0.0"
 reorderable = "2.5.1"
 
 # DI
-# Pinned below 2.59 — Hilt 2.59 requires AGP 9. Bump together with AGP 9.
-hilt = "2.58"
+hilt = "2.60.1"
 
 # Logging
 timber = "5.0.1"
@@ -66,13 +65,23 @@ turbine = "1.2.1"
 mockk = "1.14.7"
 androidxTestJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
+# Pinned, and higher than anything that arrives transitively (Compose's
+# ui-test-junit4 drags in 3.5.0). Espresso's event injection reaches for
+# `android.hardware.input.InputManager.getInstance()`, which API 37 removed —
+# below 3.7.0 every Compose test in the integration suite dies in Espresso's
+# base layer before the first assertion runs.
+espresso = "3.7.0"
 # Integration tests. Robolectric puts a real Android runtime — and therefore
 # real Room, a real WorkManager and a real Compose tree — inside the JVM unit
 # test task, so the seams the audits keep finding bugs in are testable without
 # an emulator. Deliberately *not* androidTest: this project's emulator step is
 # its least reliable CI surface, and an integration suite is the last thing
 # that should depend on it.
-robolectric = "4.16.1"
+#
+# 4.17 is the floor, not a preference: 4.16.1 caps at API 36 and refuses to
+# start against `targetSdk = 37` with "Package targetSdkVersion=37 >
+# maxSdkVersion=36". The JVM arg it needs at API 37 is in app/build.gradle.kts.
+robolectric = "4.17"
 androidxTestCore = "1.7.0"
 
 # Tooling
@@ -168,6 +177,7 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workManager" }
@@ -183,7 +193,12 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 # APK against `targetProjectPath`, so the journey runs against a real installed
 # app rather than inside it.
 android-test = { id = "com.android.test", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# AGP 9 has Kotlin support built in, so there is no kotlin-android plugin
+# here. `com.android.legacy-kapt` is the replacement for the Kotlin kapt
+# plugin, which built-in Kotlin refuses to coexist with — see the note in
+# app/build.gradle.kts for why kapt survives at all. It ships with AGP and
+# must track the same version.
+legacy-kapt = { id = "com.android.legacy-kapt", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

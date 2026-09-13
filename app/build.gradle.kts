@@ -2,14 +2,19 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     // kapt is here for one consumer only: Prism4j's grammar bundler
-    // (Batch 24). The rest of the project uses KSP. Applied without
-    // version because the Kotlin Gradle plugin already provides it.
-    kotlin("kapt")
+    // (Batch 24), a Java annotation processor — so KSP, which processes
+    // Kotlin symbols, is not an alternative for it. The rest of the
+    // project uses KSP.
+    //
+    // AGP 9's built-in Kotlin refuses to coexist with the Kotlin kapt
+    // plugin, so this is `com.android.legacy-kapt`: AGP's own bridge,
+    // shipped on the AGP version, doing the same job for the same one
+    // consumer.
+    alias(libs.plugins.legacy.kapt)
     alias(libs.plugins.hilt)
     alias(libs.plugins.baselineprofile)
 }
@@ -38,12 +43,12 @@ val hasReleaseSigningConfig =
 
 android {
     namespace = "com.megamaced.nccollectives"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 35
         versionName = "2.11.0"
 
@@ -110,7 +115,7 @@ android {
     // automatically and every migration test would fail with
     // "Cannot find the schema file in the assets folder".
     sourceSets {
-        getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
     }
 
     testOptions {
@@ -119,6 +124,17 @@ android {
             // the unit-test task's own output; without this every test that
             // inflates a theme or resolves a string dies at startup.
             isIncludeAndroidResources = true
+
+            all {
+                // API 37's ApplicationSharedMemory reaches into
+                // FileDescriptor's private fields, and Robolectric emulates
+                // that through jdk.internal.access.SharedSecrets. That
+                // package is not exported to the unnamed module, so without
+                // this every Robolectric test dies in setUpApplicationState
+                // with "Failed to interact with raw FileDescriptor
+                // internals; perhaps JRE has changed?".
+                it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+            }
         }
     }
 }
@@ -252,6 +268,10 @@ dependencies {
     testImplementation(libs.okhttp.tls)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Not transitive-by-accident: ui-test-junit4 brings Espresso 3.5.0, which
+    // cannot run against API 37. Declared directly so the version is the
+    // catalog's rather than whatever the BOM happens to drag in.
+    testImplementation(libs.androidx.test.espresso.core)
     // Required, not optional: `createComposeRule` launches a bare
     // `ComponentActivity`, and this is the artifact that declares one. Verified
     // by removing it — every Compose test then dies with "Unable to resolve
