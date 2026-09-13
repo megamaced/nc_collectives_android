@@ -1,0 +1,5 @@
+Page lists now tell you when a page was last edited, not just who edited it — "Edited by Ada · 2 days ago" — and the label keeps itself current while the screen is open.
+
+A page that had a timestamp but no recorded editor used to show nothing at all. Now it still tells you when it changed.
+
+The rest is under the hood: a move to the current Android build tools and SDK, and a round of dependency updates. Nothing about how the app works has changed.
