@@ -66,6 +66,8 @@ import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.ui.components.rememberNowMillis
+import com.megamaced.nccollectives.util.pageEditedLine
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -235,6 +237,10 @@ private fun PageTreeList(
     // key re-seeds the local copy each time that happens.
     var localNodes by remember(nodes) { mutableStateOf(nodes) }
 
+    // One ticker for the whole list: the per-row "edited … ago" labels are
+    // only honest if they age while the screen is open.
+    val nowMillis by rememberNowMillis()
+
     val lazyListState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         // Library passes `LazyListItemInfo`s. Headers carry String keys
@@ -307,6 +313,7 @@ private fun PageTreeList(
                 // a 48dp leading icon on every row to advertise it.
                 PageTreeItem(
                     node = node,
+                    nowMillis = nowMillis,
                     isExpanded = node.page.id in expanded,
                     onToggle = { onToggle(node.page.id) },
                     onOpen = { onPageClick(node.page.id) },
@@ -336,6 +343,7 @@ private fun PageTreeList(
 private fun PageTreeItem(
     node: PageNode,
     isExpanded: Boolean,
+    nowMillis: Long,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -385,9 +393,14 @@ private fun PageTreeItem(
                 text = node.page.title,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            if (node.page.lastUserDisplayName.isNotEmpty()) {
+            val editedLine = pageEditedLine(
+                lastUserDisplayName = node.page.lastUserDisplayName,
+                serverTimestampSeconds = node.page.serverTimestamp,
+                nowMillis = nowMillis,
+            )
+            if (editedLine != null) {
                 Text(
-                    text = "Edited by ${node.page.lastUserDisplayName}",
+                    text = editedLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
