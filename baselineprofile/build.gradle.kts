@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.test)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.baselineprofile)
 }
 
@@ -14,13 +13,13 @@ kotlin {
 
 android {
     namespace = "com.megamaced.nccollectives.baselineprofile"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // 29 to match :app. It also clears the floor `BaselineProfileRule` sets
         // — `collect` is `@RequiresApi(28)` — so lint has nothing to flag.
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -63,18 +62,12 @@ android {
             device = "Pixel 6"
             apiLevel = 35
             systemImageSource = "aosp-atd"
-            // Pinned rather than left to the default. AGP 8.13 defaults
-            // this to x86_64 but warns that AGP 9 will flip the default to
-            // arm64-v8a, which on an x86_64 host means either NDK
-            // translation or a device that cannot run at all. Stating the
-            // host architecture keeps the AGP 9 upgrade from silently
-            // changing what this generates on.
-            //
-            // Note: AGP 8.13.2 prints its "unspecified testedAbi" warning
-            // anyway — the setup task has the property but its
-            // CreationAction never wires the DSL value through. Setting it
-            // is still what AGP's own message asks for; the warning is
-            // cosmetic and expected until that is fixed upstream.
+            // Pinned rather than left to the default, which AGP 9 sets to
+            // arm64-v8a. On an x86_64 host that means either NDK
+            // translation or a device that cannot boot at all, so the
+            // architecture the generator runs on is stated rather than
+            // inherited. CI and the development machines are both x86_64;
+            // an arm64 host needs this changed to match.
             testedAbi = "x86_64"
         }
     }
