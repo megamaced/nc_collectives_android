@@ -49,8 +49,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 37
-        versionCode = 36
-        versionName = "2.12.0"
+        versionCode = 37
+        versionName = "2.12.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -106,6 +106,25 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // Native libraries are packaged exactly as their AAR shipped them,
+            // never stripped. This is a reproducible-build requirement, not a
+            // size trade-off.
+            //
+            // AGP strips prebuilt .so files when an NDK is resolvable and
+            // silently packages them as-is when one is not ("Unable to strip
+            // the following libraries"), so the APK's bytes otherwise depend on
+            // whether the machine doing the build happens to have an NDK — and
+            // on which one. F-Droid rebuilds from source and compares against
+            // the published APK, so a machine-dependent .so means the rebuild
+            // does not match and the app stops updating with no error anywhere.
+            //
+            // The two libraries this covers (androidx.datastore's shared
+            // counter and androidx.graphics.path) are prebuilt dependencies;
+            // nothing here is compiled from source, so there are no symbols of
+            // ours to keep out of the release. Cost is a few KB per ABI.
+            keepDebugSymbols += "**/*.so"
         }
     }
 

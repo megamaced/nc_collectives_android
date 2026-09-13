@@ -1,0 +1,5 @@
+A packaging fix. Nothing about how the app works has changed.
+
+Native libraries are now packaged exactly as the libraries they come from shipped them, instead of being stripped or not depending on which machine built the release. That inconsistency would have stopped F-Droid from verifying the build against its own, which quietly halts updates there with no error shown to anyone.
+
+If you already run 2.12.0 there is nothing new to see — this only affects how future updates reach you.
