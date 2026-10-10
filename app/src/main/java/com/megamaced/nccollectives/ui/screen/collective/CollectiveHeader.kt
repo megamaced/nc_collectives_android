@@ -70,9 +70,14 @@ import com.megamaced.nccollectives.ui.components.monogramOf
 import okhttp3.HttpUrl
 
 /**
- * Horizontal "Recent pages" strip rendered above the tree on
- * [PageTreeScreen]. Mirrors the widget Nextcloud's web client shows on the
- * collective landing page. Hidden when [pages] is empty.
+ * Horizontal "Recent pages" strip, rendered above the tree on
+ * [PageTreeScreen] — mirroring the widget Nextcloud's web client shows on
+ * the collective landing page — and above the collective list, across
+ * every collective. Hidden when [pages] is empty.
+ *
+ * [caption] adds a few words after each card's timestamp. The collective
+ * list uses it to say which collective a page is in; inside a collective
+ * that goes without saying, so the tree passes nothing.
  *
  * R-54: takes [PageListItem]s. A card shows an emoji, a title and a
  * relative timestamp — nothing that needs a body — so the strip is one of
@@ -83,6 +88,7 @@ internal fun RecentPagesStrip(
     pages: List<PageListItem>,
     onPageClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    caption: (PageListItem) -> String? = { null },
 ) {
     if (pages.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth()) {
@@ -97,7 +103,7 @@ internal fun RecentPagesStrip(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(pages, key = { it.id }) { page ->
-                RecentPageCard(page = page, onClick = { onPageClick(page.id) })
+                RecentPageCard(page = page, caption = caption(page), onClick = { onPageClick(page.id) })
             }
         }
     }
@@ -106,6 +112,7 @@ internal fun RecentPagesStrip(
 @Composable
 private fun RecentPageCard(
     page: PageListItem,
+    caption: String?,
     onClick: () -> Unit,
 ) {
     Card(
@@ -135,11 +142,17 @@ private fun RecentPageCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.size(4.dp))
+                // One line for both: the card has no height to spare, and the
+                // timestamp leads so a long caption truncates instead of it.
                 Text(
-                    text = relativeTime(page.serverTimestamp),
+                    text = listOfNotNull(
+                        relativeTime(page.serverTimestamp).takeIf { it.isNotEmpty() },
+                        caption?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

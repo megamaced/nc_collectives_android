@@ -50,10 +50,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.data.prefs.CollectiveSort
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
+import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,6 +63,7 @@ import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 internal fun CollectiveListScreen(
     innerPadding: PaddingValues,
     onCollectiveClick: (Long) -> Unit,
+    onOpenPage: (Long) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -68,6 +71,8 @@ internal fun CollectiveListScreen(
     viewModel: CollectiveListViewModel = hiltViewModel(),
 ) {
     val collectives by viewModel.collectives.collectAsStateWithLifecycle()
+    val recentPages by viewModel.recentPages.collectAsStateWithLifecycle()
+    val collectiveSort by viewModel.collectiveSort.collectAsStateWithLifecycle()
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -135,7 +140,7 @@ internal fun CollectiveListScreen(
     ) { scaffoldPadding ->
         PullToRefreshBox(
             isRefreshing = ui.isRefreshing,
-            onRefresh = viewModel::refresh,
+            onRefresh = viewModel::pullToRefresh,
             modifier = Modifier.padding(scaffoldPadding).fillMaxSize(),
         ) {
             ListStateSwitch(
@@ -150,7 +155,35 @@ internal fun CollectiveListScreen(
                     )
                 },
             ) {
+                // Which collective each recent page is in, for the card
+                // captions. Keyed on the list so it's built once per change,
+                // not per recomposition.
+                val collectiveLabels = remember(collectives) {
+                    collectives.associate { collective ->
+                        val emoji = collective.emoji?.takeIf { it.isNotBlank() }
+                        collective.id to if (emoji != null) "$emoji ${collective.name}" else collective.name
+                    }
+                }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (recentPages.isNotEmpty()) {
+                        item(key = "header-recent") {
+                            RecentPagesStrip(
+                                pages = recentPages,
+                                onPageClick = onOpenPage,
+                                caption = { page -> collectiveLabels[page.collectiveId] },
+                            )
+                        }
+                        item(key = "header-divider") { HorizontalDivider() }
+                    }
+                    item(key = "header-sort") {
+                        SortHeader(
+                            title = "Collectives",
+                            selected = collectiveSort,
+                            options = CollectiveSort.entries,
+                            label = ::collectiveSortLabel,
+                            onSelect = viewModel::setCollectiveSort,
+                        )
+                    }
                     items(collectives, key = { it.id }) { collective ->
                         CollectiveRow(
                             collective = collective,
@@ -205,6 +238,12 @@ internal fun CollectiveListScreen(
         )
     }
 }
+
+private fun collectiveSortLabel(sort: CollectiveSort): String =
+    when (sort) {
+        CollectiveSort.Name -> "Name"
+        CollectiveSort.LastEdited -> "Last edited"
+    }
 
 @Composable
 private fun CollectiveRow(

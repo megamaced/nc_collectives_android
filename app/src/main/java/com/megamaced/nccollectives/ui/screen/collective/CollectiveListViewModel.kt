@@ -4,17 +4,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.prefs.CollectiveSort
+import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.domain.repository.PageRepository
+import com.megamaced.nccollectives.sync.FullSync
+import com.megamaced.nccollectives.sync.SyncOutcome
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.shouldAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -33,14 +44,59 @@ data class CollectiveListUiState(
     val createdCollectiveId: Long? = null,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CollectiveListViewModel
     @Inject
     constructor(
         private val repository: CollectiveRepository,
+        private val pageRepository: PageRepository,
+        private val userPreferences: UserPreferences,
+        private val fullSync: FullSync,
     ) : ViewModel() {
+        private val sortFlow: Flow<CollectiveSort> =
+            userPreferences.flow.map { it.collectiveSort }.distinctUntilChanged()
+
+        val collectiveSort: StateFlow<CollectiveSort> = sortFlow.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = CollectiveSort.Name,
+        )
+
+        /**
+         * The list in the user's chosen order. The page-timestamp flow is
+         * only subscribed under [CollectiveSort.LastEdited]: it re-runs on
+         * every write to `pages`, and an alphabetical list has no use for it.
+         */
         val collectives: StateFlow<List<Collective>> =
-            repository.observeCollectives().stateIn(
+            sortFlow
+                .flatMapLatest { sort ->
+                    when (sort) {
+                        CollectiveSort.Name -> {
+                            repository.observeCollectives()
+                        }
+
+                        CollectiveSort.LastEdited -> {
+                            combine(
+                                repository.observeCollectives(),
+                                pageRepository.observeLastEditedByCollective(),
+                                ::orderByLastEdited,
+                            )
+                        }
+                    }
+                }.stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                    initialValue = emptyList(),
+                )
+
+        /**
+         * Most recently changed pages across every collective, for the strip
+         * above the list. From the cache, so it moves when a sync or a
+         * collective open brings new metadata in — see [pullToRefresh].
+         */
+        val recentPages: StateFlow<List<PageListItem>> =
+            pageRepository.observeRecentPagesAcrossCollectives(RECENT_LIMIT).stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
                 initialValue = emptyList(),
@@ -97,6 +153,37 @@ class CollectiveListViewModel
             }
         }
 
+        /**
+         * The explicit pull. Unlike [refresh], which only re-lists
+         * collectives, this pulls page metadata for every collective too —
+         * the same run as Settings → Sync now — because this screen now
+         * shows other collectives' pages (the recent strip, the
+         * "Last edited" order), and someone who pulls to refresh expects
+         * those to move. The automatic refreshes stay light: one request,
+         * not two per collective on every return to this screen.
+         */
+        fun pullToRefresh() {
+            if (_uiState.value.isRefreshing) return
+            lastRefreshAt = System.currentTimeMillis()
+            _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+            viewModelScope.launch {
+                val failure = when (val outcome = fullSync.run()) {
+                    SyncOutcome.Success -> null
+                    SyncOutcome.Unauthorised -> "Session expired — please log in again."
+                    is SyncOutcome.Retryable -> outcome.message
+                    is SyncOutcome.Failed -> outcome.message
+                }
+                _uiState.update { it.copy(isRefreshing = false, errorMessage = failure) }
+                // The error arm of the list only shows while it's empty; a
+                // pull the user asked for reports its failure either way.
+                if (collectives.value.isNotEmpty()) postMessage(failure)
+            }
+        }
+
+        fun setCollectiveSort(sort: CollectiveSort) {
+            viewModelScope.launch { userPreferences.setCollectiveSort(sort) }
+        }
+
         fun dismissError() {
             _uiState.update { it.copy(errorMessage = null) }
         }
@@ -140,4 +227,19 @@ class CollectiveListViewModel
                 postMessage(if (result is ApiResult.Success) "Moved to trash" else result.userMessage())
             }
         }
+
+        private companion object {
+            /** Same size as the strip inside a collective. */
+            const val RECENT_LIMIT = 8
+        }
     }
+
+/**
+ * Newest page first. [collectives] arrive in name order from the DAO, and
+ * the sort is stable, so name is the tie-break — and collectives with no
+ * cached pages (absent from [lastEditedAt]) go to the end, alphabetically.
+ */
+internal fun orderByLastEdited(
+    collectives: List<Collective>,
+    lastEditedAt: Map<Long, Long>,
+): List<Collective> = collectives.sortedByDescending { lastEditedAt[it.id] ?: Long.MIN_VALUE }

@@ -18,6 +18,10 @@ import androidx.room.PrimaryKey
         // sorts the filtered rows into a transient B-tree on every emission.
         // Added in DB v8.
         Index(value = ["collectiveId", "serverTimestamp"]),
+        // Covers `observeRecentAcrossCollectives`, which orders the whole
+        // table by `serverTimestamp DESC` with no `collectiveId` to lead
+        // with. Added in DB v11.
+        Index(value = ["serverTimestamp"]),
     ],
 )
 data class PageEntity(

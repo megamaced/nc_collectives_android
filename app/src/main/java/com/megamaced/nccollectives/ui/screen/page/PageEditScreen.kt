@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -294,21 +296,26 @@ internal fun PageEditScreen(
                 }
 
                 else -> {
+                    // Toolbar under the text, where the thumb is. The
+                    // Scaffold's `imePadding` ends this column at the top of
+                    // the keyboard, so with the keyboard up the toolbar sits
+                    // directly on it, and with it down, on the navigation bar.
                     Column(modifier = Modifier.fillMaxSize()) {
-                        MarkdownToolbar(
-                            onAction = { action -> updateField(action(fieldValue)) },
-                            onInsertImage = { showAttachmentPicker = true },
-                        )
-                        HorizontalDivider()
                         BasicTextField(
                             value = fieldValue,
                             onValueChange = updateField,
                             modifier = Modifier
-                                .fillMaxSize()
+                                .weight(1f)
+                                .fillMaxWidth()
                                 .padding(16.dp),
                             textStyle = bodyStyle,
                             keyboardOptions = KeyboardOptions.Default,
                             keyboardActions = KeyboardActions.Default,
+                        )
+                        HorizontalDivider()
+                        MarkdownToolbar(
+                            onAction = { action -> updateField(action(fieldValue)) },
+                            onInsertImage = { showAttachmentPicker = true },
                         )
                     }
                 }
@@ -322,8 +329,12 @@ private fun MarkdownToolbar(
     onAction: ((TextFieldValue) -> TextFieldValue) -> Unit,
     onInsertImage: () -> Unit,
 ) {
+    // Nine 48dp buttons are 432dp, wider than most phones, so the row
+    // scrolls rather than clipping the last few off the edge.
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {

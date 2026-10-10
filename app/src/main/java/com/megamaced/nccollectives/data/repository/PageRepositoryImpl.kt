@@ -97,6 +97,27 @@ class PageRepositoryImpl
                 .distinctUntilChanged()
                 .map { rows -> rows.map { it.toDomain() } }
 
+        override fun observeRecentPagesAcrossCollectives(limit: Int): Flow<List<PageListItem>> =
+            pageDao
+                .observeRecentAcrossCollectives(limit)
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeSubpages(
+            collectiveId: Long,
+            parentId: Long,
+        ): Flow<List<PageListItem>> =
+            pageDao
+                .observeChildren(collectiveId, parentId)
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeLastEditedByCollective(): Flow<Map<Long, Long>> =
+            pageDao
+                .observeLastEditedByCollective()
+                .distinctUntilChanged()
+                .map { rows -> rows.associate { it.collectiveId to it.lastEditedAt } }
+
         /**
          * Issue #18: a queued offline edit is the local truth for the body,
          * so the page row's cached server markdown is overlaid with it. The

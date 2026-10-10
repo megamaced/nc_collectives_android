@@ -2,6 +2,8 @@ package com.megamaced.nccollectives.ui.navigation
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -32,38 +34,35 @@ internal fun NcCollectivesNavHost(
         navController = navController,
         startDestination = Destination.Collectives.route,
     ) {
-        composable(Destination.Collectives.route) {
+        composable(Destination.Collectives.route) { entry ->
             CollectiveListScreen(
                 innerPadding = innerPadding,
                 onCollectiveClick = { id -> navController.navigate(Destination.PageTree.route(id)) },
+                onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(pageId)) },
                 onOpenSearch = { navController.navigate(Destination.Search.route) },
                 onOpenFavorites = { navController.navigate(Destination.Favorites.route) },
                 onOpenSettings = { navController.navigate(Destination.Settings.route) },
                 onOpenTrash = { navController.navigate(Destination.CollectiveTrash.route) },
             )
         }
-        composable(Destination.Search.route) {
+        composable(Destination.Search.route) { entry ->
             SearchScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
-                onOpenPage = { pageId ->
-                    navController.navigate(Destination.PageView.route(pageId)) {
-                        popUpTo(Destination.Collectives.route) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
+                // Pushed on top of the results, so Back returns to them with
+                // the query intact. Search and Favorites are screens opened
+                // from a top-bar action — from the collective list or from
+                // inside a collective — not tabs to reset to, and popping to
+                // the root here discarded that context, page tree included.
+                onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(pageId)) },
             )
         }
-        composable(Destination.Favorites.route) {
+        composable(Destination.Favorites.route) { entry ->
             FavoritesScreen(
                 innerPadding = innerPadding,
                 onBack = { navController.popBackStack() },
-                onOpenPage = { pageId ->
-                    navController.navigate(Destination.PageView.route(pageId)) {
-                        popUpTo(Destination.Collectives.route) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
+                // Back from the page returns here — see Search above.
+                onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(pageId)) },
             )
         }
         composable(Destination.Settings.route) {
@@ -234,4 +233,24 @@ internal fun NcCollectivesNavHost(
             )
         }
     }
+}
+
+/**
+ * Navigate to [route] only if [from] is still the screen in front.
+ *
+ * Guards the lists that open pages — Search, Favorites, the recent-pages
+ * strip — against a second tap that lands while the first page is still
+ * animating in. Without it that tap pushes a second page. `launchSingleTop`
+ * is not the fix: it matches on the `page/{pageId}` destination, not the
+ * page, so it would hand the open page's entry the new id while keeping the
+ * ViewModel that already loaded the old one — the screen showing one page
+ * and Edit opening another. Once `navigate` has run, the outgoing entry is
+ * no longer `RESUMED`, so the second tap stops here.
+ */
+private fun NavHostController.navigateFrom(
+    from: NavBackStackEntry,
+    route: String,
+) {
+    if (from.lifecycle.currentState != Lifecycle.State.RESUMED) return
+    navigate(route)
 }

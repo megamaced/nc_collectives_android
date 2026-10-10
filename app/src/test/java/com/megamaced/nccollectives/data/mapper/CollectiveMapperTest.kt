@@ -5,6 +5,7 @@ import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.di.NetworkModule
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
+import com.megamaced.nccollectives.domain.model.PageOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -113,5 +114,44 @@ class CollectiveMapperTest {
 
         assertEquals(0, domain.level)
         assertEquals(CollectiveMemberLevel.Unknown, domain.userLevel)
+    }
+
+    @Test
+    fun `the page order parses from userPageOrder and reaches the domain`() {
+        val payload =
+            """
+            {"ocs":{"meta":{"status":"ok","statuscode":200},"data":{"collectives":[
+             {"id":3,"name":"Field Guide","userPageOrder":2}]}}}
+            """.trimIndent()
+
+        val dto = json
+            .decodeFromString<Envelope<CollectivesEnvelopeData>>(payload)
+            .ocs
+            .data
+            .collectives
+            .single()
+
+        assertEquals(2, dto.userPageOrder)
+        assertEquals(PageOrder.TitleAscending, dto.toEntity(now = 0L).toDomain().pageOrder)
+    }
+
+    @Test
+    fun `an absent page order is the custom order`() {
+        val domain = CollectiveDto(id = 3, name = "Field Guide").toEntity(now = 0L).toDomain()
+
+        assertEquals(PageOrder.Custom, domain.pageOrder)
+    }
+
+    /**
+     * A value this build doesn't know reads as custom order, but the row
+     * keeps the server's integer, so nothing is lost if a later build does
+     * know it.
+     */
+    @Test
+    fun `an unknown page order reads as custom and is kept raw in the row`() {
+        val entity = CollectiveDto(id = 3, name = "Field Guide", userPageOrder = 7).toEntity(now = 0L)
+
+        assertEquals(7, entity.userPageOrder)
+        assertEquals(PageOrder.Custom, entity.toDomain().pageOrder)
     }
 }

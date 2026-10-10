@@ -40,6 +40,30 @@ interface PageRepository {
         limit: Int,
     ): Flow<List<PageListItem>>
 
+    /**
+     * Most-recently-edited non-trashed pages across every collective,
+     * landing pages excluded. Backs the "Recent pages" strip on the
+     * collective list. Reads the cache only, so it is as fresh as the last
+     * metadata sync or collective open.
+     */
+    fun observeRecentPagesAcrossCollectives(limit: Int): Flow<List<PageListItem>>
+
+    /**
+     * The direct children of [parentId] in [collectiveId], unordered — the
+     * caller applies the collective's page order (`orderSiblings`).
+     */
+    fun observeSubpages(
+        collectiveId: Long,
+        parentId: Long,
+    ): Flow<List<PageListItem>>
+
+    /**
+     * When each collective's most recently changed cached page was saved,
+     * in seconds since epoch, keyed by collective id. A collective with no
+     * cached pages is absent.
+     */
+    fun observeLastEditedByCollective(): Flow<Map<Long, Long>>
+
     fun observePage(pageId: Long): Flow<Page?>
 
     /**

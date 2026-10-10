@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.components.BacklinkChipRow
 import com.megamaced.nccollectives.ui.components.ConflictBanner
@@ -66,6 +67,7 @@ import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownOutline
 import com.megamaced.nccollectives.ui.components.MarkdownView
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.ui.components.SubpageChipRow
 import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
 import com.megamaced.nccollectives.util.AttachmentRef
 import kotlinx.coroutines.launch
@@ -89,6 +91,7 @@ internal fun PageViewScreen(
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val imageBaseUrl by viewModel.imageBaseUrl.collectAsStateWithLifecycle()
     val backlinks by viewModel.backlinks.collectAsStateWithLifecycle()
+    val subpages by viewModel.subpages.collectAsStateWithLifecycle()
     val remoteAttachmentCount by viewModel.remoteAttachmentCount.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val editScope = rememberCoroutineScope()
@@ -365,6 +368,7 @@ internal fun PageViewScreen(
                         body = currentPage.bodyMd.orEmpty(),
                         imageBaseUrl = imageBaseUrl,
                         backlinks = backlinks,
+                        subpages = subpages,
                         remoteAttachmentCount = remoteAttachmentCount,
                         scrollState = bodyScrollState,
                         outline = outline,
@@ -482,6 +486,7 @@ private fun PageViewContent(
     body: String,
     imageBaseUrl: String?,
     backlinks: List<Page>,
+    subpages: List<PageListItem>,
     remoteAttachmentCount: Int,
     scrollState: ScrollState,
     outline: MarkdownOutline,
@@ -558,6 +563,10 @@ private fun PageViewContent(
                 }
             }
         }
+        // Above the body rather than with the backlinks at the bottom: on a
+        // hub page the children are often why it was opened, and a long body
+        // would push them a screen or more out of reach.
+        SubpageChipRow(pages = subpages, onOpenPage = onOpenPage)
         // B-56: `key(remoteAttachmentCount)` rebuilds the MarkdownView (and
         // its underlying TextView + Markwon Spannable) whenever a queued
         // upload promotes to REMOTE. Without this, an image referenced in

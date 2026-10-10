@@ -1,0 +1,7 @@
+The start screen now shows the latest edited pages from all your collectives, and the list can be sorted by name or last edited.
+
+Pages in a collective can be sorted as on the web: custom order, recently changed, or title. The choice syncs with your account.
+
+Each page lists its subpages at the top, and Back from a page opened in Favorites or Search returns there.
+
+The plain editor's toolbar now sits above the keyboard and scrolls, so no buttons are cut off.

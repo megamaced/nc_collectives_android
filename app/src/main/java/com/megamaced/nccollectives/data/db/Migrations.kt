@@ -186,6 +186,28 @@ internal val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+/**
+ * Two additions for the page-ordering work, both plain and additive.
+ *
+ * `collectives.userPageOrder` caches the web app's per-user page order so
+ * the tree can be sorted offline. Pre-v11 rows take 0, custom order — the
+ * order the app always used, and the server's own default — and the next
+ * `refresh()` replaces it with whatever the user actually chose.
+ *
+ * `index_pages_serverTimestamp` serves the cross-collective recent-pages
+ * strip, which orders every cached page by `serverTimestamp DESC` with no
+ * `collectiveId` to lead with, so the `(collectiveId, serverTimestamp)`
+ * index from v8 can't help it. Without this, each emission sorts the whole
+ * table — and evaluates `draftBodyMd IS NOT NULL` for every row, which
+ * walks the overflow pages of every cached body stored ahead of it.
+ */
+internal val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `userPageOrder` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_pages_serverTimestamp` ON `pages` (`serverTimestamp`)")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -196,4 +218,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_7_8,
     MIGRATION_8_9,
     MIGRATION_9_10,
+    MIGRATION_10_11,
 )

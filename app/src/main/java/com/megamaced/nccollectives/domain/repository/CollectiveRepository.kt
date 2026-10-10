@@ -4,6 +4,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
+import com.megamaced.nccollectives.domain.model.PageOrder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -30,6 +31,16 @@ interface CollectiveRepository {
         collectiveId: Long,
         pageId: Long,
         favorite: Boolean,
+    ): ApiResult<Unit>
+
+    /**
+     * Set how the user's pages in [collectiveId] are ordered. Stored
+     * server-side per user, so the web app follows suit. Applies to Room
+     * first so the tree re-sorts at once, and rolls back on failure.
+     */
+    suspend fun setPageOrder(
+        collectiveId: Long,
+        order: PageOrder,
     ): ApiResult<Unit>
 
     /**

@@ -20,27 +20,65 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
 
 /**
  * Collapsible "Linked from" section for [PageViewScreen]. Hidden entirely
  * when [pages] is empty. The header stays visible when collapsed so the
  * count is always discoverable.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BacklinkChipRow(
     pages: List<Page>,
     onOpenPage: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (pages.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
+    val chips = remember(pages) { pages.map { PageChip(it.id, it.emoji, it.title) } }
+    PageChipSection(label = "Linked from", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
+}
+
+/**
+ * Collapsible "Subpages" section for [PageViewScreen], so a page's children
+ * are one tap away wherever the page was opened from — Favorites, search,
+ * a recent-pages card or a link — and not only from the collective's tree.
+ * [pages] arrive already in the collective's page order.
+ */
+@Composable
+fun SubpageChipRow(
+    pages: List<PageListItem>,
+    onOpenPage: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val chips = remember(pages) { pages.map { PageChip(it.id, it.emoji, it.title) } }
+    PageChipSection(label = "Subpages", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
+}
+
+/** What a chip draws: both page models reduce to this. */
+private data class PageChip(
+    val id: Long,
+    val emoji: String?,
+    val title: String,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PageChipSection(
+    label: String,
+    chips: List<PageChip>,
+    onOpenPage: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (chips.isEmpty()) return
+    // Saveable so a section the user opened survives rotation and the trip
+    // into a linked page and back.
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -52,7 +90,7 @@ fun BacklinkChipRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Linked from (${pages.size})",
+                text = "$label (${chips.size})",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -64,12 +102,12 @@ fun BacklinkChipRow(
         }
         if (expanded) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pages.forEach { page ->
+                chips.forEach { chip ->
                     AssistChip(
-                        onClick = { onOpenPage(page.id) },
+                        onClick = { onOpenPage(chip.id) },
                         label = {
-                            val emoji = page.emoji?.takeIf { it.isNotBlank() }
-                            Text(text = if (emoji != null) "$emoji ${page.title}" else page.title)
+                            val emoji = chip.emoji?.takeIf { it.isNotBlank() }
+                            Text(text = if (emoji != null) "$emoji ${chip.title}" else chip.title)
                         },
                         colors = AssistChipDefaults.assistChipColors(),
                     )

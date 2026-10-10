@@ -63,9 +63,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.util.pageEditedLine
 import sh.calvin.reorderable.ReorderableItem
@@ -181,6 +183,8 @@ internal fun PageTreeScreen(
                     onToggleFavorite = viewModel::toggleFavorite,
                     onAddSubpage = { parentId -> newPageMode = NewPageMode.FixedParent(parentId) },
                     onReorder = viewModel::onReorderDrop,
+                    pageOrder = ui.pageOrder,
+                    onPageOrderChange = viewModel::setPageOrder,
                     onOpenMembers = onOpenMembers,
                     onRetryMembers = viewModel::retryMembers,
                 )
@@ -201,6 +205,16 @@ internal fun PageTreeScreen(
         )
     }
 }
+
+/** Menu labels, worded after the web app's "Sort order" menu. */
+private fun pageOrderLabel(order: PageOrder): String =
+    when (order) {
+        PageOrder.Custom -> "Custom order"
+        PageOrder.RecentlyChangedFirst -> "Recently changed"
+        PageOrder.LeastRecentlyChangedFirst -> "Least recently changed"
+        PageOrder.TitleAscending -> "Title A–Z"
+        PageOrder.TitleDescending -> "Title Z–A"
+    }
 
 private sealed interface NewPageMode {
     /** Top-bar action — let the user pick a parent. */
@@ -227,6 +241,8 @@ private fun PageTreeList(
     onToggleFavorite: (Long, Boolean) -> Unit,
     onAddSubpage: (Long) -> Unit,
     onReorder: (movedPageId: Long, newVisibleOrder: List<Long>) -> Unit,
+    pageOrder: PageOrder,
+    onPageOrderChange: (PageOrder) -> Unit,
     onOpenMembers: () -> Unit,
     onRetryMembers: () -> Unit,
 ) {
@@ -304,6 +320,17 @@ private fun PageTreeList(
         ) {
             item(key = "header-divider") { HorizontalDivider() }
         }
+        if (localNodes.isNotEmpty()) {
+            item(key = "header-sort") {
+                SortHeader(
+                    title = "Pages",
+                    selected = pageOrder,
+                    options = PageOrder.entries,
+                    label = ::pageOrderLabel,
+                    onSelect = onPageOrderChange,
+                )
+            }
+        }
         items(localNodes, key = { it.page.id }) { node ->
             ReorderableItem(reorderState, key = node.page.id) { _ ->
                 // Long-press anywhere on the row to drag — no dedicated
@@ -320,6 +347,9 @@ private fun PageTreeList(
                     onToggleFavorite = { onToggleFavorite(node.page.id, node.isFavorite) },
                     onAddSubpage = { onAddSubpage(node.page.id) },
                     dragHandleModifier = Modifier.longPressDraggableHandle(
+                        // Only the custom order is one a drag can change —
+                        // the web app disables dragging under the others too.
+                        enabled = pageOrder == PageOrder.Custom,
                         onDragStopped = {
                             // B-35: pass the moved id + the full post-drag
                             // visible order so the VM works in a single

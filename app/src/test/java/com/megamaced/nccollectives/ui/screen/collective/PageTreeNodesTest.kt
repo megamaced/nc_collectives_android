@@ -1,8 +1,11 @@
 package com.megamaced.nccollectives.ui.screen.collective
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.PageOrder
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /**
  * Unit tests for [buildVisibleNodes].
@@ -13,7 +16,11 @@ import org.junit.Test
  * `page.id` is a `LazyColumn` key and Compose crashes on a duplicate.
  * The rest pin the ordering + expand/collapse contract so the dedup
  * guard doesn't regress normal trees.
+ *
+ * Under Robolectric because sibling order sorts titles with Android's ICU
+ * collator, which a plain JVM test only has as stubs.
  */
+@RunWith(AndroidJUnit4::class)
 class PageTreeNodesTest {
     private fun page(
         id: Long,
@@ -104,5 +111,29 @@ class PageTreeNodesTest {
         val nodes = buildVisibleNodes(pages, expanded = emptySet(), favoriteIds = setOf(2L))
         assertEquals(false, nodes.first { it.page.id == 1L }.isFavorite)
         assertEquals(true, nodes.first { it.page.id == 2L }.isFavorite)
+    }
+
+    /**
+     * As in the web app, one page order applies at every level of the tree,
+     * and anything but custom order ignores each parent's `subpageOrder`.
+     */
+    @Test
+    fun pageOrderAppliesAtEveryLevel_andOverridesTheCustomHint() {
+        val pages = listOf(
+            page(id = 10, parentId = 0, subpageOrder = listOf(1, 2)),
+            page(id = 1, parentId = 10, title = "Alpha", subpageOrder = listOf(3, 4)),
+            page(id = 2, parentId = 10, title = "Beta"),
+            page(id = 3, parentId = 1, title = "Child A"),
+            page(id = 4, parentId = 1, title = "Child B"),
+        )
+
+        val nodes = buildVisibleNodes(
+            pages,
+            expanded = setOf(1L),
+            favoriteIds = emptySet(),
+            order = PageOrder.TitleDescending,
+        )
+
+        assertEquals(listOf(2L, 1L, 4L, 3L), ids(nodes))
     }
 }

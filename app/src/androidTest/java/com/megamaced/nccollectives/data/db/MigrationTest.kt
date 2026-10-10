@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 10
+private const val LATEST_VERSION = 11
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -35,7 +35,7 @@ private const val LATEST_VERSION = 10
  *
  * [migrateAll] is the load-bearing test: it walks a v1 database through every
  * migration and lets Room compare the result against the committed
- * `app/schemas/…/10.json`, column by column and index by index. Schema
+ * `app/schemas/…/11.json`, column by column and index by index. Schema
  * validation cannot see a *lost row*, though, so the migrations that move
  * data rather than just adding a column get their own test below.
  *
@@ -324,6 +324,50 @@ class MigrationTest {
         assertEquals(listOf("Newer", "Older"), recentTitles)
         db.close()
     }
+
+    /**
+     * MIGRATION_10_11 adds the cached page order and the cross-collective
+     * recent-pages index. Every collective cached before it has to come out
+     * on custom order — 0, the order the app always showed and the server's
+     * own default — rather than on whatever an unset column would read as.
+     */
+    @Test
+    fun migrate10To11_addsThePageOrderAsCustomAndTheRecentIndex() {
+        helper.createDatabase(TEST_DB, 10).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide", level = 9, userShowMembers = true)
+            db.insertPage(id = 11L, collectiveId = 7L, title = "Older", serverTimestamp = 100L)
+            db.insertPage(id = 12L, collectiveId = 7L, title = "Newer", serverTimestamp = 200L)
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 11, true, MIGRATION_10_11)
+
+        assertTrue(
+            "MIGRATION_10_11 did not create index_pages_serverTimestamp",
+            db.indexNames("pages").contains("index_pages_serverTimestamp"),
+        )
+        db.query("SELECT * FROM `collectives` WHERE `id` = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Field Guide", cursor.stringAt("name"))
+            assertEquals(0L, cursor.longAt("userPageOrder"))
+        }
+        db.query("SELECT COUNT(*) FROM `pages`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(2L, cursor.getLong(0))
+        }
+
+        db.insertCollective(
+            id = 8L,
+            name = "Seasonal Calendar",
+            level = 1,
+            userShowMembers = true,
+            userPageOrder = 4,
+        )
+        db.query("SELECT * FROM `collectives` WHERE `id` = 8").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(4L, cursor.longAt("userPageOrder"))
+        }
+        db.close()
+    }
 }
 
 /**
@@ -367,8 +411,9 @@ private fun SupportSQLiteDatabase.insertPage(
 
 /**
  * Inserts a `collectives` row naming only the columns that have existed since
- * v1, so the same insert is valid at any version — MIGRATION_8_9 only adds
- * columns. Pass [circleId] / [level] / [userShowMembers] to seed a row at v9
+ * v1, so the same insert is valid at any version — MIGRATION_8_9 and
+ * MIGRATION_10_11 only add columns. Pass [circleId] / [level] /
+ * [userShowMembers] to seed a row at v9 or later, and [userPageOrder] at v11
  * or later; they are omitted from the insert when null, which is what lets
  * this seed a v1 or v8 database too.
  */
@@ -378,6 +423,7 @@ private fun SupportSQLiteDatabase.insertCollective(
     circleId: String? = null,
     level: Int? = null,
     userShowMembers: Boolean? = null,
+    userPageOrder: Int? = null,
 ) {
     val values = ContentValues().apply {
         put("id", id)
@@ -395,6 +441,8 @@ private fun SupportSQLiteDatabase.insertCollective(
         if (circleId != null) put("circleId", circleId)
         if (level != null) put("level", level)
         if (userShowMembers != null) put("userShowMembers", if (userShowMembers) 1 else 0)
+        // v11 column, same reasoning.
+        if (userPageOrder != null) put("userPageOrder", userPageOrder)
     }
     insert("collectives", SQLiteDatabase.CONFLICT_ABORT, values)
 }

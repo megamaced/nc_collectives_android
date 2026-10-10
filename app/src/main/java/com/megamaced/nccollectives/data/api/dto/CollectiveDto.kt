@@ -52,6 +52,13 @@ data class CollectiveDto(
      * knows the answer.
      */
     val userShowMembers: Boolean = true,
+    /**
+     * The user's page order for this collective, as the web app's
+     * "Sort order" menu stores it — see `PageOrder` for the values. Absent
+     * on a server that predates the setting, where 0 (custom order) is
+     * what the web app shows too.
+     */
+    val userPageOrder: Int = 0,
 )
 
 @Serializable

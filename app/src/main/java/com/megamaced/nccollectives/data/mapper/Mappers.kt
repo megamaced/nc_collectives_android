@@ -18,6 +18,7 @@ import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.CollectiveMemberType
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.PageOrder
 
 internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
     CollectiveEntity(
@@ -40,6 +41,7 @@ internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
         canShare = canShare,
         level = level,
         userShowMembers = userShowMembers,
+        userPageOrder = userPageOrder,
         isPageShare = isPageShare,
         trashTimestamp = trashTimestamp,
         userFavoritePagesCsv = userFavoritePages.toLongCsv(),
@@ -57,6 +59,7 @@ internal fun CollectiveEntity.toDomain(): Collective =
         canShare = canShare,
         level = level,
         userShowMembers = userShowMembers,
+        pageOrder = PageOrder.fromWire(userPageOrder),
         isPageShare = isPageShare,
         trashed = trashTimestamp != null,
         favoritePageIds = userFavoritePagesCsv.toLongCsvSet(),

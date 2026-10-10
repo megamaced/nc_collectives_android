@@ -55,6 +55,16 @@ data class PageListRow(
     val hasDraft: Boolean,
 )
 
+/**
+ * Projection returned by [PageDao.observeLastEditedByCollective]: when the
+ * most recently changed cached page in each collective was saved, in
+ * seconds since epoch. Not an entity.
+ */
+data class CollectiveLastEdited(
+    val collectiveId: Long,
+    val lastEditedAt: Long,
+)
+
 @Dao
 interface PageDao {
     /**
@@ -150,6 +160,66 @@ interface PageDao {
         collectiveId: Long,
         limit: Int,
     ): Flow<List<PageListRow>>
+
+    /**
+     * The recent-pages strip on the collective list: the most recently
+     * changed pages across every collective, landing pages excluded as in
+     * [observeRecentInCollective]. Pages of a trashed collective stay out,
+     * since the list they would open from doesn't show it.
+     *
+     * R-54: projected — see [PageListRow]. Served by
+     * `index_pages_serverTimestamp` (v11), which lets SQLite walk rows newest
+     * first and stop at [limit] instead of sorting the whole table.
+     *
+     * The collective check is a correlated `EXISTS`, not `collectiveId IN
+     * (SELECT …)`, and that is what keeps the index in play: an `IN` list
+     * gives the planner an indexable term on `pages.collectiveId`, which it
+     * takes — and then sorts every matching row into a temp B-tree, reading
+     * each one's `draftBodyMd`. `EXPLAIN QUERY PLAN` against the v11 schema
+     * shows `SCAN pages USING INDEX index_pages_serverTimestamp` for this
+     * shape and `USE TEMP B-TREE FOR ORDER BY` for the `IN` one.
+     */
+    @Query(
+        "SELECT id, collectiveId, parentId, title, emoji, tagsCsv, subpageOrderCsv, " +
+            "trashTimestamp, serverTimestamp, lastUserDisplayName, " +
+            "draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM pages WHERE trashTimestamp IS NULL AND parentId != 0 " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = pages.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY serverTimestamp DESC LIMIT :limit",
+    )
+    fun observeRecentAcrossCollectives(limit: Int): Flow<List<PageListRow>>
+
+    /**
+     * The direct children of [parentId], for the page screen's subpage
+     * list. Unordered: sibling order is the collective's page-order setting,
+     * which is applied in Kotlin alongside the tree's (`orderSiblings`).
+     * [collectiveId] is only there to lead the `(collectiveId, parentId)`
+     * index.
+     *
+     * R-54: projected — see [PageListRow].
+     */
+    @Query(
+        "SELECT id, collectiveId, parentId, title, emoji, tagsCsv, subpageOrderCsv, " +
+            "trashTimestamp, serverTimestamp, lastUserDisplayName, " +
+            "draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM pages WHERE collectiveId = :collectiveId AND parentId = :parentId " +
+            "AND trashTimestamp IS NULL",
+    )
+    fun observeChildren(
+        collectiveId: Long,
+        parentId: Long,
+    ): Flow<List<PageListRow>>
+
+    /**
+     * Newest page timestamp per collective, for sorting the collective list
+     * by "Last edited". Collectives with no cached pages have no row.
+     */
+    @Query(
+        "SELECT collectiveId, MAX(serverTimestamp) AS lastEditedAt FROM pages " +
+            "WHERE trashTimestamp IS NULL GROUP BY collectiveId",
+    )
+    fun observeLastEditedByCollective(): Flow<List<CollectiveLastEdited>>
 
     /**
      * Pages in [collectiveId] whose `tagsCsv` contains [tagName] (Batch 25).

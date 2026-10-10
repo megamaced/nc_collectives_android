@@ -29,6 +29,12 @@ data class CollectiveEntity(
      * why the absent case defaults to shown rather than hidden.
      */
     val userShowMembers: Boolean,
+    /**
+     * Raw `userPageOrder` wire value (see `PageOrder`). Kept as the server's
+     * integer so a value this build doesn't know survives a round trip
+     * through the cache; `MIGRATION_10_11` back-fills 0, custom order.
+     */
+    val userPageOrder: Int,
     val isPageShare: Boolean,
     val trashTimestamp: Long?,
     /** CSV of favorite-page ids; tiny lists, no need for a join table. */

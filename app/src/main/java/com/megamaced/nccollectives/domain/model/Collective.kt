@@ -33,6 +33,8 @@ data class Collective(
      * list, and it answers 403 when they may not.
      */
     val userShowMembers: Boolean,
+    /** How this user orders this collective's pages, shared with the web app. */
+    val pageOrder: PageOrder,
     val isPageShare: Boolean,
     val trashed: Boolean,
     val favoritePageIds: Set<Long>,

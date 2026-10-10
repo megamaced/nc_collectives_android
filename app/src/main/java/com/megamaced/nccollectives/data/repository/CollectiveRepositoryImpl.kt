@@ -20,9 +20,12 @@ import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
+import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,7 +47,13 @@ class CollectiveRepositoryImpl
 
         override suspend fun cachedCollectives(): List<Collective> = dao.list().map { it.toDomain() }
 
+        // Under [pageOrderLock]: see there for the race it closes.
         override suspend fun refresh(): ApiResult<Unit> =
+            pageOrderLock.withLock {
+                refreshLocked()
+            }
+
+        private suspend fun refreshLocked(): ApiResult<Unit> =
             apiCall {
                 // Issue #20: captured before the request goes out, checked
                 // inside the transaction that writes its response, so a wipe
@@ -114,6 +123,51 @@ class CollectiveRepositoryImpl
             }
             return result
         }
+
+        /**
+         * Held by [setPageOrder] and by [refresh], each across its request
+         * *and* its cache write, so neither can land a stale `userPageOrder`
+         * over the other's.
+         *
+         * Between two setters: each takes the cached order as its rollback
+         * point and restores it on failure, which is only right if no other
+         * setter is in flight. Two quick picks used to overlap, the second
+         * succeeded, and the first then failed and "rolled back" over it —
+         * the cache back on the original order while the server held the
+         * second pick. One at a time, every setter starts from a cache that
+         * matches the server, and the server sees picks in the order they
+         * were made.
+         *
+         * Between a setter and a refresh: the list response carries
+         * `userPageOrder` for every collective, so a list fetched before a
+         * pick and written after it puts the old order back — while the
+         * server, having taken the pick, holds the new one. In turn, a
+         * refresh that started first finishes before the pick is written,
+         * and one that starts during a pick reads the server after it.
+         *
+         * The other writes to this table don't need it: the favourite and
+         * emoji setters update their own columns only, and a create inserts
+         * a collective no pick can be aimed at yet.
+         */
+        private val pageOrderLock = Mutex()
+
+        override suspend fun setPageOrder(
+            collectiveId: Long,
+            order: PageOrder,
+        ): ApiResult<Unit> =
+            pageOrderLock.withLock {
+                val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
+                    IllegalStateException("Collective $collectiveId not cached"),
+                )
+                if (current.userPageOrder == order.wire) return@withLock ApiResult.Success(Unit)
+
+                dao.updatePageOrder(collectiveId, order.wire)
+                val result = apiCall { api.setPageOrder(collectiveId, order.wire) }
+                if (result !is ApiResult.Success) {
+                    dao.updatePageOrder(collectiveId, current.userPageOrder)
+                }
+                result
+            }
 
         override suspend fun createCollective(
             name: String,

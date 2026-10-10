@@ -10,8 +10,11 @@ import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.model.orderSiblings
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
@@ -145,6 +148,32 @@ class PageViewModel
                     flowOf(emptyList())
                 } else {
                     pageRepository.observeBacklinksFor(current.collectiveId, current.id)
+                }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
+
+        /**
+         * The page's direct children, in the same order the collective's
+         * tree shows them: the user's page order, with this page's own
+         * `subpageOrder` behind [PageOrder.Custom].
+         *
+         * Keyed on [SubpageParent] rather than on [page]: the page row
+         * re-emits on every body write (each open revalidates it), and none
+         * of those can change which pages are its children.
+         */
+        val subpages: StateFlow<List<PageListItem>> = page
+            .map { current -> current?.let { SubpageParent(it.collectiveId, it.id, it.subpageOrder) } }
+            .distinctUntilChanged()
+            .flatMapLatest { parent ->
+                if (parent == null) {
+                    flowOf(emptyList())
+                } else {
+                    combine(
+                        pageRepository.observeSubpages(parent.collectiveId, parent.pageId),
+                        collectiveRepository
+                            .observeCollectives()
+                            .map { list -> list.firstOrNull { it.id == parent.collectiveId }?.pageOrder ?: PageOrder.Custom }
+                            .distinctUntilChanged(),
+                    ) { children, order -> orderSiblings(children, parent.subpageOrder, order) }
                 }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
@@ -602,3 +631,10 @@ class PageViewModel
             const val NEW_TAG_COLOUR = "0082c9"
         }
     }
+
+/** What [PageViewModel.subpages] needs from the page: everything else about it can change without moving a child. */
+private data class SubpageParent(
+    val collectiveId: Long,
+    val pageId: Long,
+    val subpageOrder: List<Long>,
+)

@@ -10,6 +10,9 @@ import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.PageOrder
+import com.megamaced.nccollectives.domain.model.orderSiblings
+import com.megamaced.nccollectives.domain.model.sortedByTitle
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
@@ -114,6 +117,13 @@ data class PageTreeUiState(
     val recentPages: List<PageListItem> = emptyList(),
     /** Circle membership for the landing-page members strip. */
     val membersStrip: MembersStripState = MembersStripState(),
+    /**
+     * The user's sibling order for this collective, from the cached
+     * `userPageOrder`. Anything but [PageOrder.Custom] also switches
+     * drag-to-reorder off, as the web app does: a drag would write a
+     * `subpageOrder` the user can't see the effect of.
+     */
+    val pageOrder: PageOrder = PageOrder.Custom,
 )
 
 @HiltViewModel
@@ -159,8 +169,9 @@ class PageTreeViewModel
                 // collective for no change in output.
                 _uiState.map { it.expanded }.distinctUntilChanged(),
                 favoritesFlow,
-            ) { pages, expanded, favoriteIds ->
-                buildVisibleNodes(pages, expanded, favoriteIds)
+                _uiState.map { it.pageOrder }.distinctUntilChanged(),
+            ) { pages, expanded, favoriteIds, order ->
+                buildVisibleNodes(pages, expanded, favoriteIds, order)
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -187,12 +198,10 @@ class PageTreeViewModel
                 pagesFlow.collect { pages ->
                     // Every page is a valid parent — the server promotes a
                     // leaf parent to a folder when it gains a child (Batch
-                    // 18h / 18i OCS migration). R-44: `pagesFlow` already
-                    // arrives in title order from the DAO, so this is a
-                    // near-sorted re-sort — kept (rather than dropped) only
-                    // to hold the ordering the comparator defines; see
-                    // [PAGE_TITLE_ORDER].
-                    val choices = pages.sortedWith(PAGE_TITLE_ORDER)
+                    // 18h / 18i OCS migration). Re-sorted rather than taken
+                    // in the DAO's order, which folds ASCII case only and
+                    // puts "Page 10" before "Page 2"; see [sortedByTitle].
+                    val choices = sortedByTitle(pages)
                     _uiState.update { it.copy(parentChoices = choices) }
                 }
             }
@@ -239,6 +248,7 @@ class PageTreeViewModel
                 state.copy(
                     collectiveName = collective.name,
                     collectiveEmoji = collective.emoji,
+                    pageOrder = collective.pageOrder,
                     membersStrip = state.membersStrip.copy(
                         addressable = collective.circleId != null,
                         showInitially = collective.userShowMembers,
@@ -398,6 +408,20 @@ class PageTreeViewModel
         }
 
         /**
+         * Change how this collective's pages are ordered. The repository
+         * writes the cached row first, so the tree re-sorts at once through
+         * [onCollectiveLoaded], and puts it back if the server refuses.
+         */
+        fun setPageOrder(order: PageOrder) {
+            if (order == _uiState.value.pageOrder) return
+            viewModelScope.launch {
+                collectiveRepository.setPageOrder(collectiveId, order).onFailureMessage { message ->
+                    _uiState.update { it.copy(statusMessage = message) }
+                }
+            }
+        }
+
+        /**
          * Commit a drag-to-reorder (Batch 23). [movedPageId] is the page the
          * user dragged; [newVisibleOrder] is the page-id sequence of the
          * tree in its post-drag visible order. Sibling ordering is derived
@@ -414,6 +438,10 @@ class PageTreeViewModel
             movedPageId: Long,
             newVisibleOrder: List<Long>,
         ) {
+            // The screen disables dragging outside the custom order; this
+            // backs that up, since a drop here would rewrite `subpageOrder`
+            // from an order the server doesn't store.
+            if (_uiState.value.pageOrder != PageOrder.Custom) return
             val snapshot = nodes.value
             val moved = snapshot.firstOrNull { it.page.id == movedPageId }?.page ?: return
             val parentId = moved.parentId
@@ -459,29 +487,13 @@ class PageTreeViewModel
     }
 
 /**
- * Case-insensitive title order for sibling and parent-choice lists.
- *
- * R-44: the previous `sortedBy { it.title.lowercase() }` ran its selector
- * on *every comparison*, allocating a lowercased copy of each title
- * O(n log n) times per call — and this ran on every tree flatten. A shared
- * comparator allocates nothing.
- *
- * Deliberately *not* removed in favour of the DAO's `ORDER BY title
- * COLLATE NOCASE ASC`: `COLLATE NOCASE` folds ASCII only, so leaning on it
- * would silently reorder non-ASCII titles, and [buildVisibleNodes] is a
- * pure function that must not assume its input arrived pre-sorted. On the
- * already-sorted input it does get, the sort is near-linear.
- */
-private val PAGE_TITLE_ORDER: Comparator<PageListItem> =
-    compareBy(String.CASE_INSENSITIVE_ORDER) { page: PageListItem -> page.title }
-
-/**
  * Flattens the page list into the depth-first sequence of visible tree
  * rows: the children of the collective's landing page (the landing page's
  * own row is the card above the tree, Batch 21), recursing into expanded
- * folders. Sibling order honours each parent's server-supplied
- * `subpageOrder` first (Batch 23), then alphabetical-by-title for anything
- * not listed.
+ * folders. Siblings are ordered by [order] at every level — see
+ * [orderSiblings]. Under [PageOrder.Custom] that is each parent's
+ * server-supplied `subpageOrder` first (Batch 23), then alphabetical-by-
+ * title for anything not listed.
  *
  * Pure (no ViewModel state) so the flattening + its dedup guard are
  * unit-testable without a ViewModel — see `PageTreeNodesTest`.
@@ -493,34 +505,26 @@ private val PAGE_TITLE_ORDER: Comparator<PageListItem> =
  * id — a large, actively-reorganised collective is the reported trigger —
  * which would otherwise emit the same page twice and crash the screen.
  * The `seen` set makes each id emit at most once and, as a bonus, stops
- * any pathological parent cycle from recursing forever;
- * `orderHint.distinct()` removes the duplicate at the source as well.
- * Neither guard changes output for well-formed data (a page has exactly
- * one `parentId`, so it is reached once).
+ * any pathological parent cycle from recursing forever; [orderSiblings]
+ * de-duplicates the hint at the source as well. Neither guard changes
+ * output for well-formed data (a page has exactly one `parentId`, so it is
+ * reached once).
  */
 internal fun buildVisibleNodes(
     pages: List<PageListItem>,
     expanded: Set<Long>,
     favoriteIds: Set<Long>,
+    order: PageOrder = PageOrder.Custom,
 ): List<PageNode> {
     val byParent: Map<Long, List<PageListItem>> = pages.groupBy { it.parentId }
     val byId: Map<Long, PageListItem> = pages.associateBy { it.id }
 
-    fun siblingsOrdered(parentId: Long): List<PageListItem> {
-        val children = byParent[parentId].orEmpty()
-        if (children.isEmpty()) return children
-        val orderHint = byId[parentId]?.subpageOrder.orEmpty().distinct()
-        if (orderHint.isEmpty()) {
-            return children.sortedWith(PAGE_TITLE_ORDER)
-        }
-        val byChildId = children.associateBy { it.id }
-        val hinted = orderHint.mapNotNull { byChildId[it] }
-        val hintedIds = hinted.map { it.id }.toSet()
-        val rest = children
-            .filter { it.id !in hintedIds }
-            .sortedWith(PAGE_TITLE_ORDER)
-        return hinted + rest
-    }
+    fun siblingsOrdered(parentId: Long): List<PageListItem> =
+        orderSiblings(
+            children = byParent[parentId].orEmpty(),
+            customOrder = byId[parentId]?.subpageOrder.orEmpty(),
+            order = order,
+        )
 
     val out = mutableListOf<PageNode>()
     val seen = HashSet<Long>()

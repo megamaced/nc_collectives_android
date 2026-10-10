@@ -163,6 +163,18 @@ interface CollectivesApiService {
     )
 
     /**
+     * Sets the user's page order for [collectiveId] — the web app's
+     * "Sort order" menu. [pageOrder] is the `PageOrder.wire` value; the
+     * server rejects anything outside 0–4.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/userSettings/pageOrder")
+    suspend fun setPageOrder(
+        @Path("collectiveId") collectiveId: Long,
+        @Field("pageOrder") pageOrder: Int,
+    )
+
+    /**
      * Duplicate a page (Batch 23). Same update endpoint as [updatePage] —
      * `{copy: true}` server-side triggers the duplicate codepath. Supports
      * leaf and folder pages. An optional `title` overrides the copy's

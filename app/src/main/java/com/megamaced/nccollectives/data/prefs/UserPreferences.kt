@@ -90,12 +90,28 @@ enum class SyncCadence(
     Daily(24),
 }
 
+/**
+ * Order of the collective list.
+ *
+ * Device-only, unlike a collective's page order: Collectives keeps no
+ * per-user order for the list of collectives (the web sidebar is always
+ * alphabetical), so there is nothing server-side to share it with.
+ *
+ * - [Name]: alphabetical, the default and what the web app shows.
+ * - [LastEdited]: the collective whose most recently changed page is
+ *   newest comes first. Worked out from the cached page metadata, so it
+ *   is as fresh as the last sync; a collective with nothing cached sorts
+ *   last, by name.
+ */
+enum class CollectiveSort { Name, LastEdited }
+
 data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
     val textScale: TextScale = TextScale.Default,
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
+    val collectiveSort: CollectiveSort = CollectiveSort.Name,
     /**
      * Collective to open straight into on launch, or null to land on the
      * collective list (the default). Resolved once per app launch by
@@ -148,6 +164,10 @@ class UserPreferences
 
         suspend fun setEditorPreference(preference: EditorPreference) {
             context.dataStore.edit { it[KEY_EDITOR_PREFERENCE] = preference.name }
+        }
+
+        suspend fun setCollectiveSort(sort: CollectiveSort) {
+            context.dataStore.edit { it[KEY_COLLECTIVE_SORT] = sort.name }
         }
 
         /**
@@ -213,8 +233,8 @@ class UserPreferences
          * Wipe everything that belongs to the signed-in account, for an
          * account switch (issue #14).
          *
-         * Kept: theme, text scale, sync cadence, editor preference, and the
-         * update-check bookkeeping. Those describe how the user has set this
+         * Kept: theme, text scale, sync cadence, editor preference,
+         * collective sort, and the update-check bookkeeping. Those describe how the user has set this
          * *device* up — resetting the theme because they looked at their
          * other server would be a bug — and the GitHub update check has
          * nothing to do with which Nextcloud is signed in.
@@ -236,6 +256,7 @@ class UserPreferences
                 val textScale = prefs[KEY_TEXT_SCALE]
                 val syncCadence = prefs[KEY_SYNC_CADENCE]
                 val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
+                val collectiveSort = prefs[KEY_COLLECTIVE_SORT]
 
                 prefs.clear()
 
@@ -243,6 +264,7 @@ class UserPreferences
                 textScale?.let { prefs[KEY_TEXT_SCALE] = it }
                 syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
                 editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
+                collectiveSort?.let { prefs[KEY_COLLECTIVE_SORT] = it }
             }
         }
 
@@ -277,12 +299,16 @@ class UserPreferences
                         }
                 }
                 ?: EditorPreference.PreferPlain
+            val collectiveSort = this[KEY_COLLECTIVE_SORT]
+                ?.let { runCatching { CollectiveSort.valueOf(it) }.getOrNull() }
+                ?: CollectiveSort.Name
             return UserPrefs(
                 themeMode = mode,
                 textScale = textScale,
                 syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
+                collectiveSort = collectiveSort,
                 defaultCollectiveId = this[KEY_DEFAULT_COLLECTIVE_ID],
             )
         }
@@ -302,6 +328,7 @@ class UserPreferences
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
+            val KEY_COLLECTIVE_SORT = stringPreferencesKey("collective_sort")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")

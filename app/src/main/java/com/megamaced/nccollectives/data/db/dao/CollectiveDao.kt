@@ -24,6 +24,12 @@ interface CollectiveDao {
         csv: String,
     )
 
+    @Query("UPDATE collectives SET userPageOrder = :pageOrder WHERE id = :id")
+    suspend fun updatePageOrder(
+        id: Long,
+        pageOrder: Int,
+    )
+
     @Query("UPDATE collectives SET emoji = :emoji WHERE id = :id")
     suspend fun updateEmoji(
         id: Long,
