@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +28,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -203,7 +203,7 @@ internal fun SettingsScreen(
                 Box(modifier = Modifier.padding(start = 8.dp)) { Text("Add account") }
             }
 
-            HorizontalDivider()
+            SectionBreak()
 
             SectionHeader("Appearance")
             ThemeModeOptions(
@@ -224,7 +224,7 @@ internal fun SettingsScreen(
                 onSelect = viewModel::setTextScale,
             )
 
-            HorizontalDivider()
+            SectionBreak()
 
             SectionHeader("Startup")
             Text(
@@ -239,7 +239,7 @@ internal fun SettingsScreen(
                 onSelect = viewModel::setDefaultCollective,
             )
 
-            HorizontalDivider()
+            SectionBreak()
 
             SectionHeader("Sync")
             Text(
@@ -259,7 +259,7 @@ internal fun SettingsScreen(
                 onSyncNow = viewModel::syncNow,
             )
 
-            HorizontalDivider()
+            SectionBreak()
 
             SectionHeader("Editor")
             Text(
@@ -274,7 +274,7 @@ internal fun SettingsScreen(
                 onSelect = viewModel::setEditorPreference,
             )
 
-            HorizontalDivider()
+            SectionBreak()
 
             SectionHeader("About")
             Text(
@@ -292,7 +292,7 @@ internal fun SettingsScreen(
                 CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(LICENCE_URL))
             }
 
-            HorizontalDivider()
+            SectionBreak()
 
             Button(
                 onClick = { showSignOutConfirm = true },
@@ -472,6 +472,16 @@ private fun SectionHeader(label: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.semantics { heading() },
     )
+}
+
+/**
+ * The gap between two sections. It is empty, so the column's spacing falls
+ * on both sides of it and sections sit twice as far apart as the rows inside
+ * them — that and the coloured [SectionHeader] are what mark a new section.
+ */
+@Composable
+private fun SectionBreak() {
+    Spacer(Modifier)
 }
 
 @Composable

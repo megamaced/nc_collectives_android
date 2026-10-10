@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,7 +38,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -312,7 +312,6 @@ internal fun PageEditScreen(
                             keyboardOptions = KeyboardOptions.Default,
                             keyboardActions = KeyboardActions.Default,
                         )
-                        HorizontalDivider()
                         MarkdownToolbar(
                             onAction = { action -> updateField(action(fieldValue)) },
                             onInsertImage = { showAttachmentPicker = true },
@@ -330,10 +329,13 @@ private fun MarkdownToolbar(
     onInsertImage: () -> Unit,
 ) {
     // Nine 48dp buttons are 432dp, wider than most phones, so the row
-    // scrolls rather than clipping the last few off the edge.
+    // scrolls rather than clipping the last few off the edge. The tonal
+    // container sets the toolbar apart from the text it sits under; it is
+    // applied before the scroll so it spans the screen, not the buttons.
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp),

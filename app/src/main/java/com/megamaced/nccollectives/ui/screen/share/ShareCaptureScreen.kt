@@ -31,7 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -266,7 +265,6 @@ private fun NewPageSection(
         singleLine = true,
     )
     Text("Parent page", style = MaterialTheme.typography.labelMedium)
-    HorizontalDivider()
     if (pages.isEmpty()) {
         Text(
             text = "No pages in this collective yet.",
@@ -293,7 +291,6 @@ private fun AppendSection(
     onSelect: (Long) -> Unit,
 ) {
     Text("Append to", style = MaterialTheme.typography.labelMedium)
-    HorizontalDivider()
     if (pages.isEmpty()) {
         Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()

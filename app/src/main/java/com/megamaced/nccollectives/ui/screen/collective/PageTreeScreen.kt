@@ -30,7 +30,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -288,8 +287,7 @@ private fun PageTreeList(
         // container and truncates to fit, so unlike the landing card it has
         // nothing to say about screen width. `MembersStrip` self-hides when
         // membership isn't addressable, but the `item` is skipped as well so
-        // an unaddressable collective doesn't pay for an empty lazy item —
-        // and so the divider below knows whether anything was drawn.
+        // an unaddressable collective doesn't pay for an empty lazy item.
         if (membersStrip.addressable) {
             item(key = "header-members") {
                 MembersStrip(
@@ -313,12 +311,6 @@ private fun PageTreeList(
                     onClick = { onPageClick(landingPage.id) },
                 )
             }
-        }
-        if (membersStrip.addressable ||
-            recentPages.isNotEmpty() ||
-            (showLandingCard && landingPage != null)
-        ) {
-            item(key = "header-divider") { HorizontalDivider() }
         }
         if (localNodes.isNotEmpty()) {
             item(key = "header-sort") {
@@ -364,7 +356,6 @@ private fun PageTreeList(
                     ),
                 )
             }
-            HorizontalDivider()
         }
     }
 }
@@ -583,7 +574,6 @@ private fun ParentPickerSheet(
                             )
                             Text(text = page.title, style = MaterialTheme.typography.bodyLarge)
                         }
-                        HorizontalDivider()
                     }
                 }
             }

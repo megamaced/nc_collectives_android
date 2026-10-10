@@ -1,0 +1,3 @@
+Lists, sheets and Settings no longer draw a divider line under every row, which in dark mode showed as grey hairlines.
+
+Settings sections are spaced apart instead, and the plain editor's toolbar has a tinted background to set it off from the text.

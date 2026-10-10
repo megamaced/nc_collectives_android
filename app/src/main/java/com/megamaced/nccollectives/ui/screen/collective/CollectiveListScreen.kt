@@ -23,7 +23,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -173,7 +172,6 @@ internal fun CollectiveListScreen(
                                 caption = { page -> collectiveLabels[page.collectiveId] },
                             )
                         }
-                        item(key = "header-divider") { HorizontalDivider() }
                     }
                     item(key = "header-sort") {
                         SortHeader(
@@ -191,7 +189,6 @@ internal fun CollectiveListScreen(
                             onSetEmoji = { emojiTarget = collective },
                             onTrash = { pendingTrash = collective },
                         )
-                        HorizontalDivider()
                     }
                 }
             }
