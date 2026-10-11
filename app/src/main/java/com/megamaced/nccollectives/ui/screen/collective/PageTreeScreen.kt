@@ -205,14 +205,14 @@ internal fun PageTreeScreen(
     }
 }
 
-/** Menu labels, worded after the web app's "Sort order" menu. */
+/** Menu labels, worded as the collective list's sort menu is so the two read alike. */
 private fun pageOrderLabel(order: PageOrder): String =
     when (order) {
         PageOrder.Custom -> "Custom order"
-        PageOrder.RecentlyChangedFirst -> "Recently changed"
-        PageOrder.LeastRecentlyChangedFirst -> "Least recently changed"
-        PageOrder.TitleAscending -> "Title A–Z"
-        PageOrder.TitleDescending -> "Title Z–A"
+        PageOrder.TitleAscending -> "A–Z"
+        PageOrder.TitleDescending -> "Z–A"
+        PageOrder.NewestFirst -> "Newest first"
+        PageOrder.OldestFirst -> "Oldest first"
     }
 
 private sealed interface NewPageMode {

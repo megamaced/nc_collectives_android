@@ -1,0 +1,3 @@
+The collective list and the page tree now offer the same sort options, in the same order: A–Z, Z–A, Newest first and Oldest first, plus Custom order for pages.
+
+Collective names sort like page titles, so numbers go by value and accented names sit with their letter. A sort you already chose is kept.

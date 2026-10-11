@@ -236,10 +236,13 @@ internal fun CollectiveListScreen(
     }
 }
 
+/** Menu labels, worded as a collective's page order menu is so the two read alike. */
 private fun collectiveSortLabel(sort: CollectiveSort): String =
     when (sort) {
-        CollectiveSort.Name -> "Name"
-        CollectiveSort.LastEdited -> "Last edited"
+        CollectiveSort.NameAscending -> "A–Z"
+        CollectiveSort.NameDescending -> "Z–A"
+        CollectiveSort.NewestFirst -> "Newest first"
+        CollectiveSort.OldestFirst -> "Oldest first"
     }
 
 @Composable

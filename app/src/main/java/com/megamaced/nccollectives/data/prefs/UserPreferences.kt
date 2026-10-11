@@ -97,13 +97,36 @@ enum class SyncCadence(
  * per-user order for the list of collectives (the web sidebar is always
  * alphabetical), so there is nothing server-side to share it with.
  *
- * - [Name]: alphabetical, the default and what the web app shows.
- * - [LastEdited]: the collective whose most recently changed page is
- *   newest comes first. Worked out from the cached page metadata, so it
- *   is as fresh as the last sync; a collective with nothing cached sorts
- *   last, by name.
+ * The page order menu's choices where they apply, in the same order: by
+ * name A–Z (the default, and what the web app shows) or Z–A, then newest
+ * or oldest first by each collective's most recently changed page. There is
+ * no custom order, as nothing stores one for collectives. The time orders
+ * work from the cached page metadata, so they are as fresh as the last
+ * sync; a collective with nothing cached sorts last in both, by name.
+ *
+ * Stored by name; see [fromStored].
  */
-enum class CollectiveSort { Name, LastEdited }
+enum class CollectiveSort {
+    NameAscending,
+    NameDescending,
+    NewestFirst,
+    OldestFirst,
+    ;
+
+    companion object {
+        /**
+         * The order a stored name stands for: a direct match; `LastEdited`,
+         * v2.13.0's name for newest first; else the default — which is also
+         * what v2.13.0's other value, `Name`, meant.
+         */
+        fun fromStored(stored: String?): CollectiveSort =
+            entries.firstOrNull { it.name == stored }
+                ?: when (stored) {
+                    "LastEdited" -> NewestFirst
+                    else -> NameAscending
+                }
+    }
+}
 
 data class UserPrefs(
     val themeMode: ThemeMode = ThemeMode.System,
@@ -111,7 +134,7 @@ data class UserPrefs(
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
-    val collectiveSort: CollectiveSort = CollectiveSort.Name,
+    val collectiveSort: CollectiveSort = CollectiveSort.NameAscending,
     /**
      * Collective to open straight into on launch, or null to land on the
      * collective list (the default). Resolved once per app launch by
@@ -299,9 +322,7 @@ class UserPreferences
                         }
                 }
                 ?: EditorPreference.PreferPlain
-            val collectiveSort = this[KEY_COLLECTIVE_SORT]
-                ?.let { runCatching { CollectiveSort.valueOf(it) }.getOrNull() }
-                ?: CollectiveSort.Name
+            val collectiveSort = CollectiveSort.fromStored(this[KEY_COLLECTIVE_SORT])
             return UserPrefs(
                 themeMode = mode,
                 textScale = textScale,

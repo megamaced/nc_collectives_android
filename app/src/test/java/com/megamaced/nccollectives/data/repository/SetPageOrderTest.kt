@@ -77,12 +77,12 @@ class SetPageOrderTest {
     fun `a slow failure cannot roll back over a later pick`() =
         runTest {
             val firstRequest = CompletableDeferred<Unit>()
-            coEvery { api.setPageOrder(COLLECTIVE_ID, PageOrder.RecentlyChangedFirst.wire) } coAnswers {
+            coEvery { api.setPageOrder(COLLECTIVE_ID, PageOrder.NewestFirst.wire) } coAnswers {
                 firstRequest.await()
             }
             coEvery { api.setPageOrder(COLLECTIVE_ID, PageOrder.TitleAscending.wire) } returns Unit
 
-            val first = async { repository.setPageOrder(COLLECTIVE_ID, PageOrder.RecentlyChangedFirst) }
+            val first = async { repository.setPageOrder(COLLECTIVE_ID, PageOrder.NewestFirst) }
             runCurrent()
             val second = async { repository.setPageOrder(COLLECTIVE_ID, PageOrder.TitleAscending) }
             runCurrent()
@@ -93,7 +93,7 @@ class SetPageOrderTest {
             assertEquals(PageOrder.TitleAscending.wire, cachedOrder)
             // And the server heard the picks in the order they were made.
             coVerifyOrder {
-                api.setPageOrder(COLLECTIVE_ID, PageOrder.RecentlyChangedFirst.wire)
+                api.setPageOrder(COLLECTIVE_ID, PageOrder.NewestFirst.wire)
                 api.setPageOrder(COLLECTIVE_ID, PageOrder.TitleAscending.wire)
             }
         }

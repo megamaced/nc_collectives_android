@@ -6,8 +6,10 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.prefs.CollectiveSort
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.domain.model.Collated
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageListItem
+import com.megamaced.nccollectives.domain.model.collated
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.FullSync
@@ -60,28 +62,27 @@ class CollectiveListViewModel
         val collectiveSort: StateFlow<CollectiveSort> = sortFlow.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-            initialValue = CollectiveSort.Name,
+            initialValue = CollectiveSort.NameAscending,
         )
 
         /**
          * The list in the user's chosen order. The page-timestamp flow is
-         * only subscribed under [CollectiveSort.LastEdited]: it re-runs on
-         * every write to `pages`, and an alphabetical list has no use for it.
+         * only subscribed under the two time orders: it re-runs on every
+         * write to `pages`, and an order by name has no use for it.
          */
         val collectives: StateFlow<List<Collective>> =
             sortFlow
                 .flatMapLatest { sort ->
                     when (sort) {
-                        CollectiveSort.Name -> {
-                            repository.observeCollectives()
+                        CollectiveSort.NameAscending, CollectiveSort.NameDescending -> {
+                            repository.observeCollectives().map { orderCollectives(it, emptyMap(), sort) }
                         }
 
-                        CollectiveSort.LastEdited -> {
+                        CollectiveSort.NewestFirst, CollectiveSort.OldestFirst -> {
                             combine(
                                 repository.observeCollectives(),
                                 pageRepository.observeLastEditedByCollective(),
-                                ::orderByLastEdited,
-                            )
+                            ) { collectives, lastEditedAt -> orderCollectives(collectives, lastEditedAt, sort) }
                         }
                     }
                 }.stateIn(
@@ -235,11 +236,25 @@ class CollectiveListViewModel
     }
 
 /**
- * Newest page first. [collectives] arrive in name order from the DAO, and
- * the sort is stable, so name is the tie-break — and collectives with no
- * cached pages (absent from [lastEditedAt]) go to the end, alphabetically.
+ * [collectives] in [sort] order. Names sort as page titles do (see
+ * [Collated]), and are the tie-break for the time orders, which go by each
+ * collective's most recently changed page in [lastEditedAt]. A collective
+ * absent from it has no cached pages, so no time to sort on: it goes last
+ * under both, by name.
  */
-internal fun orderByLastEdited(
+internal fun orderCollectives(
     collectives: List<Collective>,
     lastEditedAt: Map<Long, Long>,
-): List<Collective> = collectives.sortedByDescending { lastEditedAt[it.id] ?: Long.MIN_VALUE }
+    sort: CollectiveSort,
+): List<Collective> {
+    if (collectives.size < 2) return collectives
+    val byName = compareBy<Collated<Collective>> { it.key }
+    val unknownLast = compareBy<Collated<Collective>> { it.item.id !in lastEditedAt }
+    val comparator = when (sort) {
+        CollectiveSort.NameAscending -> byName
+        CollectiveSort.NameDescending -> byName.reversed()
+        CollectiveSort.NewestFirst -> unknownLast.thenByDescending { lastEditedAt[it.item.id] }.then(byName)
+        CollectiveSort.OldestFirst -> unknownLast.thenBy { lastEditedAt[it.item.id] }.then(byName)
+    }
+    return collated(collectives) { it.name }.sortedWith(comparator).map { it.item }
+}

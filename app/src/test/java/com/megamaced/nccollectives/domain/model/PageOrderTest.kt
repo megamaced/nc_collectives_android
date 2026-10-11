@@ -57,10 +57,26 @@ class PageOrderTest {
     fun wireValuesMatchUpstream() {
         assertEquals(PageOrder.Custom, PageOrder.fromWire(0))
         // Upstream calls this one `byTimeAsc`, but it puts the newest first.
-        assertEquals(PageOrder.RecentlyChangedFirst, PageOrder.fromWire(1))
+        assertEquals(PageOrder.NewestFirst, PageOrder.fromWire(1))
         assertEquals(PageOrder.TitleAscending, PageOrder.fromWire(2))
-        assertEquals(PageOrder.LeastRecentlyChangedFirst, PageOrder.fromWire(3))
+        assertEquals(PageOrder.OldestFirst, PageOrder.fromWire(3))
         assertEquals(PageOrder.TitleDescending, PageOrder.fromWire(4))
+    }
+
+    // The sort menu lists `entries`: the default, the title pair, the time
+    // pair. Declaration order, not wire order, is what the user sees.
+    @Test
+    fun entriesAreInMenuOrder() {
+        assertEquals(
+            listOf(
+                PageOrder.Custom,
+                PageOrder.TitleAscending,
+                PageOrder.TitleDescending,
+                PageOrder.NewestFirst,
+                PageOrder.OldestFirst,
+            ),
+            PageOrder.entries,
+        )
     }
 
     @Test
@@ -77,8 +93,8 @@ class PageOrderTest {
 
     @Test
     fun timeOrdersSortOnServerTimestamp() {
-        assertEquals(listOf(2L, 1L, 3L), ids(orderSiblings(pages, emptyList(), PageOrder.RecentlyChangedFirst)))
-        assertEquals(listOf(3L, 1L, 2L), ids(orderSiblings(pages, emptyList(), PageOrder.LeastRecentlyChangedFirst)))
+        assertEquals(listOf(2L, 1L, 3L), ids(orderSiblings(pages, emptyList(), PageOrder.NewestFirst)))
+        assertEquals(listOf(3L, 1L, 2L), ids(orderSiblings(pages, emptyList(), PageOrder.OldestFirst)))
     }
 
     @Test
@@ -88,8 +104,8 @@ class PageOrderTest {
             page(id = 2, title = "Apple", timestamp = 100),
         )
 
-        assertEquals(listOf(2L, 1L), ids(orderSiblings(tied, emptyList(), PageOrder.RecentlyChangedFirst)))
-        assertEquals(listOf(2L, 1L), ids(orderSiblings(tied, emptyList(), PageOrder.LeastRecentlyChangedFirst)))
+        assertEquals(listOf(2L, 1L), ids(orderSiblings(tied, emptyList(), PageOrder.NewestFirst)))
+        assertEquals(listOf(2L, 1L), ids(orderSiblings(tied, emptyList(), PageOrder.OldestFirst)))
     }
 
     /**
