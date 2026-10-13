@@ -386,7 +386,9 @@ jobs:
   # The emulator is the least reliable component in this workflow (boot
   # timeouts, KVM availability, adb dropping the device), and the migration
   # gate has already done its work by tag time: the tagged commit passed
-  # instrumented-tests on the PR and again on main. Letting an emulator hiccup
+  # instrumented-tests on its PR, and a release commit again on main. A
+  # pre-release is tagged on a PR branch, so it is only tagged once that PR's
+  # checks are green on the exact commit. Letting an emulator hiccup
   # block a tagged publish would trade a real risk for an infrastructure one,
   # and the remedy — re-tagging — means burning a version for a bot-driven
   # F-Droid package (see the metadata check above). instrumented-tests still
@@ -407,9 +409,14 @@ jobs:
           name: nc_collectives_android-release-${{ github.sha }}
           path: dist
 
+      # A tag with a SemVer pre-release suffix (`v3.0.0-beta.1`) publishes a
+      # GitHub pre-release. `releases/latest`, which the in-app update check
+      # reads, never returns one, so sideload users are not offered a beta.
+      # F-Droid ignores these tags too: its recipe tracks `^v[0-9.]+$`.
       - name: Attach release APK to GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: dist/app-release.apk
           fail_on_unmatched_files: true
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
