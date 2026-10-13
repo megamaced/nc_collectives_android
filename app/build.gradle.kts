@@ -78,7 +78,10 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            // SemVer build metadata, which takes no part in version
+            // precedence: a `-debug` pre-release suffix would make the update
+            // check rank a debug build below the release of the same version.
+            versionNameSuffix = "+debug"
         }
         release {
             isMinifyEnabled = true
