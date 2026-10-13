@@ -55,6 +55,7 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
+import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -238,9 +239,6 @@ internal fun CollectiveListScreen(
         )
     }
 }
-
-/** Room under the last row for the FAB, so it never covers that row's menu. */
-internal val FAB_CLEARANCE = 88.dp
 
 /** Menu labels, worded as a collective's page order menu is so the two read alike. */
 private fun collectiveSortLabel(sort: CollectiveSort): String =

@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen
 
+import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 
@@ -10,6 +11,12 @@ import com.megamaced.nccollectives.data.api.userMessage
  * the screen releases those observers.
  */
 internal const val STOP_TIMEOUT_MS = 5_000L
+
+/**
+ * Room left under a screen's last content for its floating action button, so
+ * the button never covers the last row's controls or the end of a page.
+ */
+internal val FAB_CLEARANCE = 88.dp
 
 /**
  * Pass the user-facing message to [onMessage] when this result failed; do

@@ -69,6 +69,7 @@ import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
+import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.pageEditedLine
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState

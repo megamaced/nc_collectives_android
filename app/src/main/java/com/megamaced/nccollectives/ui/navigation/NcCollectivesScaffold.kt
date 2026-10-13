@@ -15,10 +15,14 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItem
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.navigationsuite.rememberNavigationSuiteScaffoldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -203,7 +207,17 @@ private fun AuthenticatedHost(
         }
     }
 
+    val navigationState = rememberNavigationSuiteScaffoldState()
+    val navigationScope = rememberCoroutineScope()
+    val navigationBar = remember(navigationState, navigationScope) {
+        NavigationBarController(navigationState, navigationScope)
+    }
+    // A screen may hide the bar while its content scrolls (the page view
+    // does); every new destination starts with it showing.
+    LaunchedEffect(backStackEntry?.id) { navigationBar.show() }
+
     val adaptiveType = NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfo())
+    LaunchedEffect(adaptiveType) { navigationBar.hidesOnScroll = adaptiveType.isHorizontalBar() }
     val navigationType =
         if (destination == null || !destination.showsNavigationBar()) NavigationSuiteType.None else adaptiveType
 
@@ -228,9 +242,12 @@ private fun AuthenticatedHost(
             }
         },
         navigationSuiteType = navigationType,
+        state = navigationState,
     ) {
-        Scaffold { innerPadding ->
-            NcCollectivesNavHost(navController = navController, innerPadding = innerPadding)
+        CompositionLocalProvider(LocalNavigationBarController provides navigationBar) {
+            Scaffold { innerPadding ->
+                NcCollectivesNavHost(navController = navController, innerPadding = innerPadding)
+            }
         }
     }
 }
