@@ -69,6 +69,17 @@ enum class TextScale(
 enum class EditorPreference { PreferPlain, PreferCollaborative }
 
 /**
+ * Tab the app opens on when no startup collective is set.
+ *
+ * A device setting rather than an account one, so it survives an account
+ * switch; the startup collective, which names one account's collective, does
+ * not. A missing or unknown stored value reads as [Home]. That includes
+ * installs from before 3.0, where the only choice besides a collective was
+ * the collective list.
+ */
+enum class StartScreen { Home, CollectiveList }
+
+/**
  * Period for the periodic metadata sync. `Off` cancels the WorkManager
  * job entirely so the user only sees one-shot foreground refreshes.
  *
@@ -135,11 +146,13 @@ data class UserPrefs(
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
     val collectiveSort: CollectiveSort = CollectiveSort.NameAscending,
+    /** Tab to open on launch when [defaultCollectiveId] is null. */
+    val startScreen: StartScreen = StartScreen.Home,
     /**
-     * Collective to open straight into on launch, or null to land on the
-     * collective list (the default). Resolved once per app launch by
-     * `AuthGateViewModel.resolveStartupCollective`, which drops a stale id
-     * if the collective is gone.
+     * Collective to open straight into on launch, or null to land on
+     * [startScreen]. Resolved once per app launch by
+     * `AuthGateViewModel.resolveStartupRoute`, which drops a stale id if the
+     * collective is gone.
      */
     val defaultCollectiveId: Long? = null,
 )
@@ -191,6 +204,17 @@ class UserPreferences
 
         suspend fun setCollectiveSort(sort: CollectiveSort) {
             context.dataStore.edit { it[KEY_COLLECTIVE_SORT] = sort.name }
+        }
+
+        /**
+         * Open on [screen] at launch, with no startup collective. One edit, so
+         * the two keys can't be observed half-changed.
+         */
+        suspend fun setStartScreen(screen: StartScreen) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_START_SCREEN] = screen.name
+                prefs.remove(KEY_DEFAULT_COLLECTIVE_ID)
+            }
         }
 
         /**
@@ -280,6 +304,7 @@ class UserPreferences
                 val syncCadence = prefs[KEY_SYNC_CADENCE]
                 val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
                 val collectiveSort = prefs[KEY_COLLECTIVE_SORT]
+                val startScreen = prefs[KEY_START_SCREEN]
 
                 prefs.clear()
 
@@ -288,6 +313,7 @@ class UserPreferences
                 syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
                 editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
                 collectiveSort?.let { prefs[KEY_COLLECTIVE_SORT] = it }
+                startScreen?.let { prefs[KEY_START_SCREEN] = it }
             }
         }
 
@@ -323,6 +349,8 @@ class UserPreferences
                 }
                 ?: EditorPreference.PreferPlain
             val collectiveSort = CollectiveSort.fromStored(this[KEY_COLLECTIVE_SORT])
+            val startScreen = this[KEY_START_SCREEN]?.let { runCatching { StartScreen.valueOf(it) }.getOrNull() }
+                ?: StartScreen.Home
             return UserPrefs(
                 themeMode = mode,
                 textScale = textScale,
@@ -330,6 +358,7 @@ class UserPreferences
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
                 collectiveSort = collectiveSort,
+                startScreen = startScreen,
                 defaultCollectiveId = this[KEY_DEFAULT_COLLECTIVE_ID],
             )
         }
@@ -350,6 +379,7 @@ class UserPreferences
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
             val KEY_COLLECTIVE_SORT = stringPreferencesKey("collective_sort")
+            val KEY_START_SCREEN = stringPreferencesKey("start_screen")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")

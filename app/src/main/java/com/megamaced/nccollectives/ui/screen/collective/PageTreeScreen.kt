@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,11 +26,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +47,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,8 +80,6 @@ internal fun PageTreeScreen(
     onBack: () -> Unit,
     onPageClick: (Long) -> Unit,
     onOpenTrash: (Long) -> Unit,
-    onOpenSearch: () -> Unit,
-    onOpenFavorites: () -> Unit,
     onOpenMembers: () -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
@@ -88,9 +87,9 @@ internal fun PageTreeScreen(
     val nodes by viewModel.nodes.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // `null` means closed. A `Long` value means "show the new-page dialog with
-    // this fixed parent" (per-row subpage). `0L` for the top-bar action opens
-    // the dialog with a parent picker.
+    // `null` means closed. [NewPageMode.FixedParent] opens the new-page dialog
+    // under that parent (a row's subpage action); [NewPageMode.PickParent]
+    // opens it with a parent picker (the New page button).
     var newPageMode by remember { mutableStateOf<NewPageMode?>(null) }
 
     SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
@@ -109,6 +108,9 @@ internal fun PageTreeScreen(
     }
 
     val isCompactWidth = LocalConfiguration.current.screenWidthDp < 600
+    val lazyListState = rememberLazyListState()
+    // Labelled at the top of the tree, icon-only once scrolled into it.
+    val fabExpanded by remember { derivedStateOf { lazyListState.firstVisibleItemIndex == 0 } }
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
@@ -127,21 +129,22 @@ internal fun PageTreeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Outlined.Search, contentDescription = "Search")
-                    }
-                    IconButton(onClick = onOpenFavorites) {
-                        Icon(Icons.Outlined.Bookmark, contentDescription = "Favorites")
-                    }
                     IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Trash")
-                    }
-                    IconButton(onClick = { newPageMode = NewPageMode.PickParent }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New page")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                text = { Text("New page") },
+                // The label slot is hidden from accessibility services, so the
+                // icon carries the button's name, expanded or not.
+                icon = { Icon(Icons.Filled.Add, contentDescription = "New page") },
+                onClick = { newPageMode = NewPageMode.PickParent },
+                expanded = fabExpanded,
             )
         },
         snackbarHost = {
@@ -169,6 +172,7 @@ internal fun PageTreeScreen(
                 },
             ) {
                 PageTreeList(
+                    lazyListState = lazyListState,
                     nodes = nodes,
                     expanded = ui.expanded,
                     landingPage = ui.landingPage,
@@ -216,7 +220,7 @@ private fun pageOrderLabel(order: PageOrder): String =
     }
 
 private sealed interface NewPageMode {
-    /** Top-bar action — let the user pick a parent. */
+    /** The New page button — let the user pick a parent. */
     object PickParent : NewPageMode
 
     /** Per-row "+" action — parent is fixed. */
@@ -227,6 +231,7 @@ private sealed interface NewPageMode {
 
 @Composable
 private fun PageTreeList(
+    lazyListState: LazyListState,
     nodes: List<PageNode>,
     expanded: Set<Long>,
     landingPage: com.megamaced.nccollectives.domain.model.Page?,
@@ -256,7 +261,6 @@ private fun PageTreeList(
     // only honest if they age while the screen is open.
     val nowMillis by rememberNowMillis()
 
-    val lazyListState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         // Library passes `LazyListItemInfo`s. Headers carry String keys
         // ("header-recent", …); tree rows carry the page id as Long. We
@@ -272,6 +276,7 @@ private fun PageTreeList(
     LazyColumn(
         state = lazyListState,
         modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
     ) {
         // Members first, then Recent pages, then the landing card: the web
         // client renders its members widget above recent pages, and keeping

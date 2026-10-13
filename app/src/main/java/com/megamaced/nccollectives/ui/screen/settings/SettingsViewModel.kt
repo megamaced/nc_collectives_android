@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.auth.AccountSwitcher
 import com.megamaced.nccollectives.data.auth.LogoutHandler
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.StartScreen
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
 import com.megamaced.nccollectives.data.prefs.TextScale
@@ -44,7 +45,9 @@ data class SettingsUiState(
     val editorPreference: EditorPreference,
     /** Cached, non-trashed collectives offered as startup destinations. */
     val collectives: List<Collective>,
-    /** Collective opened on launch, or null for the collective list. */
+    /** Tab opened on launch when [defaultCollectiveId] is null. */
+    val startScreen: StartScreen,
+    /** Collective opened on launch, or null for [startScreen]. */
     val defaultCollectiveId: Long?,
 )
 
@@ -145,6 +148,7 @@ class SettingsViewModel
                     syncCadence = SyncCadence.SixHourly,
                     editorPreference = EditorPreference.PreferPlain,
                     collectives = emptyList(),
+                    startScreen = StartScreen.Home,
                     defaultCollectiveId = null,
                 ),
             )
@@ -165,8 +169,12 @@ class SettingsViewModel
             viewModelScope.launch { userPreferences.setEditorPreference(preference) }
         }
 
-        /** Pass null to go back to landing on the collective list. */
-        fun setDefaultCollective(collectiveId: Long?) {
+        /** Open on [screen] at launch, clearing any startup collective. */
+        fun setStartScreen(screen: StartScreen) {
+            viewModelScope.launch { userPreferences.setStartScreen(screen) }
+        }
+
+        fun setDefaultCollective(collectiveId: Long) {
             viewModelScope.launch { userPreferences.setDefaultCollectiveId(collectiveId) }
         }
 
@@ -282,10 +290,11 @@ class SettingsViewModel
                 syncCadence = prefs.syncCadence,
                 editorPreference = prefs.editorPreference,
                 collectives = collectives,
+                startScreen = prefs.startScreen,
                 // Don't surface a selection the list can't show — a default
-                // whose collective has been trashed reads as "Collective
-                // list" here, matching what the launch path will actually do
-                // once `resolveStartupCollective` clears the stale id.
+                // whose collective has been trashed reads as the start screen
+                // here, matching what the launch path will actually do once
+                // `AuthGateViewModel.startupRoute` clears the stale id.
                 defaultCollectiveId = prefs.defaultCollectiveId
                     ?.takeIf { id -> collectives.any { it.id == id } },
             )

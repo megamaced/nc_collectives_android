@@ -50,7 +50,6 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 @Composable
 internal fun SearchScreen(
     innerPadding: PaddingValues,
-    onBack: () -> Unit,
     onOpenPage: (Long) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
@@ -72,11 +71,6 @@ internal fun SearchScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Search", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
             )

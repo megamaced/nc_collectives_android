@@ -37,7 +37,6 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 @Composable
 internal fun FavoritesScreen(
     innerPadding: PaddingValues,
-    onBack: () -> Unit,
     onOpenPage: (Long) -> Unit,
     viewModel: FavoritesViewModel = hiltViewModel(),
 ) {
@@ -49,11 +48,6 @@ internal fun FavoritesScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Favorites", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
             )
