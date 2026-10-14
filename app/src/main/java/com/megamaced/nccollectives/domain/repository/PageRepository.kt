@@ -44,9 +44,9 @@ interface PageRepository {
 
     /**
      * Most-recently-edited non-trashed pages across every collective,
-     * landing pages excluded. Backs the "Recent pages" strip on the
-     * collective list. Reads the cache only, so it is as fresh as the last
-     * metadata sync or collective open.
+     * landing pages excluded. Backs Home's "Recently updated". Reads the
+     * cache only, so it is as fresh as the last metadata sync or collective
+     * open.
      */
     fun observeRecentPagesAcrossCollectives(limit: Int): Flow<List<PageListItem>>
 

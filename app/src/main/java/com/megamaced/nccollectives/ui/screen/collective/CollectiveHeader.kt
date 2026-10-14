@@ -70,14 +70,14 @@ import com.megamaced.nccollectives.ui.components.monogramOf
 import okhttp3.HttpUrl
 
 /**
- * Horizontal "Recent pages" strip, rendered above the tree on
- * [PageTreeScreen] — mirroring the widget Nextcloud's web client shows on
- * the collective landing page — and above the collective list, across
- * every collective. Hidden when [pages] is empty.
+ * Horizontal strip of page cards. [PageTreeScreen] renders it above the tree
+ * as "Recent pages", mirroring the widget Nextcloud's web client shows on
+ * the collective landing page, and Home renders it across every collective
+ * under a header of its own ([title] null). Hidden when [pages] is empty.
  *
- * [caption] adds a few words after each card's timestamp. The collective
- * list uses it to say which collective a page is in; inside a collective
- * that goes without saying, so the tree passes nothing.
+ * [caption] adds a few words after each card's timestamp. Home uses it to
+ * say which collective a page is in; inside a collective that goes without
+ * saying, so the tree passes nothing.
  *
  * R-54: takes [PageListItem]s. A card shows an emoji, a title and a
  * relative timestamp — nothing that needs a body — so the strip is one of
@@ -88,16 +88,19 @@ internal fun RecentPagesStrip(
     pages: List<PageListItem>,
     onPageClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    title: String? = "Recent pages",
     caption: (PageListItem) -> String? = { null },
 ) {
     if (pages.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Recent pages",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
-        )
+        if (title != null) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
+            )
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

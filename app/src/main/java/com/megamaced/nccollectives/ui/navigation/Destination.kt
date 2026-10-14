@@ -12,6 +12,8 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.megamaced.nccollectives.ui.screen.home.ALL_COLLECTIVES
+import com.megamaced.nccollectives.ui.screen.home.HomeSection
 
 /**
  * The five top-level destinations, in navigation-bar order.
@@ -54,6 +56,22 @@ internal object Destination {
     /** Reached from the Home tab's settings action. */
     object Settings {
         val route: String = "${TopLevelTab.Home.prefix}/settings"
+    }
+
+    /**
+     * One of Home's sections in full, behind its "See all". Home-only: the
+     * sections are Home's. [ARG_COLLECTIVE] carries the collective filter
+     * "Recently updated" was showing, `0` for every collective.
+     */
+    object HomeSeeAll {
+        const val ARG_SECTION = "section"
+        const val ARG_COLLECTIVE = "collective"
+        val pattern: String = "${TopLevelTab.Home.prefix}/section/{$ARG_SECTION}?$ARG_COLLECTIVE={$ARG_COLLECTIVE}"
+
+        fun route(
+            section: HomeSection,
+            collectiveId: Long?,
+        ): String = "${TopLevelTab.Home.prefix}/section/${section.key}?$ARG_COLLECTIVE=${collectiveId ?: ALL_COLLECTIVES}"
     }
 
     /**
@@ -159,10 +177,16 @@ internal object Destination {
      * names, and the app can't rename tags so the name is stable as a
      * route arg. Tag names can contain `/` or spaces, so callers must
      * URL-encode via [route].
+     *
+     * [ALL_COLLECTIVES] in place of a collective id browses the tag across
+     * every collective. Nextcloud ids start at 1, and the value never leaves
+     * the screen: it picks which cached pages to list and is never sent to
+     * the server.
      */
     object TagBrowse {
         const val ARG_COLLECTIVE_ID = "collectiveId"
         const val ARG_TAG_NAME = "tagName"
+        const val ALL_COLLECTIVES = 0L
 
         fun pattern(tab: TopLevelTab) = "${tab.prefix}/collective/{$ARG_COLLECTIVE_ID}/tag/{$ARG_TAG_NAME}"
 

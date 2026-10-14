@@ -16,7 +16,9 @@ import com.megamaced.nccollectives.ui.screen.alerts.AlertsScreen
 import com.megamaced.nccollectives.ui.screen.collective.CollectiveListScreen
 import com.megamaced.nccollectives.ui.screen.collective.PageTreeScreen
 import com.megamaced.nccollectives.ui.screen.favorites.FavoritesScreen
+import com.megamaced.nccollectives.ui.screen.home.ALL_COLLECTIVES
 import com.megamaced.nccollectives.ui.screen.home.HomeScreen
+import com.megamaced.nccollectives.ui.screen.home.HomeSectionScreen
 import com.megamaced.nccollectives.ui.screen.login.LoginScreen
 import com.megamaced.nccollectives.ui.screen.members.MembersScreen
 import com.megamaced.nccollectives.ui.screen.page.AttachmentsScreen
@@ -49,6 +51,33 @@ internal fun NcCollectivesNavHost(
                     onOpenSettings = {
                         navController.navigateFrom(entry, Destination.Settings.route) { launchSingleTop = true }
                     },
+                    onSeeAll = { section, collectiveFilter ->
+                        navController.navigateFrom(entry, Destination.HomeSeeAll.route(section, collectiveFilter))
+                    },
+                    onBrowseTag = { tagName ->
+                        navController.navigateFrom(
+                            entry,
+                            Destination.TagBrowse.route(TopLevelTab.Home, Destination.TagBrowse.ALL_COLLECTIVES, tagName),
+                        )
+                    },
+                )
+            }
+            composable(
+                route = Destination.HomeSeeAll.pattern,
+                arguments = listOf(
+                    navArgument(Destination.HomeSeeAll.ARG_SECTION) { type = NavType.StringType },
+                    navArgument(Destination.HomeSeeAll.ARG_COLLECTIVE) {
+                        type = NavType.LongType
+                        defaultValue = ALL_COLLECTIVES
+                    },
+                ),
+            ) { entry ->
+                HomeSectionScreen(
+                    innerPadding = innerPadding,
+                    onBack = { navController.popBackStackFrom(entry) },
+                    onOpenPage = { pageId ->
+                        navController.navigateFrom(entry, Destination.PageView.route(TopLevelTab.Home, pageId))
+                    },
                 )
             }
             composable(Destination.Settings.route) { entry ->
@@ -72,7 +101,6 @@ internal fun NcCollectivesNavHost(
                 CollectiveListScreen(
                     innerPadding = innerPadding,
                     onCollectiveClick = { id -> navController.navigateFrom(entry, Destination.PageTree.route(tab, id)) },
-                    onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(tab, pageId)) },
                     onOpenTrash = {
                         navController.navigateFrom(entry, Destination.CollectiveTrash.route(tab)) { launchSingleTop = true }
                     },

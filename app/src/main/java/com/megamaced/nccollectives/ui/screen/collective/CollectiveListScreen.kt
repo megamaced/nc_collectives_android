@@ -63,12 +63,10 @@ import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 internal fun CollectiveListScreen(
     innerPadding: PaddingValues,
     onCollectiveClick: (Long) -> Unit,
-    onOpenPage: (Long) -> Unit,
     onOpenTrash: () -> Unit,
     viewModel: CollectiveListViewModel = hiltViewModel(),
 ) {
     val collectives by viewModel.collectives.collectAsStateWithLifecycle()
-    val recentPages by viewModel.recentPages.collectAsStateWithLifecycle()
     val collectiveSort by viewModel.collectiveSort.collectAsStateWithLifecycle()
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -154,29 +152,11 @@ internal fun CollectiveListScreen(
                     )
                 },
             ) {
-                // Which collective each recent page is in, for the card
-                // captions. Keyed on the list so it's built once per change,
-                // not per recomposition.
-                val collectiveLabels = remember(collectives) {
-                    collectives.associate { collective ->
-                        val emoji = collective.emoji?.takeIf { it.isNotBlank() }
-                        collective.id to if (emoji != null) "$emoji ${collective.name}" else collective.name
-                    }
-                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
                 ) {
-                    if (recentPages.isNotEmpty()) {
-                        item(key = "header-recent") {
-                            RecentPagesStrip(
-                                pages = recentPages,
-                                onPageClick = onOpenPage,
-                                caption = { page -> collectiveLabels[page.collectiveId] },
-                            )
-                        }
-                    }
                     item(key = "header-sort") {
                         SortHeader(
                             title = "Collectives",

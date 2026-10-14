@@ -162,10 +162,10 @@ interface PageDao {
     ): Flow<List<PageListRow>>
 
     /**
-     * The recent-pages strip on the collective list: the most recently
-     * changed pages across every collective, landing pages excluded as in
+     * Home's "Recently updated": the most recently changed pages across
+     * every collective, landing pages excluded as in
      * [observeRecentInCollective]. Pages of a trashed collective stay out,
-     * since the list they would open from doesn't show it.
+     * since the collective list doesn't show it either.
      *
      * R-54: projected — see [PageListRow]. Served by
      * `index_pages_serverTimestamp` (v11), which lets SQLite walk rows newest

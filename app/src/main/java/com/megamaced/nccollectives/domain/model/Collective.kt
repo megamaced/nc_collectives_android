@@ -45,4 +45,8 @@ data class Collective(
      */
     val userLevel: CollectiveMemberLevel
         get() = CollectiveMemberLevel.fromRaw(level)
+
+    /** Emoji and name, for saying which collective a page shown outside it is in. */
+    val label: String
+        get() = emoji?.takeIf { it.isNotBlank() }?.let { "$it $name" } ?: name
 }
