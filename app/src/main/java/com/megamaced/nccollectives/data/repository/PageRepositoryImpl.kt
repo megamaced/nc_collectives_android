@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.dto.PageDto
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
@@ -49,6 +50,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -238,16 +240,29 @@ class PageRepositoryImpl
                     }
                 }
 
-        override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
+        // Issue #20: captured before the requests go out, checked inside the
+        // transaction that writes their response. A wipe landing in between
+        // abandons the write rather than resurrecting the outgoing account's
+        // pages under the incoming one — which matters more here than
+        // anywhere, because `PageEntity` keys on the raw *server* id and two
+        // servers will happily both have a page 17.
+        override suspend fun refresh(collectiveId: Long): ApiResult<Unit> = refreshUnder(collectiveId, accountGeneration.current())
+
+        /**
+         * [refresh], committing only while [generation] is current. A caller
+         * that has already written under a generation passes its own, so a
+         * follow-up refresh can't capture the next account's instead.
+         */
+        private suspend fun refreshUnder(
+            collectiveId: Long,
+            generation: Long,
+        ): ApiResult<Unit> = withContext(AccountBinding(generation)) { refreshBound(collectiveId, generation) }
+
+        private suspend fun refreshBound(
+            collectiveId: Long,
+            generation: Long,
+        ): ApiResult<Unit> =
             apiCall {
-                // Issue #20: captured before the requests go out, checked
-                // inside the transaction that writes their response. A wipe
-                // landing in between abandons the write rather than
-                // resurrecting the outgoing account's pages under the
-                // incoming one — which matters more here than anywhere,
-                // because `PageEntity` keys on the raw *server* id and two
-                // servers will happily both have a page 17.
-                val generation = accountGeneration.current()
                 val now = System.currentTimeMillis()
                 // R-48: the tag lookup and the page list are independent
                 // requests, so they go out together. Sequentially they
@@ -304,6 +319,21 @@ class PageRepositoryImpl
                         pageDao.deleteMissingForCollective(collectiveId, keepIds)
                     }
                 }
+            }
+
+        /**
+         * Run [writes] in one transaction if [generation] is still current,
+         * and say whether they ran. Checked inside the transaction, which is
+         * what makes it a barrier: see `AccountGeneration`.
+         */
+        private suspend fun writeUnder(
+            generation: Long,
+            writes: suspend () -> Unit,
+        ): Boolean =
+            database.withTransaction {
+                if (!accountGeneration.isCurrent(generation)) return@withTransaction false
+                writes()
+                true
             }
 
         /**
@@ -530,6 +560,31 @@ class PageRepositoryImpl
         override suspend fun saveBody(
             pageId: Long,
             newBody: String,
+        ): SaveOutcome = saveBodyUnder(pageId, newBody, accountGeneration.current())
+
+        /**
+         * [saveBody], recording its outcome only while [generation] is
+         * current. The queue rows written here are inserts, which are what
+         * would carry a save into the next account's cache (issue #20).
+         */
+        private suspend fun saveBodyUnder(
+            pageId: Long,
+            newBody: String,
+            generation: Long,
+        ): SaveOutcome =
+            // Checked before the cache is read, not just before it's written:
+            // after a switch the page row under this id is the next
+            // account's, and its path would aim the PUT at their file.
+            if (!accountGeneration.isCurrent(generation)) {
+                SaveOutcome.Error(ACCOUNT_CHANGED)
+            } else {
+                withContext(AccountBinding(generation)) { saveBodyBound(pageId, newBody, generation) }
+            }
+
+        private suspend fun saveBodyBound(
+            pageId: Long,
+            newBody: String,
+            generation: Long,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
                 ?: return SaveOutcome.Error("Page not cached")
@@ -548,9 +603,11 @@ class PageRepositoryImpl
                 is ApiResult.Success -> {
                     // The user's own text, at an mtime the server doesn't
                     // report: an unknown version. See `PageEntity.bodyTimestamp`.
-                    pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
-                    pageDao.updateDraft(pageId, null)
-                    editQueueDao.deleteForPage(pageId)
+                    writeUnder(generation) {
+                        pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
+                        pageDao.updateDraft(pageId, null)
+                        editQueueDao.deleteForPage(pageId)
+                    }
                     SaveOutcome.Saved
                 }
 
@@ -570,17 +627,23 @@ class PageRepositoryImpl
                         // be lost in the replacement is the metadata saying
                         // what the edit chain is written against — see
                         // `coalesceQueuedEdit`.
-                        editQueueDao.upsert(
-                            coalesceQueuedEdit(
-                                existing = existing,
-                                pageId = pageId,
-                                serverEtag = entity.bodyEtag,
-                                newBody = newBody,
-                                now = System.currentTimeMillis(),
-                            ),
-                        )
-                        syncScheduler.flushEditsWhenOnline()
-                        SaveOutcome.Queued
+                        val queued = writeUnder(generation) {
+                            editQueueDao.upsert(
+                                coalesceQueuedEdit(
+                                    existing = existing,
+                                    pageId = pageId,
+                                    serverEtag = entity.bodyEtag,
+                                    newBody = newBody,
+                                    now = System.currentTimeMillis(),
+                                ),
+                            )
+                        }
+                        if (queued) {
+                            syncScheduler.flushEditsWhenOnline()
+                            SaveOutcome.Queued
+                        } else {
+                            SaveOutcome.Error(ACCOUNT_CHANGED)
+                        }
                     }
                 }
 
@@ -611,7 +674,7 @@ class PageRepositoryImpl
                         // next revalidation on open advances the body.
                         else -> null
                     }
-                    database.withTransaction {
+                    val recorded = writeUnder(generation) {
                         if (fresh != null) {
                             pageDao.updateBody(
                                 pageId,
@@ -636,7 +699,7 @@ class PageRepositoryImpl
                             ),
                         )
                     }
-                    SaveOutcome.Conflict
+                    if (recorded) SaveOutcome.Conflict else SaveOutcome.Error(ACCOUNT_CHANGED)
                 }
 
                 ApiResult.Unauthorised -> {
@@ -657,6 +720,17 @@ class PageRepositoryImpl
             pageId: Long,
             newBody: String,
         ): SaveOutcome {
+            // As in [saveBodyUnder]: the queue row below is an insert, and the
+            // force-write must not be retargeted at the next account.
+            val generation = accountGeneration.current()
+            return withContext(AccountBinding(generation)) { replaceWithDraftBound(pageId, newBody, generation) }
+        }
+
+        private suspend fun replaceWithDraftBound(
+            pageId: Long,
+            newBody: String,
+            generation: Long,
+        ): SaveOutcome {
             val entity = pageDao.getById(pageId)
                 ?: return SaveOutcome.Error("Page not cached")
             // Force the write through by skipping the If-Match precondition.
@@ -671,9 +745,11 @@ class PageRepositoryImpl
                 is ApiResult.Success -> {
                     // The user's own text, at an mtime the server doesn't
                     // report: an unknown version. See `PageEntity.bodyTimestamp`.
-                    pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
-                    pageDao.updateDraft(pageId, null)
-                    editQueueDao.deleteForPage(pageId)
+                    writeUnder(generation) {
+                        pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
+                        pageDao.updateDraft(pageId, null)
+                        editQueueDao.deleteForPage(pageId)
+                    }
                     SaveOutcome.Saved
                 }
 
@@ -684,18 +760,24 @@ class PageRepositoryImpl
                     // a force-write so the flush worker doesn't second-guess
                     // the user's explicit "Replace with my draft" intent on
                     // a 412 (B-46).
-                    editQueueDao.upsert(
-                        EditQueueEntity(
-                            pageId = pageId,
-                            baseEtag = null,
-                            newBodyMd = newBody,
-                            queuedAt = System.currentTimeMillis(),
-                            status = "PENDING",
-                            forceWrite = true,
-                        ),
-                    )
-                    syncScheduler.flushEditsWhenOnline()
-                    SaveOutcome.Queued
+                    val queued = writeUnder(generation) {
+                        editQueueDao.upsert(
+                            EditQueueEntity(
+                                pageId = pageId,
+                                baseEtag = null,
+                                newBodyMd = newBody,
+                                queuedAt = System.currentTimeMillis(),
+                                status = "PENDING",
+                                forceWrite = true,
+                            ),
+                        )
+                    }
+                    if (queued) {
+                        syncScheduler.flushEditsWhenOnline()
+                        SaveOutcome.Queued
+                    } else {
+                        SaveOutcome.Error(ACCOUNT_CHANGED)
+                    }
                 }
 
                 ApiResult.Conflict -> {
@@ -842,6 +924,23 @@ class PageRepositoryImpl
             title: String,
             body: String,
         ): ApiResult<PageCreation> {
+            // Issue #20, as in [refresh]: captured before the first
+            // suspension, checked inside the transaction that inserts the
+            // created page, and binding every request the chain makes, so
+            // none of it reaches the next account's cache or server.
+            val generation = accountGeneration.current()
+            return withContext(AccountBinding(generation)) {
+                createPageBound(collectiveId, parentPageId, title, body, generation)
+            }
+        }
+
+        private suspend fun createPageBound(
+            collectiveId: Long,
+            parentPageId: Long,
+            title: String,
+            body: String,
+            generation: Long,
+        ): ApiResult<PageCreation> {
             val parent = pageDao.getById(parentPageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Parent $parentPageId not cached"))
             if (parent.collectiveId != collectiveId) {
@@ -874,23 +973,38 @@ class PageRepositoryImpl
             // any side-effect of folder promotion (parent's `filePath` may
             // change, parent's `subpageOrder` updates) lands too.
             val now = System.currentTimeMillis()
-            pageDao.upsertAll(
-                listOf(
-                    createdDto.toEntity(
-                        collectiveId = collectiveId,
-                        now = now,
-                        existingBody = null,
-                        existingEtag = null,
-                        existingDraft = null,
-                        existingBodyTimestamp = null,
-                        // B-69: explicitly "resolved against no tags", not
-                        // "lookup failed" — a page the server just created
-                        // has none. The `refresh` below re-resolves anyway.
-                        tagNamesById = emptyMap(),
+            val recorded = writeUnder(generation) {
+                pageDao.upsertAll(
+                    listOf(
+                        createdDto.toEntity(
+                            collectiveId = collectiveId,
+                            now = now,
+                            existingBody = null,
+                            existingEtag = null,
+                            existingDraft = null,
+                            existingBodyTimestamp = null,
+                            // B-69: explicitly "resolved against no tags", not
+                            // "lookup failed" — a page the server just created
+                            // has none. The `refresh` below re-resolves anyway.
+                            tagNamesById = emptyMap(),
+                        ),
                     ),
-                ),
-            )
-            refresh(collectiveId)
+                )
+            }
+            if (!recorded) {
+                Timber.i("Account changed mid-create; not recording page %d", createdDto.id)
+                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+            }
+            // Everything after the insert stays under the same generation.
+            // A switch can land the moment the insert commits, and a refresh
+            // or save that captured its own would capture the next account's
+            // and write this one's responses into it.
+            refreshUnder(collectiveId, generation)
+            // A switch during the refresh ends the chain here, before the body
+            // save reads a cache that is now the next account's.
+            if (!accountGeneration.isCurrent(generation)) {
+                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+            }
             // The OCS POST creates an empty page; its markdown is a separate
             // WebDAV write. Issue #25: that write goes through `saveBody`
             // now, so a failure *queues* the body instead of being handed
@@ -911,12 +1025,19 @@ class PageRepositoryImpl
                 // 5xx or a permission failure comes back as an Error — and
                 // swallowing that left an empty remote page while the caller
                 // reported a clean capture.
-                saveBody(createdDto.id, body)
+                saveBodyUnder(createdDto.id, body, generation)
             }
             val saved = pageDao.getById(createdDto.id)
-                ?: return ApiResult.Unexpected(
+            // Checked after the read, so a row the next account has under
+            // the same id is never handed back as this page.
+            if (!accountGeneration.isCurrent(generation)) {
+                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+            }
+            if (saved == null) {
+                return ApiResult.Unexpected(
                     IllegalStateException("Page ${createdDto.id} disappeared from cache after create"),
                 )
+            }
             return ApiResult.Success(PageCreation(page = saved.toDomain(), bodyOutcome = bodyOutcome))
         }
 
@@ -1198,6 +1319,9 @@ class PageRepositoryImpl
  * no backlinks.
  */
 private const val ID_CSV_SEP = ","
+
+/** Why a write was dropped: the account it was made under has been switched away. */
+private const val ACCOUNT_CHANGED = "The account changed before this could be saved"
 
 /**
  * What opening a page should do about its markdown body.

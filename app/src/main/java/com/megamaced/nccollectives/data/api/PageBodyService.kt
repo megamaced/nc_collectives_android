@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.auth.TokenStore
+import com.megamaced.nccollectives.data.auth.boundToAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -274,7 +275,7 @@ class PageBodyService
         ): ApiResult<T> =
             withContext(Dispatchers.IO) {
                 try {
-                    client.newCall(request).execute().use { response ->
+                    client.newCall(request.boundToAccount()).execute().use { response ->
                         when {
                             response.code in 200..299 || response.code in extraSuccessCodes -> {
                                 ApiResult.Success(onSuccess(response))

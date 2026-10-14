@@ -8,9 +8,12 @@ import com.megamaced.nccollectives.share.SharePayload
 import com.megamaced.nccollectives.share.SharePayloadHolder
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertNull
@@ -45,6 +48,18 @@ class SignOutIntegrationTest {
     @Before
     fun setUp() {
         sessionManager = mockk(relaxed = true)
+        // The queue of session changes is `SessionManager`'s own concern and
+        // tested there; here a change simply begins and runs.
+        every { sessionManager.launchChange(any(), any(), any()) } answers {
+            val scope = arg<CoroutineScope>(0)
+            val begin = arg<() -> Unit>(1)
+            val body = arg<suspend () -> Unit>(2)
+            begin()
+            scope.launch {
+                begin()
+                body()
+            }
+        }
         wiper = mockk()
         holder = SharePayloadHolder()
         logoutHandler = LogoutHandler(sessionManager, wiper, holder)

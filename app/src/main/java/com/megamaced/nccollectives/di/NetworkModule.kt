@@ -10,6 +10,8 @@ import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.ServerStatusService
 import com.megamaced.nccollectives.data.api.UserApiService
+import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
+import com.megamaced.nccollectives.data.auth.boundToAccount
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -52,6 +54,7 @@ object NetworkModule {
     fun provideOkHttpClient(
         hostInterceptor: HostInterceptor,
         authInterceptor: AuthInterceptor,
+        accountBindingInterceptor: AccountBindingInterceptor,
     ): OkHttpClient =
         OkHttpClient
             .Builder()
@@ -75,6 +78,9 @@ object NetworkModule {
             // been established.
             .addInterceptor(hostInterceptor)
             .addInterceptor(authInterceptor)
+            // After both, so it judges the host and password they have just
+            // read: see `AccountBindingInterceptor`.
+            .addInterceptor(accountBindingInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(
@@ -97,7 +103,8 @@ object NetworkModule {
         return Retrofit
             .Builder()
             .baseUrl(PLACEHOLDER_BASE_URL)
-            .client(client)
+            // `client`, with each call tagged by the caller's AccountBinding.
+            .callFactory { request -> client.newCall(request.boundToAccount()) }
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
     }

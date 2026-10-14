@@ -10,6 +10,7 @@ import com.megamaced.nccollectives.data.api.AuthInterceptor
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.auth.StoredCredentials
@@ -269,11 +270,13 @@ internal class IntegrationEnvironment private constructor(
                     appPassword = "app-password",
                 )
             val sessionManager = mockk<SessionManager>(relaxed = true)
+            val accountGeneration = AccountGeneration()
 
             val client = NetworkModule
                 .provideOkHttpClient(
                     hostInterceptor = HostInterceptor(tokenStore),
                     authInterceptor = AuthInterceptor(tokenStore, sessionManager),
+                    accountBindingInterceptor = AccountBindingInterceptor(accountGeneration),
                 ).newBuilder()
                 .sslSocketFactory(
                     clientCertificates.sslSocketFactory(),
@@ -295,7 +298,7 @@ internal class IntegrationEnvironment private constructor(
                 client = client,
                 api = api,
                 bodyService = PageBodyService(client, tokenStore),
-                accountGeneration = AccountGeneration(),
+                accountGeneration = accountGeneration,
                 syncScheduler = SyncScheduler(context, UserPreferences(context)),
             )
         }

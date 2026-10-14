@@ -1,11 +1,19 @@
 package com.megamaced.nccollectives.data.auth
 
 import dagger.Lazy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,6 +50,7 @@ class SessionManager
          * the same idiom the `Application` uses for the `OkHttpClient`.
          */
         private val expiredSessionHandler: Lazy<ExpiredSessionHandler>,
+        private val accountGeneration: AccountGeneration,
     ) {
         private val _authState = MutableStateFlow<AuthState>(AuthState.Unknown)
         val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -70,6 +79,85 @@ class SessionManager
          */
         private val authFailures = AuthFailureTracker()
 
+        /**
+         * Session changes — switching, removing the active account, signing
+         * in, signing out — run one at a time and each whole: begin, wipe,
+         * credentials, settle, publish. Two at once would let the first to
+         * finish settle `AccountGeneration` and publish a session while the
+         * other is still wiping, opening writes and requests in the middle of
+         * a switch.
+         */
+        private val changeLock = Mutex()
+
+        /** Changes asked for and not yet finished, counted from the moment each is asked for. */
+        private val changesRequested = AtomicInteger(0)
+
+        /**
+         * Start a session change in [scope]. It is counted at once, so a
+         * change already under way knows another follows and leaves landing
+         * the session to the last; [begin] shows it as begun at once and
+         * again when its turn comes; [body] runs once every change ahead of
+         * it has finished.
+         */
+        fun launchChange(
+            scope: CoroutineScope,
+            begin: () -> Unit,
+            body: suspend () -> Unit,
+        ) {
+            changesRequested.incrementAndGet()
+            begin()
+            // A change once counted runs, whatever happens to [scope]: a
+            // change ahead may have left landing the session to it. ATOMIC
+            // starts it even in a cancelled scope, and NonCancellable carries
+            // it through the wait for the lock and through the change itself.
+            scope.launch(start = CoroutineStart.ATOMIC) {
+                withContext(NonCancellable) {
+                    changeLock.withLock {
+                        try {
+                            begin()
+                            body()
+                        } finally {
+                            // Before the lock is released: the change next in
+                            // line can resume inside the unlock, and must not
+                            // count this one as still to come.
+                            changesRequested.decrementAndGet()
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * Whether the session may land now: true unless another change has
+         * been asked for behind the one running, which will land it instead.
+         * Landing means settling the account generation and publishing the
+         * state that lets the UI and its work start.
+         */
+        private fun land(): Boolean {
+            if (changesRequested.get() > 1) {
+                landingDeferred = true
+                return false
+            }
+            landingDeferred = false
+            accountGeneration.settle()
+            sessionChangeInProgress.set(false)
+            refreshState()
+            return true
+        }
+
+        /**
+         * A change ahead left landing the session to a later one. Only read
+         * and written under [changeLock], from inside a change.
+         */
+        @Volatile private var landingDeferred = false
+
+        /**
+         * For a change that leaves the live account as it is: land the
+         * session if a change ahead of it deferred that, and nothing behind
+         * it is waiting to. Returns whether it landed.
+         */
+        fun landIfDeferred(): Boolean = landingDeferred && land()
+
         init {
             refreshState()
         }
@@ -84,6 +172,15 @@ class SessionManager
             }
         }
 
+        /**
+         * Re-read the stored accounts without touching the auth state: for a
+         * change that leaves the live account as it is.
+         */
+        fun refreshAccounts() {
+            _accounts.value = tokenStore.accounts()
+            _activeAccountId.value = tokenStore.activeAccountId()
+        }
+
         /** Called from [LogoutHandler] before it touches local state. */
         fun beginSignOut() {
             sessionChangeInProgress.set(true)
@@ -94,8 +191,7 @@ class SessionManager
         fun endSignOut() {
             tokenStore.clear()
             authFailures.reset()
-            sessionChangeInProgress.set(false)
-            refreshState()
+            land()
         }
 
         /**
@@ -110,15 +206,15 @@ class SessionManager
         }
 
         /**
-         * Called from `AccountSwitcher` once the incoming account is active.
-         * Re-derives the state from the store, so this lands on
-         * [AuthState.Unauthenticated] when the switch was really the removal
-         * of the last account.
+         * Called from `AccountSwitcher` once the incoming account is active
+         * (or the outgoing one kept, if the wipe failed). Re-derives the state
+         * from the store, so this lands on [AuthState.Unauthenticated] when
+         * the switch was really the removal of the last account. Returns
+         * whether the session landed — false while another change waits.
          */
-        fun endAccountSwitch() {
+        fun endAccountSwitch(): Boolean {
             authFailures.reset()
-            sessionChangeInProgress.set(false)
-            refreshState()
+            return land()
         }
 
         /**
@@ -133,11 +229,10 @@ class SessionManager
             host: String,
             loginName: String,
             appPassword: String,
-        ) {
+        ): Boolean {
             tokenStore.upsertAndActivate(host, loginName, appPassword)
             authFailures.reset()
-            sessionChangeInProgress.set(false)
-            refreshState()
+            return land()
         }
 
         /**
