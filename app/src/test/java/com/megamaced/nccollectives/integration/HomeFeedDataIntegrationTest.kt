@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.integration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.data.db.entity.BODY_TIMESTAMP_UNAVAILABLE
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
@@ -346,7 +347,10 @@ class HomeFeedDataIntegrationTest {
     // --- Identity ------------------------------------------------------------
 
     private fun currentUser(prefs: UserPreferences): CurrentUser {
-        val retrofit = NetworkModule.provideRetrofit(env.client, NetworkModule.provideJson())
+        val retrofit = NetworkModule.provideRetrofit(
+            AccountBoundCallFactory(env.client, env.accountGeneration),
+            NetworkModule.provideJson(),
+        )
         return CurrentUser(NetworkModule.provideUserApi(retrofit), prefs, env.accountGeneration)
     }
 

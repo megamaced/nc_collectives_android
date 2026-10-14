@@ -270,22 +270,29 @@ class UserPreferences
         /**
          * Stamp a clean sync. Clears any recorded failure: the UI should say
          * "synced 2 minutes ago", not keep showing an error the next sync
-         * already recovered from.
+         * already recovered from. Only if [stillCurrent] holds inside the
+         * write, as in [setCurrentUserId]: a sync is the account's.
          */
-        suspend fun recordSyncSuccess(epochMillis: Long) {
+        suspend fun recordSyncSuccess(
+            epochMillis: Long,
+            stillCurrent: () -> Boolean,
+        ) {
             context.dataStore.edit { prefs ->
+                if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_SUCCESS_AT] = epochMillis
                 prefs.remove(KEY_SYNC_LAST_FAILURE_AT)
                 prefs.remove(KEY_SYNC_LAST_FAILURE_MESSAGE)
             }
         }
 
-        /** Stamp a failed sync, leaving the last-success time intact. */
+        /** Stamp a failed sync, leaving the last-success time intact; guarded as [recordSyncSuccess]. */
         suspend fun recordSyncFailure(
             epochMillis: Long,
             message: String,
+            stillCurrent: () -> Boolean,
         ) {
             context.dataStore.edit { prefs ->
+                if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_FAILURE_AT] = epochMillis
                 prefs[KEY_SYNC_LAST_FAILURE_MESSAGE] = message
             }

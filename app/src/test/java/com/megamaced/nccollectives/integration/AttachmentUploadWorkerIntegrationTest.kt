@@ -218,6 +218,33 @@ class AttachmentUploadWorkerIntegrationTest {
         }
 
     @Test
+    fun aFailureAnsweredAfterASwitch_leavesTheNextAccountsRowAlone() =
+        runTest {
+            env.seedPage(id = 12)
+            env.seedStagedUpload(pageId = 12, fileName = "photo.jpg", attempts = 0)
+            val key = AttachmentEntity.key(12, "photo.jpg")
+            dispatcher
+                .on("/remote.php/dav", OcsResponses.webDav(500), method = "PUT")
+                .whileInFlight("/remote.php/dav") {
+                    if (it.method == "PUT") {
+                        env.accountGeneration.invalidate()
+                        runBlocking {
+                            env.db.attachmentDao().clear()
+                            env.seedStagedUpload(pageId = 12, fileName = "photo.jpg", bytes = "B".toByteArray(), attempts = 4)
+                        }
+                        env.accountGeneration.settle()
+                    }
+                }
+
+            val result = worker().doWork()
+
+            assertTrue("abandoned, not retried: $result", result is ListenableWorker.Result.Success)
+            val row = env.db.attachmentDao().getById(key)
+            assertEquals(AttachmentEntity.STATUS_PENDING, row?.status)
+            assertEquals("the next account's row, untouched", 4, row?.attempts)
+        }
+
+    @Test
     fun aRowWithBudgetLeft_asksForAnotherRun() =
         runTest {
             env.seedPage(id = 12)
@@ -253,6 +280,7 @@ class AttachmentUploadWorkerIntegrationTest {
                             bodyService = env.bodyService,
                             attachmentRepository = env.attachmentRepository,
                             pageRepository = env.pageRepository,
+                            database = env.db,
                             accountGeneration = env.accountGeneration,
                         )
                 },

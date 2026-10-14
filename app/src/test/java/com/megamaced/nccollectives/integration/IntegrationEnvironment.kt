@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.auth.StoredCredentials
@@ -89,6 +90,7 @@ internal class IntegrationEnvironment private constructor(
             bodyService = bodyService,
             syncScheduler = syncScheduler,
             database = db,
+            accountGeneration = accountGeneration,
         )
 
     val pageRepository: PageRepositoryImpl =
@@ -284,7 +286,8 @@ internal class IntegrationEnvironment private constructor(
                 ).build()
 
             val json = NetworkModule.provideJson()
-            val api = NetworkModule.provideCollectivesApi(NetworkModule.provideRetrofit(client, json))
+            val callFactory = AccountBoundCallFactory(client, accountGeneration)
+            val api = NetworkModule.provideCollectivesApi(NetworkModule.provideRetrofit(callFactory, json))
             val db = Room
                 .inMemoryDatabaseBuilder(context, NcCollectivesDatabase::class.java)
                 .build()
@@ -297,7 +300,7 @@ internal class IntegrationEnvironment private constructor(
                 sessionManager = sessionManager,
                 client = client,
                 api = api,
-                bodyService = PageBodyService(client, tokenStore),
+                bodyService = PageBodyService(callFactory, tokenStore),
                 accountGeneration = accountGeneration,
                 syncScheduler = SyncScheduler(context, UserPreferences(context)),
             )

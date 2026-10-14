@@ -8,6 +8,7 @@ import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
 import com.megamaced.nccollectives.sync.EditFlushWorker
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -245,6 +246,64 @@ class EditFlushWorkerIntegrationTest {
                     .getById(12)
                     ?.bodyMd,
             )
+        }
+
+    @Test
+    fun aFailureAnsweredAfterASwitch_parksNothingOnTheNextAccountsPage() =
+        runTest {
+            // Out of budget, so a failure would park the edit as a draft on
+            // page 12 — which, once the switch has landed, is the next
+            // account's page 12.
+            env.seedPage(id = 12, bodyMd = "server body", bodyEtag = "etag-1")
+            env.db.editQueueDao().upsert(
+                queued(pageId = 12, body = "account A's edit", baseEtag = "etag-1").copy(attempts = 9),
+            )
+            dispatcher
+                .on(".md", serverBody("server body", "etag-1"), method = "GET")
+                .on(".md", OcsResponses.webDav(403), method = "PUT")
+                .whileInFlight(".md") {
+                    if (it.method == "PUT") {
+                        env.accountGeneration.invalidate()
+                        runBlocking {
+                            env.db.editQueueDao().clear()
+                            env.db.pageDao().clear()
+                            env.seedPage(id = 12, bodyMd = "account B's body")
+                        }
+                        env.accountGeneration.settle()
+                    }
+                }
+
+            val result = worker().doWork()
+
+            assertTrue("abandoned, not retried: $result", result is ListenableWorker.Result.Success)
+            assertNull(
+                env.db
+                    .pageDao()
+                    .getById(12)
+                    ?.draftBodyMd,
+            )
+            assertNull(env.db.editQueueDao().forPage(12))
+        }
+
+    @Test
+    fun aRunWhoseAccountHasGone_sendsNothingAndIsNotRetried() =
+        runTest {
+            env.seedPage(id = 12, bodyMd = "server body", bodyEtag = "etag-1")
+            env.db.editQueueDao().upsert(queued(pageId = 12, body = "account A's edit", baseEtag = "etag-1"))
+            dispatcher
+                .on(".md", serverBody("server body", "etag-1"), method = "GET")
+                .on(".md", OcsResponses.webDav(204, etag = "\"etag-2\""), method = "PUT")
+                .whileInFlight(".md") {
+                    if (it.method == "GET") {
+                        env.accountGeneration.invalidate()
+                        env.accountGeneration.settle()
+                    }
+                }
+
+            val result = worker().doWork()
+
+            assertTrue("abandoned, not retried: $result", result is ListenableWorker.Result.Success)
+            assertTrue(dispatcher.requestsWithMethod("PUT").isEmpty())
         }
 
     @Test

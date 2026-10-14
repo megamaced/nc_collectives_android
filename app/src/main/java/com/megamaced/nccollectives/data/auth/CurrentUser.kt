@@ -35,11 +35,14 @@ class CurrentUser
          * and leaves [id] null, to be asked again next time.
          */
         suspend fun refreshIfUnknown() {
-            // Captured before the first suspension, not after it. A switch
-            // landing during the read below would otherwise hand this call
-            // the incoming account's generation, while the request it is
-            // about to send can still go out under the outgoing one.
-            val generation = accountGeneration.current()
+            // Captured before the first suspension, not after it, and the
+            // outer one when there is one (a sync): a switch landing during
+            // the read below would otherwise hand this call the incoming
+            // account's generation.
+            accountGeneration.bound { generation -> refreshIfUnknownBound(generation) }
+        }
+
+        private suspend fun refreshIfUnknownBound(generation: Long) {
             if (userPreferences.currentUserId.first() != null) return
             if (!accountGeneration.isCurrent(generation)) return
             when (val result = apiCall { api.currentUser() }) {

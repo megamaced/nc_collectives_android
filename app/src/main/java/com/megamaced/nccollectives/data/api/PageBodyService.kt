@@ -1,13 +1,13 @@
 package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.ServerStringValidation
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
+import com.megamaced.nccollectives.data.auth.AccountChangedException
 import com.megamaced.nccollectives.data.auth.TokenStore
-import com.megamaced.nccollectives.data.auth.boundToAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -47,15 +47,15 @@ sealed interface ConditionalBody {
  * the user's Files area under `{collectivePath}/{filePath}/{fileName}` and
  * is accessed via `GET`/`PUT` on `/remote.php/dav/files/{loginName}/...`.
  *
- * Uses the shared authenticated [OkHttpClient] so the [AuthInterceptor]
- * attaches Basic auth; [HostInterceptor] rewrites the placeholder URL we
- * build to the real Nextcloud host at request time.
+ * Uses the shared authenticated client, through [AccountBoundCallFactory],
+ * so the [AuthInterceptor] attaches Basic auth; [HostInterceptor] rewrites
+ * the placeholder URL we build to the real Nextcloud host at request time.
  */
 @Singleton
 class PageBodyService
     @Inject
     constructor(
-        private val client: OkHttpClient,
+        private val callFactory: AccountBoundCallFactory,
         private val tokenStore: TokenStore,
     ) {
         suspend fun fetchBody(
@@ -263,7 +263,8 @@ class PageBodyService
          * IO pool, maps response codes into [ApiResult] (200..299 + any
          * [extraSuccessCodes] → Success via [onSuccess]; 401 → Unauthorised;
          * 412 → Conflict; rest → HttpError) and routes IOException →
-         * NetworkError + anything else → Unexpected. Eliminates four
+         * NetworkError, except a refusal for a changed account, + anything
+         * else → Unexpected. Eliminates four
          * identical try/withContext/use blocks that previously diverged
          * subtly (e.g. ensureCollection accepted 405; only some sites
          * normalised the ETag).
@@ -275,7 +276,7 @@ class PageBodyService
         ): ApiResult<T> =
             withContext(Dispatchers.IO) {
                 try {
-                    client.newCall(request.boundToAccount()).execute().use { response ->
+                    callFactory.newCall(request).execute().use { response ->
                         when {
                             response.code in 200..299 || response.code in extraSuccessCodes -> {
                                 ApiResult.Success(onSuccess(response))
@@ -294,6 +295,9 @@ class PageBodyService
                             }
                         }
                     }
+                } catch (e: AccountChangedException) {
+                    // Abandoned, not offline, as in `apiCall`.
+                    ApiResult.Unexpected(e)
                 } catch (e: java.io.IOException) {
                     ApiResult.NetworkError(e)
                 } catch (e: Exception) {

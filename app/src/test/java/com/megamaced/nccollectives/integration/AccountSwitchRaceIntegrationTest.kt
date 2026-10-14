@@ -6,11 +6,13 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.auth.AccountBinding
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.AccountChangedException
 import com.megamaced.nccollectives.data.auth.StoredCredentials
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
+import com.megamaced.nccollectives.di.NetworkModule
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import io.mockk.every
@@ -410,7 +412,7 @@ class AccountSwitchRaceIntegrationTest {
                     }.build()
                 val repository = PageRepositoryImpl(
                     api = env.api,
-                    bodyService = PageBodyService(client, env.tokenStore),
+                    bodyService = PageBodyService(AccountBoundCallFactory(client, env.accountGeneration), env.tokenStore),
                     pageDao = env.db.pageDao(),
                     editQueueDao = env.db.editQueueDao(),
                     attachmentDao = env.db.attachmentDao(),
@@ -438,18 +440,58 @@ class AccountSwitchRaceIntegrationTest {
         }
 
     @Test
-    fun aBoundRetrofitCallIsRefusedOnceItsAccountHasGone_andAnUnboundOneIsNot() =
+    fun aBoundRetrofitCallIsRefusedOnceItsAccountHasGone() =
         runTest {
             dispatcher.on("/pages", OcsResponses.pageList(), method = "GET")
             val generation = env.accountGeneration.current()
             env.accountGeneration.invalidate()
+            env.accountGeneration.settle()
 
             val bound = withContext(AccountBinding(generation)) { apiCall { env.api.listPages(IntegrationEnvironment.COLLECTIVE_ID) } }
             val unbound = apiCall { env.api.listPages(IntegrationEnvironment.COLLECTIVE_ID) }
 
-            assertTrue("was $bound", bound is ApiResult.NetworkError && bound.cause is AccountChangedException)
-            assertTrue("was $unbound", unbound is ApiResult.Success)
-            assertEquals("only the unbound call went out", 1, dispatcher.requestsTo("/pages").size)
+            assertTrue("was $bound", bound is ApiResult.Unexpected && bound.cause is AccountChangedException)
+            assertTrue("a call made on the account now current goes out, was $unbound", unbound is ApiResult.Success)
+            assertEquals("only that one", 1, dispatcher.requestsTo("/pages").size)
+        }
+
+    @Test
+    fun aRetrofitCallMadeOutsideABindingStaysOnTheAccountItWasMadeOn() =
+        runTest {
+            dispatcher.on("/pages", OcsResponses.pageList(), method = "GET")
+            val client = env.client
+                .newBuilder()
+                .apply {
+                    interceptors().add(
+                        0,
+                        Interceptor { chain ->
+                            // Made on one account, sent after a whole switch.
+                            env.accountGeneration.invalidate()
+                            env.accountGeneration.settle()
+                            chain.proceed(chain.request())
+                        },
+                    )
+                }.build()
+            val api = NetworkModule.provideCollectivesApi(
+                NetworkModule.provideRetrofit(AccountBoundCallFactory(client, env.accountGeneration), NetworkModule.provideJson()),
+            )
+
+            val result = apiCall { api.listPages(IntegrationEnvironment.COLLECTIVE_ID) }
+
+            assertTrue("was $result", result is ApiResult.Unexpected && result.cause is AccountChangedException)
+            assertTrue(dispatcher.requestsTo("/pages").isEmpty())
+        }
+
+    @Test
+    fun aCallMadeWhileASwitchIsUnderWayGoesNowhere() =
+        runTest {
+            dispatcher.on("/pages", OcsResponses.pageList(), method = "GET")
+            env.accountGeneration.invalidate()
+
+            val result = apiCall { env.api.listPages(IntegrationEnvironment.COLLECTIVE_ID) }
+
+            assertTrue("was $result", result is ApiResult.Unexpected && result.cause is AccountChangedException)
+            assertTrue(dispatcher.requestsTo("/pages").isEmpty())
         }
 
     @Test
@@ -495,7 +537,7 @@ class AccountSwitchRaceIntegrationTest {
     private fun repositoryOver(client: okhttp3.OkHttpClient) =
         PageRepositoryImpl(
             api = env.api,
-            bodyService = PageBodyService(client, env.tokenStore),
+            bodyService = PageBodyService(AccountBoundCallFactory(client, env.accountGeneration), env.tokenStore),
             pageDao = env.db.pageDao(),
             editQueueDao = env.db.editQueueDao(),
             attachmentDao = env.db.attachmentDao(),
@@ -544,7 +586,7 @@ class AccountSwitchRaceIntegrationTest {
 
                 val result = repositoryOver(client).createPage(IntegrationEnvironment.COLLECTIVE_ID, 1, "New", "OUTGOING BODY")
 
-                assertTrue("was $result", result is ApiResult.NetworkError && result.cause is AccountChangedException)
+                assertTrue("was $result", result is ApiResult.Unexpected && result.cause is AccountChangedException)
                 assertTrue("the next account's server must hear nothing", received.requestsWithMethod("PUT").isEmpty())
                 assertTrue("nor may the outgoing one, mid-switch", dispatcher.requestsWithMethod("POST").isEmpty())
                 assertNull(env.db.pageDao().getById(50))

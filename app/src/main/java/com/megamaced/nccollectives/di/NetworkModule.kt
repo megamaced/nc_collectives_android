@@ -11,7 +11,7 @@ import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.ServerStatusService
 import com.megamaced.nccollectives.data.api.UserApiService
 import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
-import com.megamaced.nccollectives.data.auth.boundToAccount
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -96,15 +96,14 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(
-        client: OkHttpClient,
+        callFactory: AccountBoundCallFactory,
         json: Json,
     ): Retrofit {
         val contentType = "application/json".toMediaType()
         return Retrofit
             .Builder()
             .baseUrl(PLACEHOLDER_BASE_URL)
-            // `client`, with each call tagged by the caller's AccountBinding.
-            .callFactory { request -> client.newCall(request.boundToAccount()) }
+            .callFactory(callFactory)
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
     }

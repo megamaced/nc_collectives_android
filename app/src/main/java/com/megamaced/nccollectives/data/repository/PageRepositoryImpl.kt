@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
@@ -246,7 +247,8 @@ class PageRepositoryImpl
         // pages under the incoming one — which matters more here than
         // anywhere, because `PageEntity` keys on the raw *server* id and two
         // servers will happily both have a page 17.
-        override suspend fun refresh(collectiveId: Long): ApiResult<Unit> = refreshUnder(collectiveId, accountGeneration.current())
+        override suspend fun refresh(collectiveId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation -> refreshUnder(collectiveId, generation) }
 
         /**
          * [refresh], committing only while [generation] is current. A caller
@@ -321,20 +323,11 @@ class PageRepositoryImpl
                 }
             }
 
-        /**
-         * Run [writes] in one transaction if [generation] is still current,
-         * and say whether they ran. Checked inside the transaction, which is
-         * what makes it a barrier: see `AccountGeneration`.
-         */
+        /** [NcCollectivesDatabase.writeUnder] on this repository's cache. */
         private suspend fun writeUnder(
             generation: Long,
             writes: suspend () -> Unit,
-        ): Boolean =
-            database.withTransaction {
-                if (!accountGeneration.isCurrent(generation)) return@withTransaction false
-                writes()
-                true
-            }
+        ): Boolean = database.writeUnder(accountGeneration, generation, writes)
 
         /**
          * Server returns `PageDto.tags` as numeric IDs; we resolve them to
@@ -386,15 +379,17 @@ class PageRepositoryImpl
          * must not depend on it.
          *
          * A no-op — the overwhelmingly common case — when the id came back
-         * unchanged.
+         * unchanged. Under [generation], and false if it has gone: the rows
+         * under both ids would then be the next account's.
          */
         private suspend fun carryLocalStateToNewId(
             old: PageEntity,
             moved: PageDto,
-        ) {
-            if (moved.id == old.id) return
+            generation: Long,
+        ): Boolean {
+            if (moved.id == old.id) return true
             Timber.i("Page %d was reissued as %d; carrying local state across", old.id, moved.id)
-            database.withTransaction {
+            return writeUnder(generation) {
                 pageDao.upsertAll(
                     listOf(
                         moved.toEntity(
@@ -452,7 +447,16 @@ class PageRepositoryImpl
 
         override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain(editQueueDao.pendingBody(pageId))
 
-        override suspend fun fetchBody(pageId: Long): ApiResult<String> {
+        // Bound from before the row is read, as everything here that reads
+        // the cache and then sends or writes what it read: see
+        // `AccountGeneration.bound`.
+        override suspend fun fetchBody(pageId: Long): ApiResult<String> =
+            accountGeneration.bound { generation -> fetchBodyBound(pageId, generation) }
+
+        private suspend fun fetchBodyBound(
+            pageId: Long,
+            generation: Long,
+        ): ApiResult<String> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             val result = bodyService.fetchBody(
@@ -462,14 +466,16 @@ class PageRepositoryImpl
             )
             return when (result) {
                 is ApiResult.Success -> {
-                    pageDao.updateBody(
-                        pageId,
-                        result.data.markdown,
-                        result.data.etag,
-                        result.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
-                        System.currentTimeMillis(),
-                    )
-                    ApiResult.Success(result.data.markdown)
+                    val recorded = writeUnder(generation) {
+                        pageDao.updateBody(
+                            pageId,
+                            result.data.markdown,
+                            result.data.etag,
+                            result.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                            System.currentTimeMillis(),
+                        )
+                    }
+                    if (recorded) ApiResult.Success(result.data.markdown) else accountChanged()
                 }
 
                 is ApiResult.NetworkError -> {
@@ -494,12 +500,18 @@ class PageRepositoryImpl
             }
         }
 
-        override suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean> {
+        override suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean> =
+            accountGeneration.bound { generation -> refreshBodyIfChangedBound(pageId, generation) }
+
+        private suspend fun refreshBodyIfChangedBound(
+            pageId: Long,
+            generation: Long,
+        ): ApiResult<Boolean> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag, entity.bodyTimestamp)
             if (plan !is BodyFetchPlan.Revalidate) {
-                return fetchBody(pageId).mapSuccess { true }
+                return fetchBodyBound(pageId, generation).mapSuccess { true }
             }
             val result = bodyService.fetchBodyIfChanged(
                 collectivePath = entity.collectivePath,
@@ -523,14 +535,16 @@ class PageRepositoryImpl
                             // pending edit — and it stops the user editing text
                             // the server has already replaced, which is how a
                             // stale row turned every first save into a 412.
-                            pageDao.updateBody(
-                                pageId,
-                                body.body.markdown,
-                                body.body.etag,
-                                body.body.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
-                                System.currentTimeMillis(),
-                            )
-                            ApiResult.Success(true)
+                            val recorded = writeUnder(generation) {
+                                pageDao.updateBody(
+                                    pageId,
+                                    body.body.markdown,
+                                    body.body.etag,
+                                    body.body.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                                    System.currentTimeMillis(),
+                                )
+                            }
+                            if (recorded) ApiResult.Success(true) else accountChanged()
                         }
                     }
                 }
@@ -560,7 +574,7 @@ class PageRepositoryImpl
         override suspend fun saveBody(
             pageId: Long,
             newBody: String,
-        ): SaveOutcome = saveBodyUnder(pageId, newBody, accountGeneration.current())
+        ): SaveOutcome = accountGeneration.bound { generation -> saveBodyUnder(pageId, newBody, generation) }
 
         /**
          * [saveBody], recording its outcome only while [generation] is
@@ -722,8 +736,7 @@ class PageRepositoryImpl
         ): SaveOutcome {
             // As in [saveBodyUnder]: the queue row below is an insert, and the
             // force-write must not be retargeted at the next account.
-            val generation = accountGeneration.current()
-            return withContext(AccountBinding(generation)) { replaceWithDraftBound(pageId, newBody, generation) }
+            return accountGeneration.bound { generation -> replaceWithDraftBound(pageId, newBody, generation) }
         }
 
         private suspend fun replaceWithDraftBound(
@@ -803,29 +816,46 @@ class PageRepositoryImpl
             // the text away, and a `CONFLICTED` row left behind would keep
             // the B-19 guard armed forever — every later offline save on this
             // page would report a conflict for a draft that no longer exists.
-            database.withTransaction {
-                pageDao.updateDraft(pageId, null)
-                editQueueDao.deleteForPage(pageId)
+            // Under the account it was asked on: after a switch the row and
+            // queue entry under this id are the next account's.
+            accountGeneration.bound { generation ->
+                writeUnder(generation) {
+                    pageDao.updateDraft(pageId, null)
+                    editQueueDao.deleteForPage(pageId)
+                }
             }
         }
 
         override suspend fun setEmoji(
             pageId: Long,
             emoji: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> setEmojiBound(pageId, emoji, generation) }
+
+        private suspend fun setEmojiBound(
+            pageId: Long,
+            emoji: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             val previous = entity.emoji
-            // Optimistic local update.
-            pageDao.updateEmoji(pageId, emoji.ifBlank { null })
+            // Optimistic local update. The rollback is under the same
+            // generation: a request refused because the account changed
+            // must not then roll back a row that is now the next account's.
+            if (!writeUnder(generation) { pageDao.updateEmoji(pageId, emoji.ifBlank { null }) }) return accountChanged()
             val result = apiCall { api.setPageEmoji(entity.collectiveId, pageId, emoji) }
             if (result !is ApiResult.Success) {
-                pageDao.updateEmoji(pageId, previous)
+                writeUnder(generation) { pageDao.updateEmoji(pageId, previous) }
             }
             return result
         }
 
+        // The operations below read no cache, but the ids they are handed are
+        // still one account's: bound at entry, like the rest.
         override suspend fun listTagsForCollective(collectiveId: Long): ApiResult<List<PageTag>> =
+            accountGeneration.bound { listTagsBound(collectiveId) }
+
+        private suspend fun listTagsBound(collectiveId: Long): ApiResult<List<PageTag>> =
             apiCall {
                 api
                     .listTags(collectiveId)
@@ -842,6 +872,12 @@ class PageRepositoryImpl
             }
 
         override suspend fun createTag(
+            collectiveId: Long,
+            name: String,
+            color: String,
+        ): ApiResult<PageTag> = accountGeneration.bound { createTagBound(collectiveId, name, color) }
+
+        private suspend fun createTagBound(
             collectiveId: Long,
             name: String,
             color: String,
@@ -863,6 +899,14 @@ class PageRepositoryImpl
             tagId: Long,
             tagName: String,
             add: Boolean,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> togglePageTagBound(pageId, tagId, tagName, add, generation) }
+
+        private suspend fun togglePageTagBound(
+            pageId: Long,
+            tagId: Long,
+            tagName: String,
+            add: Boolean,
+            generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
@@ -873,8 +917,8 @@ class PageRepositoryImpl
                 current - tagName
             }
             if (next == current) return ApiResult.Success(Unit)
-            // Optimistic update.
-            pageDao.updateTagsCsv(pageId, joinTags(next))
+            // Optimistic update; the rollback as in [setEmojiBound].
+            if (!writeUnder(generation) { pageDao.updateTagsCsv(pageId, joinTags(next)) }) return accountChanged()
             val result = apiCall {
                 if (add) {
                     api.addPageTag(entity.collectiveId, pageId, tagId)
@@ -883,7 +927,7 @@ class PageRepositoryImpl
                 }
             }
             if (result !is ApiResult.Success) {
-                pageDao.updateTagsCsv(pageId, entity.tagsCsv)
+                writeUnder(generation) { pageDao.updateTagsCsv(pageId, entity.tagsCsv) }
             }
             return result
         }
@@ -891,6 +935,12 @@ class PageRepositoryImpl
         override suspend fun renamePage(
             pageId: Long,
             newTitle: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> renamePageBound(pageId, newTitle, generation) }
+
+        private suspend fun renamePageBound(
+            pageId: Long,
+            newTitle: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
@@ -909,13 +959,13 @@ class PageRepositoryImpl
                 api.updatePage(entity.collectiveId, pageId, mapOf("title" to cleaned))
             }
             if (result is ApiResult.Success) {
-                carryLocalStateToNewId(entity, result.data.ocs.data.page)
+                if (!carryLocalStateToNewId(entity, result.data.ocs.data.page, generation)) return accountChanged()
                 // Refresh the collective to pick up any cascading filePath
                 // changes on descendants (folder rename moves the whole
                 // directory) and to reconcile whatever else moved.
-                refresh(entity.collectiveId)
+                refreshUnder(entity.collectiveId, generation)
             }
-            return result.mapSuccess { }
+            return result.mapSuccess { }.unlessAccountChanged(accountGeneration, generation)
         }
 
         override suspend fun createPage(
@@ -928,10 +978,7 @@ class PageRepositoryImpl
             // suspension, checked inside the transaction that inserts the
             // created page, and binding every request the chain makes, so
             // none of it reaches the next account's cache or server.
-            val generation = accountGeneration.current()
-            return withContext(AccountBinding(generation)) {
-                createPageBound(collectiveId, parentPageId, title, body, generation)
-            }
+            return accountGeneration.bound { generation -> createPageBound(collectiveId, parentPageId, title, body, generation) }
         }
 
         private suspend fun createPageBound(
@@ -993,7 +1040,7 @@ class PageRepositoryImpl
             }
             if (!recorded) {
                 Timber.i("Account changed mid-create; not recording page %d", createdDto.id)
-                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+                return accountChanged()
             }
             // Everything after the insert stays under the same generation.
             // A switch can land the moment the insert commits, and a refresh
@@ -1003,7 +1050,7 @@ class PageRepositoryImpl
             // A switch during the refresh ends the chain here, before the body
             // save reads a cache that is now the next account's.
             if (!accountGeneration.isCurrent(generation)) {
-                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+                return accountChanged()
             }
             // The OCS POST creates an empty page; its markdown is a separate
             // WebDAV write. Issue #25: that write goes through `saveBody`
@@ -1031,7 +1078,7 @@ class PageRepositoryImpl
             // Checked after the read, so a row the next account has under
             // the same id is never handed back as this page.
             if (!accountGeneration.isCurrent(generation)) {
-                return ApiResult.Unexpected(IllegalStateException(ACCOUNT_CHANGED))
+                return accountChanged()
             }
             if (saved == null) {
                 return ApiResult.Unexpected(
@@ -1041,7 +1088,13 @@ class PageRepositoryImpl
             return ApiResult.Success(PageCreation(page = saved.toDomain(), bodyOutcome = bodyOutcome))
         }
 
-        override suspend fun trashPage(pageId: Long): ApiResult<Unit> {
+        override suspend fun trashPage(pageId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation -> trashPageBound(pageId, generation) }
+
+        private suspend fun trashPageBound(
+            pageId: Long,
+            generation: Long,
+        ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             if (entity.parentId == 0L) {
@@ -1060,15 +1113,20 @@ class PageRepositoryImpl
                 // page is recoverable from the server-side trash; a queued
                 // local edit to it isn't, but it couldn't have been flushed
                 // either — the file has moved out from under its WebDAV path.
-                database.withTransaction {
+                val recorded = writeUnder(generation) {
                     cascadeForPages(listOf(pageId))
                     pageDao.deleteById(pageId)
                 }
+                if (!recorded) return accountChanged()
             }
             return result
         }
 
+        // One operation, though it makes two requests.
         override suspend fun listTrashedPages(collectiveId: Long): ApiResult<List<Page>> =
+            accountGeneration.bound { listTrashedPagesBound(collectiveId) }
+
+        private suspend fun listTrashedPagesBound(collectiveId: Long): ApiResult<List<Page>> =
             apiCall {
                 // R-48: same two independent requests as `refresh`, same fix.
                 val (tagNames, envelope) = coroutineScope {
@@ -1098,18 +1156,21 @@ class PageRepositoryImpl
         override suspend fun restorePage(
             collectiveId: Long,
             pageId: Long,
-        ): ApiResult<Unit> {
-            val result = apiCall { api.restoreTrashedPage(collectiveId, pageId) }
-            if (result is ApiResult.Success) {
-                refresh(collectiveId)
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                val result = apiCall { api.restoreTrashedPage(collectiveId, pageId) }
+                if (result is ApiResult.Success) {
+                    refreshUnder(collectiveId, generation)
+                }
+                // The restored page is only in the cache if the refresh after
+                // it landed on this account.
+                result.unlessAccountChanged(accountGeneration, generation)
             }
-            return result
-        }
 
         override suspend fun purgePage(
             collectiveId: Long,
             pageId: Long,
-        ): ApiResult<Unit> = apiCall { api.purgeTrashedPage(collectiveId, pageId) }
+        ): ApiResult<Unit> = accountGeneration.bound { apiCall { api.purgeTrashedPage(collectiveId, pageId) } }
 
         override fun observeBacklinksFor(
             collectiveId: Long,
@@ -1179,6 +1240,12 @@ class PageRepositoryImpl
         override suspend fun appendToPage(
             pageId: Long,
             text: String,
+        ): SaveOutcome = accountGeneration.bound { generation -> appendToPageBound(pageId, text, generation) }
+
+        private suspend fun appendToPageBound(
+            pageId: Long,
+            text: String,
+            generation: Long,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
                 ?: return SaveOutcome.Error("Page not cached")
@@ -1193,19 +1260,26 @@ class PageRepositoryImpl
             val baseBody = editQueueDao.pendingBody(pageId)
                 ?: entity.bodyMd
                 ?: run {
-                    val fetched = fetchBody(pageId)
+                    val fetched = fetchBodyBound(pageId, generation)
                     if (fetched !is ApiResult.Success) {
                         return SaveOutcome.Error(fetched.userMessage() ?: "Couldn't load page body")
                     }
                     fetched.data
                 }
-            return saveBody(pageId, appendedBody(baseBody, text))
+            return saveBodyUnder(pageId, appendedBody(baseBody, text), generation)
         }
 
         override suspend fun retargetAttachmentRef(
             pageId: Long,
             oldName: String,
             newName: String,
+        ): SaveOutcome = accountGeneration.bound { generation -> retargetAttachmentRefBound(pageId, oldName, newName, generation) }
+
+        private suspend fun retargetAttachmentRefBound(
+            pageId: Long,
+            oldName: String,
+            newName: String,
+            generation: Long,
         ): SaveOutcome {
             if (oldName == newName) return SaveOutcome.Saved
             val entity = pageDao.getById(pageId) ?: return SaveOutcome.Error("Page not cached")
@@ -1221,12 +1295,18 @@ class PageRepositoryImpl
                 ?: return SaveOutcome.Error("Page body not cached")
             val retargeted = retargetAttachmentRefs(baseBody, pageId, oldName, newName)
             if (retargeted == baseBody) return SaveOutcome.Saved
-            return saveBody(pageId, retargeted)
+            return saveBodyUnder(pageId, retargeted, generation)
         }
 
         override suspend fun movePage(
             pageId: Long,
             newParentPageId: Long,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> movePageBound(pageId, newParentPageId, generation) }
+
+        private suspend fun movePageBound(
+            pageId: Long,
+            newParentPageId: Long,
+            generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
@@ -1250,45 +1330,62 @@ class PageRepositoryImpl
                 api.updatePage(entity.collectiveId, pageId, mapOf("parentId" to newParentPageId.toString()))
             }
             if (result is ApiResult.Success) {
-                carryLocalStateToNewId(entity, result.data.ocs.data.page)
-                refresh(entity.collectiveId)
+                if (!carryLocalStateToNewId(entity, result.data.ocs.data.page, generation)) return accountChanged()
+                refreshUnder(entity.collectiveId, generation)
             }
-            return result.mapSuccess { }
+            return result.mapSuccess { }.unlessAccountChanged(accountGeneration, generation)
         }
 
         override suspend fun copyPage(
             collectiveId: Long,
             pageId: Long,
+        ): ApiResult<Page> = accountGeneration.bound { generation -> copyPageBound(collectiveId, pageId, generation) }
+
+        private suspend fun copyPageBound(
+            collectiveId: Long,
+            pageId: Long,
+            generation: Long,
         ): ApiResult<Page> {
             val now = System.currentTimeMillis()
             val result = apiCall { api.copyPage(collectiveId, pageId, copy = true) }
-            return result.mapSuccess { envelope ->
-                val createdDto = envelope.ocs.data.page
-                val entity = createdDto.toEntity(
-                    collectiveId = collectiveId,
-                    now = now,
-                    existingBody = null,
-                    existingEtag = null,
-                    existingDraft = null,
-                    existingBodyTimestamp = null,
-                    // B-69: as in `createPage` — the copy carries no resolved
-                    // tags yet, which is different from an unknown tag list.
-                    // The `refresh` below picks up whatever the server copied.
-                    tagNamesById = emptyMap(),
-                )
-                pageDao.upsertAll(listOf(entity))
-                // Refresh the collective so the parent's `subpageOrder` and
-                // any other side-effects of duplication (folder promotion if
-                // the source was a folder) land too.
-                refresh(collectiveId)
-                entity.toDomain()
-            }
+            return result
+                .mapSuccess { envelope ->
+                    val createdDto = envelope.ocs.data.page
+                    val entity = createdDto.toEntity(
+                        collectiveId = collectiveId,
+                        now = now,
+                        existingBody = null,
+                        existingEtag = null,
+                        existingDraft = null,
+                        existingBodyTimestamp = null,
+                        // B-69: as in `createPage` — the copy carries no resolved
+                        // tags yet, which is different from an unknown tag list.
+                        // The `refresh` below picks up whatever the server copied.
+                        tagNamesById = emptyMap(),
+                    )
+                    if (!writeUnder(generation) { pageDao.upsertAll(listOf(entity)) }) return accountChanged()
+                    // Refresh the collective so the parent's `subpageOrder` and
+                    // any other side-effects of duplication (folder promotion if
+                    // the source was a folder) land too.
+                    refreshUnder(collectiveId, generation)
+                    entity.toDomain()
+                }.unlessAccountChanged(accountGeneration, generation)
         }
 
         override suspend fun setSubpageOrder(
             collectiveId: Long,
             parentPageId: Long,
             subpageOrderIds: List<Long>,
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                setSubpageOrderBound(collectiveId, parentPageId, subpageOrderIds, generation)
+            }
+
+        private suspend fun setSubpageOrderBound(
+            collectiveId: Long,
+            parentPageId: Long,
+            subpageOrderIds: List<Long>,
+            generation: Long,
         ): ApiResult<Unit> {
             val parent = pageDao.getById(parentPageId)
                 ?: return ApiResult.Unexpected(
@@ -1301,12 +1398,12 @@ class PageRepositoryImpl
             // Optimistic local write — the tree's order is driven by the
             // parent's `subpageOrderCsv` (Batch 23), so the row reshuffles
             // before the network call returns.
-            pageDao.updateSubpageOrderCsv(parentPageId, nextCsv)
+            if (!writeUnder(generation) { pageDao.updateSubpageOrderCsv(parentPageId, nextCsv) }) return accountChanged()
             val result = apiCall {
                 api.setSubpageOrder(collectiveId, parentPageId, subpageOrderIds.toJsonLongArray())
             }
             if (result !is ApiResult.Success) {
-                pageDao.updateSubpageOrderCsv(parentPageId, previousCsv)
+                writeUnder(generation) { pageDao.updateSubpageOrderCsv(parentPageId, previousCsv) }
             }
             return result.mapSuccess { }
         }
@@ -1319,9 +1416,6 @@ class PageRepositoryImpl
  * no backlinks.
  */
 private const val ID_CSV_SEP = ","
-
-/** Why a write was dropped: the account it was made under has been switched away. */
-private const val ACCOUNT_CHANGED = "The account changed before this could be saved"
 
 /**
  * What opening a page should do about its markdown body.

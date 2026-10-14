@@ -8,11 +8,15 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.api.isAccountChanged
+import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
+import com.megamaced.nccollectives.data.repository.writeUnder
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -61,15 +65,22 @@ class AttachmentUploadWorker
         private val bodyService: PageBodyService,
         private val attachmentRepository: AttachmentRepository,
         private val pageRepository: PageRepository,
+        private val database: NcCollectivesDatabase,
         private val accountGeneration: AccountGeneration,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
-            // Issue #20: the account this run's writes belong to. The status
-            // updates below are `UPDATE`s and match nothing once the tables
-            // have been cleared, but the success arm's upsert is an insert —
-            // it would hand the incoming account an attachment row, and a
-            // readable file, belonging to the outgoing one.
+            // Issue #20: the account this run's writes belong to. Every write
+            // is under it: the success arm's upsert is an insert, which would
+            // hand the incoming account an attachment row and a readable file
+            // belonging to the outgoing one, and a status update or a staged
+            // file under the same key would now be the incoming account's.
+            // Once it has gone, the run is abandoned, not retried.
             val generation = accountGeneration.current()
+            // And every request the run makes is bound to it.
+            return withContext(AccountBinding(generation)) { upload(generation) }
+        }
+
+        private suspend fun upload(generation: Long): Result {
             val pending = attachmentDao.pendingUploads()
             if (pending.isEmpty()) return Result.success()
 
@@ -90,6 +101,7 @@ class AttachmentUploadWorker
                     // survive a process restart.
                     if (row.status == AttachmentEntity.STATUS_DELETING) {
                         val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
+                        if (deleted.isAccountChanged()) return Result.success()
                         if (deleted !is ApiResult.Success) {
                             Timber.w("Couldn't remove cancelled upload %s yet: %s", row.id, deleted)
                             retry = true
@@ -99,22 +111,25 @@ class AttachmentUploadWorker
                     val page = pageDao.getById(row.pageId)
                     if (page == null) {
                         Timber.w("Attachment %s references missing page %d", row.id, row.pageId)
-                        attachmentDao.delete(row.id)
+                        if (!underRun(generation) { attachmentDao.delete(row.id) }) return Result.success()
                         continue
                     }
                     val uriString = row.localUriString
                     if (uriString.isNullOrEmpty()) {
                         // Nothing to send and nothing a retry could fix.
                         Timber.w("Attachment %s has no local URI; marking failed", row.id)
-                        attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                        gcStaged(row.id)
+                        val failed = underRun(generation) {
+                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                            gcStaged(row.id)
+                        }
+                        if (!failed) return Result.success()
                         continue
                     }
 
                     // Issue #30: claiming the row spends one of its own
                     // attempts, which is what the classifier reads instead of
                     // this worker's `runAttemptCount`.
-                    attachmentDao.markUploading(row.id)
+                    if (!underRun(generation) { attachmentDao.markUploading(row.id) }) return Result.success()
                     val attemptsSoFar = row.attempts + 1
 
                     val dir = AttachmentRepositoryImpl.attachmentsDirectoryFor(row.pageId)
@@ -123,13 +138,14 @@ class AttachmentUploadWorker
                         filePath = page.filePath,
                         directoryName = dir,
                     )
+                    if (ensure.isAccountChanged()) return Result.success()
                     when (ensure) {
                         is ApiResult.Success -> {
                             Unit
                         }
 
                         ApiResult.Unauthorised -> {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
+                            underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING) }
                             return Result.success() // SessionManager surfaces re-auth.
                         }
 
@@ -145,7 +161,8 @@ class AttachmentUploadWorker
                         ApiResult.Conflict,
                         -> {
                             Timber.w("MKCOL failed for %s: %s", row.id, ensure)
-                            if (settleUploadFailure(row.id, ensure, attemptsSoFar)) retry = true
+                            val action = settleUploadFailure(row.id, ensure, attemptsSoFar, generation) ?: return Result.success()
+                            if (action == UploadFailureAction.RetryLater) retry = true
                             continue
                         }
                     }
@@ -154,8 +171,11 @@ class AttachmentUploadWorker
                     val (body, contentType) = streamingBodyFor(uri, row.contentType)
                     if (body == null) {
                         Timber.w("Couldn't open %s for upload", uri)
-                        attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                        gcStaged(row.id)
+                        val failed = underRun(generation) {
+                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                            gcStaged(row.id)
+                        }
+                        if (!failed) return Result.success()
                         continue
                     }
 
@@ -165,13 +185,10 @@ class AttachmentUploadWorker
                         fileName = row.fileName,
                         body = body,
                     )
+                    // Refused before it left the device: nothing to record.
+                    if (put.isAccountChanged()) return Result.success()
                     when (put) {
                         is ApiResult.Success -> {
-                            if (!accountGeneration.isCurrent(generation)) {
-                                Timber.i("Account changed mid-upload; not recording %s", row.id)
-                                gcStaged(row.id)
-                                return Result.success()
-                            }
                             // Issue #23: `row` is a snapshot from before the
                             // PUT, and the upsert below is an insert. A row
                             // that has gone or been tombstoned since must not
@@ -189,50 +206,59 @@ class AttachmentUploadWorker
                             val current = attachmentDao.getById(row.id)
                             if (current == null) {
                                 Timber.i("Attachment %s vanished mid-upload; not recording it", row.id)
-                                gcStaged(row.id)
+                                if (!underRun(generation) { gcStaged(row.id) }) return Result.success()
                                 continue
                             }
                             if (current.status == AttachmentEntity.STATUS_DELETING) {
                                 Timber.i("Attachment %s was cancelled mid-upload; removing what landed", row.id)
-                                if (attachmentRepository.resolveDeletion(row.pageId, row.fileName) !is ApiResult.Success) {
-                                    retry = true
-                                }
+                                val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
+                                if (deleted.isAccountChanged()) return Result.success()
+                                if (deleted !is ApiResult.Success) retry = true
                                 continue
                             }
                             val size = sizeOf(uri)
-                            attachmentDao.upsert(
-                                row.copy(
-                                    contentType = contentType,
-                                    size = size,
-                                    etag = put.data,
-                                    lastModifiedMs = System.currentTimeMillis(),
-                                    status = AttachmentEntity.STATUS_REMOTE,
-                                    localUriString = null,
-                                    lastSyncedAt = System.currentTimeMillis(),
-                                ),
-                            )
-                            // B-29: bytes are safely on the server now; drop the
-                            // staging copy.
-                            gcStaged(row.id)
+                            val recorded = underRun(generation) {
+                                attachmentDao.upsert(
+                                    row.copy(
+                                        contentType = contentType,
+                                        size = size,
+                                        etag = put.data,
+                                        lastModifiedMs = System.currentTimeMillis(),
+                                        status = AttachmentEntity.STATUS_REMOTE,
+                                        localUriString = null,
+                                        lastSyncedAt = System.currentTimeMillis(),
+                                    ),
+                                )
+                                // B-29: bytes are safely on the server now; drop the
+                                // staging copy.
+                                gcStaged(row.id)
+                            }
+                            if (!recorded) {
+                                Timber.i("Account changed mid-upload; not recording %s", row.id)
+                                return Result.success()
+                            }
                         }
 
                         is ApiResult.NetworkError -> {
-                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
+                            val action = settleUploadFailure(row.id, put, attemptsSoFar, generation) ?: return Result.success()
+                            if (action == UploadFailureAction.RetryLater) retry = true
                         }
 
                         ApiResult.Unauthorised -> {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING)
+                            underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING) }
                             return Result.success()
                         }
 
                         is ApiResult.HttpError -> {
                             Timber.w("Upload HTTP %d for %s: %s", put.code, row.id, put.message)
-                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
+                            val action = settleUploadFailure(row.id, put, attemptsSoFar, generation) ?: return Result.success()
+                            if (action == UploadFailureAction.RetryLater) retry = true
                         }
 
                         is ApiResult.Unexpected -> {
                             Timber.w(put.cause, "Upload unexpected error for %s", row.id)
-                            if (settleUploadFailure(row.id, put, attemptsSoFar)) retry = true
+                            val action = settleUploadFailure(row.id, put, attemptsSoFar, generation) ?: return Result.success()
+                            if (action == UploadFailureAction.RetryLater) retry = true
                         }
 
                         ApiResult.Conflict -> {
@@ -264,8 +290,9 @@ class AttachmentUploadWorker
                                     Timber.w("Couldn't repoint %s at %s yet: %s", row.fileName, renamed, followed)
                                 }
                                 retry = true
-                            } else if (settleUploadFailure(row.id, put, attemptsSoFar)) {
-                                retry = true
+                            } else {
+                                val action = settleUploadFailure(row.id, put, attemptsSoFar, generation) ?: return Result.success()
+                                if (action == UploadFailureAction.RetryLater) retry = true
                             }
                         }
                     }
@@ -280,7 +307,7 @@ class AttachmentUploadWorker
                     // can retry from the grid rather than re-pick a file
                     // they may no longer have.
                     Timber.w(e, "Upload of %s threw; marking it failed and carrying on", row.id)
-                    attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
+                    if (!underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED) }) return Result.success()
                 }
             }
             return if (retry) Result.retry() else Result.success()
@@ -344,27 +371,30 @@ class AttachmentUploadWorker
             }.getOrDefault(-1L)
 
         /**
-         * Mark one row's failure, and say whether the drain should ask for
-         * another run. Staged bytes are kept either way: a `PENDING` row
-         * needs them for the retry, and a `FAILED` one needs them for the
-         * user's (issue #23).
+         * Mark one row's failure, and say what was done with it, or null if
+         * the run's account has gone and nothing was. Staged bytes are kept
+         * either way: a `PENDING` row needs them for the retry, and a
+         * `FAILED` one needs them for the user's (issue #23).
          */
         private suspend fun settleUploadFailure(
             attachmentId: String,
             result: ApiResult<*>,
             attemptsSoFar: Int,
-        ): Boolean =
-            when (uploadFailureAction(result, attemptsSoFar)) {
-                UploadFailureAction.RetryLater -> {
-                    attachmentDao.setStatus(attachmentId, AttachmentEntity.STATUS_PENDING)
-                    true
-                }
-
-                UploadFailureAction.Terminal -> {
-                    attachmentDao.setStatus(attachmentId, AttachmentEntity.STATUS_FAILED)
-                    false
-                }
+            generation: Long,
+        ): UploadFailureAction? {
+            val action = uploadFailureAction(result, attemptsSoFar)
+            val status = when (action) {
+                UploadFailureAction.RetryLater -> AttachmentEntity.STATUS_PENDING
+                UploadFailureAction.Terminal -> AttachmentEntity.STATUS_FAILED
             }
+            return if (underRun(generation) { attachmentDao.setStatus(attachmentId, status) }) action else null
+        }
+
+        /** [writes] in one transaction while this run's account is current; see `NcCollectivesDatabase.writeUnder`. */
+        private suspend fun underRun(
+            generation: Long,
+            writes: suspend () -> Unit,
+        ): Boolean = database.writeUnder(accountGeneration, generation, writes)
 
         private fun gcStaged(attachmentId: String) {
             val staged = AttachmentRepositoryImpl.stagedFileFor(appContext, attachmentId)
