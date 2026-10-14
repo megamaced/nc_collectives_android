@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.sync
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -55,9 +56,13 @@ class FullSync
         private val collectiveRepository: CollectiveRepository,
         private val pageRepository: PageRepository,
         private val userPreferences: UserPreferences,
+        private val currentUser: CurrentUser,
     ) {
         suspend fun run(): SyncOutcome {
             val outcome = pull()
+            // Once per account, so Home can tell the user's own edits from
+            // everyone else's. Best effort: it never fails the sync.
+            if (outcome == SyncOutcome.Success) currentUser.refreshIfUnknown()
             val now = System.currentTimeMillis()
             when (outcome) {
                 SyncOutcome.Success -> userPreferences.recordSyncSuccess(now)

@@ -191,6 +191,130 @@ interface PageDao {
     fun observeRecentAcrossCollectives(limit: Int): Flow<List<PageListRow>>
 
     /**
+     * Home's "Jump back in": pages this device has shown, most recent first.
+     * Landing pages count, since the user opened them. R-54: projected — see
+     * [PageListRow].
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM page_views v JOIN pages p ON p.id = v.pageId " +
+            "WHERE p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY v.lastViewedAt DESC LIMIT :limit",
+    )
+    fun observeRecentlyViewed(limit: Int): Flow<List<PageListRow>>
+
+    /**
+     * Home's "Updated since you read it": pages the user has been shown
+     * whose server version has moved on since, changed by someone else.
+     *
+     * `seenTimestamp = 0` means no shown version had a known timestamp, so
+     * there is nothing to compare against. An unknown last editor ('') is
+     * left out too: it may well be the user.
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM page_views v JOIN pages p ON p.id = v.pageId " +
+            "WHERE v.seenTimestamp > 0 AND p.serverTimestamp > v.seenTimestamp " +
+            "AND p.lastUserId != '' AND p.lastUserId != :userId " +
+            "AND p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY p.serverTimestamp DESC LIMIT :limit",
+    )
+    fun observeUpdatedSinceViewed(
+        userId: String,
+        limit: Int,
+    ): Flow<List<PageListRow>>
+
+    /**
+     * Home's "Your recent edits": pages whose last editor is [userId]. The
+     * server reports only the last editor, so a page the user edited and
+     * someone else edited after drops out. R-54: projected.
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM pages p WHERE p.lastUserId = :userId AND p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY p.serverTimestamp DESC LIMIT :limit",
+    )
+    fun observeLastEditedBy(
+        userId: String,
+        limit: Int,
+    ): Flow<List<PageListRow>>
+
+    /**
+     * Pages holding a conflict draft: a save of the user's lost to a
+     * server change, kept on the page for them to resolve. R-54: projected;
+     * the draft itself is never read here.
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM pages p WHERE p.draftBodyMd IS NOT NULL AND p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY p.title COLLATE NOCASE ASC",
+    )
+    fun observeWithDrafts(): Flow<List<PageListRow>>
+
+    /**
+     * Pages with an edit queued for the server and not yet sent: offline
+     * saves, and any in flight. Conflicted entries are left out — those
+     * pages carry a draft, see [observeWithDrafts]. Oldest first.
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM edit_queue e JOIN pages p ON p.id = e.pageId " +
+            "WHERE e.status != 'CONFLICTED' AND p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY e.queuedAt ASC",
+    )
+    fun observeWithQueuedEdits(): Flow<List<PageListRow>>
+
+    /**
+     * Every non-empty tag list across the live cache, for counting tags on
+     * Home. The CSV is split in Kotlin; SQLite has no split.
+     */
+    @Query(
+        "SELECT p.tagsCsv FROM pages p WHERE p.tagsCsv != '' AND p.trashTimestamp IS NULL " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL)",
+    )
+    fun observeTagsCsv(): Flow<List<String>>
+
+    /**
+     * [observePagesWithTagInCollective] across every live collective, for
+     * Browse-by-tag opened from Home. Same pattern contract.
+     */
+    @Query(
+        "SELECT p.id, p.collectiveId, p.parentId, p.title, p.emoji, p.tagsCsv, p.subpageOrderCsv, " +
+            "p.trashTimestamp, p.serverTimestamp, p.lastUserDisplayName, " +
+            "p.draftBodyMd IS NOT NULL AS hasDraft " +
+            "FROM pages p WHERE p.trashTimestamp IS NULL " +
+            "AND (:sep || p.tagsCsv || :sep) LIKE :likePattern ESCAPE '\\' " +
+            "AND EXISTS (SELECT 1 FROM collectives WHERE collectives.id = p.collectiveId " +
+            "AND collectives.trashTimestamp IS NULL) " +
+            "ORDER BY p.title COLLATE NOCASE ASC",
+    )
+    fun observePagesWithTag(
+        sep: String,
+        likePattern: String,
+    ): Flow<List<PageListRow>>
+
+    /**
      * The direct children of [parentId], for the page screen's subpage
      * list. Unordered: sibling order is the collective's page-order setting,
      * which is applied in Kotlin alongside the tree's (`orderSiblings`).
@@ -278,13 +402,25 @@ interface PageDao {
     @Upsert
     suspend fun upsertAll(pages: List<PageEntity>)
 
-    @Query("UPDATE pages SET bodyMd = :body, bodyEtag = :etag, lastSyncedAt = :syncedAt WHERE id = :id")
+    /**
+     * Store a body. [bodyTimestamp] is the server mtime of exactly this
+     * version: the fetch's `Last-Modified` for a body from the server, null
+     * for the user's own save — see [PageEntity.bodyTimestamp].
+     */
+    @Query(
+        "UPDATE pages SET bodyMd = :body, bodyEtag = :etag, bodyTimestamp = :bodyTimestamp, " +
+            "lastSyncedAt = :syncedAt WHERE id = :id",
+    )
     suspend fun updateBody(
         id: Long,
         body: String,
         etag: String?,
+        bodyTimestamp: Long?,
         syncedAt: Long,
     )
+
+    @Query("SELECT EXISTS(SELECT 1 FROM pages WHERE id = :id)")
+    suspend fun exists(id: Long): Boolean
 
     @Query("UPDATE pages SET draftBodyMd = :draft WHERE id = :id")
     suspend fun updateDraft(

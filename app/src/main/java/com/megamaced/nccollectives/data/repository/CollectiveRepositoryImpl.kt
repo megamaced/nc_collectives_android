@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.toJsonLongArray
@@ -40,6 +41,7 @@ class CollectiveRepositoryImpl
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
         private val editQueueDao: EditQueueDao,
+        private val pageViewDao: PageViewDao,
         private val database: NcCollectivesDatabase,
         private val accountGeneration: AccountGeneration,
     ) : CollectiveRepository {
@@ -320,6 +322,7 @@ class CollectiveRepositoryImpl
                 if (pageIds.isNotEmpty()) {
                     attachmentDao.deleteForPageIds(pageIds)
                     editQueueDao.deleteForPageIds(pageIds)
+                    pageViewDao.deleteForPageIds(pageIds)
                 }
                 pageDao.deleteForCollective(collectiveId)
             }

@@ -66,7 +66,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
@@ -170,6 +173,13 @@ internal fun PageViewScreen(
         page?.let { lastLoadedPage = it }
     }
     val visiblePage = page ?: lastLoadedPage
+
+    // Recorded while the screen is in front, including a return to it
+    // through a saved tab stack. See `PageViewModel.recordViewsWhileShown`.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.recordViewsWhileShown() }
+    }
 
     // B-81: `statusMessage` only. An `errorMessage` is the full-screen error
     // state's, and this was the one screen that also snackbarred it — which

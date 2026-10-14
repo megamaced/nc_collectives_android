@@ -14,10 +14,15 @@ import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** A page body along with the WebDAV ETag the server returned for it. */
+/**
+ * A page body along with the WebDAV ETag the server returned for it, and its
+ * `Last-Modified` in epoch seconds — the same file mtime the Collectives page
+ * list reports as the page's `timestamp`. Null if the server sent none.
+ */
 data class PageBody(
     val markdown: String,
     val etag: String?,
+    val lastModified: Long?,
 )
 
 /**
@@ -67,6 +72,7 @@ class PageBodyService
                 PageBody(
                     markdown = response.body?.string().orEmpty(),
                     etag = normaliseEtag(response.header("ETag")),
+                    lastModified = lastModifiedSeconds(response),
                 )
             }
         }
@@ -103,6 +109,7 @@ class PageBodyService
                         PageBody(
                             markdown = response.body?.string().orEmpty(),
                             etag = normaliseEtag(response.header("ETag")),
+                            lastModified = lastModifiedSeconds(response),
                         ),
                     )
                 }
@@ -428,3 +435,10 @@ class PageBodyService
             const val MARKDOWN = "text/markdown; charset=utf-8"
         }
     }
+
+/** `Last-Modified` as epoch seconds, or null if absent or unparseable. */
+private fun lastModifiedSeconds(response: okhttp3.Response): Long? =
+    response.headers
+        .getDate("Last-Modified")
+        ?.time
+        ?.div(1_000L)

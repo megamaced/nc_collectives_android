@@ -186,6 +186,26 @@ class UserPreferences
 
         val syncStatus: Flow<SyncStatus> = context.dataStore.data.map { it.toSyncStatus() }
 
+        /**
+         * The signed-in account's server user id, once `CurrentUser` has
+         * asked. Account-scoped: an account switch clears it.
+         */
+        val currentUserId: Flow<String?> = context.dataStore.data.map { it[KEY_CURRENT_USER_ID] }
+
+        /**
+         * Store [userId] only if [stillCurrent] holds *inside* the write.
+         * DataStore serialises edits, and `clearAccountScoped` is one, so the
+         * check can't pass for an account a switch has already cleared.
+         */
+        suspend fun setCurrentUserId(
+            userId: String,
+            stillCurrent: () -> Boolean,
+        ) {
+            context.dataStore.edit { prefs ->
+                if (stillCurrent()) prefs[KEY_CURRENT_USER_ID] = userId
+            }
+        }
+
         suspend fun setThemeMode(mode: ThemeMode) {
             context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
         }
@@ -381,6 +401,7 @@ class UserPreferences
             val KEY_COLLECTIVE_SORT = stringPreferencesKey("collective_sort")
             val KEY_START_SCREEN = stringPreferencesKey("start_screen")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
+            val KEY_CURRENT_USER_ID = stringPreferencesKey("current_user_id")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
             val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")

@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.entity.BODY_TIMESTAMP_UNAVAILABLE
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -145,6 +146,7 @@ class EditFlushWorker
                             entry.pageId,
                             currentServer.data.markdown,
                             currentEtag,
+                            currentServer.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
                             System.currentTimeMillis(),
                         )
                         parkAsConflict(entry)
@@ -210,10 +212,13 @@ class EditFlushWorker
                             Timber.i("Account changed mid-flush; not recording the write for page %d", entry.pageId)
                             return@withTransaction FlushRowOutcome.Settled
                         }
+                        // The user's own text: the server doesn't say what
+                        // mtime it gave the write, so the version is unknown.
                         pageDao.updateBody(
                             entry.pageId,
                             entry.newBodyMd,
                             result.data,
+                            null,
                             System.currentTimeMillis(),
                         )
                         pageDao.updateDraft(entry.pageId, null)

@@ -27,9 +27,12 @@ internal object OcsResponses {
         fileName: String = "$title.md",
         filePath: String = "",
         collectivePath: String = IntegrationEnvironment.COLLECTIVE_PATH,
+        timestamp: Long = 1_700_000_000,
+        lastUserId: String = "",
     ): String =
         """{"id":$id,"title":"$title","parentId":$parentId,"fileName":"$fileName",""" +
-            """"filePath":"$filePath","collectivePath":"$collectivePath","timestamp":1700000000}"""
+            """"filePath":"$filePath","collectivePath":"$collectivePath","timestamp":$timestamp,""" +
+            """"lastUserId":"$lastUserId"}"""
 
     /** `PUT /pages/{id}` and `POST /pages/{parentId}` — the `page` envelope. */
     fun singlePage(

@@ -10,6 +10,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.domain.model.PageOrder
 import io.mockk.coEvery
@@ -44,6 +45,7 @@ class SetPageOrderTest {
             pageDao = mockk<PageDao>(),
             attachmentDao = mockk<AttachmentDao>(),
             editQueueDao = mockk<EditQueueDao>(),
+            pageViewDao = mockk<PageViewDao>(),
             database = mockk<NcCollectivesDatabase>(),
             accountGeneration = AccountGeneration(),
         )

@@ -101,6 +101,7 @@ internal fun PageDto.toEntity(
     existingBody: String?,
     existingEtag: String?,
     existingDraft: String?,
+    existingBodyTimestamp: Long?,
     existingTagsCsv: String? = null,
     tagNamesById: Map<Long, String>? = null,
 ): PageEntity =
@@ -138,9 +139,11 @@ internal fun PageDto.toEntity(
         filePath = filePath,
         collectivePath = collectivePath,
         linkedPageIdsCsv = linkedPageIds.toLongCsv(),
+        lastUserId = lastUserId,
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = existingBody,
         bodyEtag = existingEtag,
+        bodyTimestamp = existingBodyTimestamp,
         draftBodyMd = existingDraft,
         lastSyncedAt = now,
     )
@@ -203,5 +206,7 @@ internal fun PageEntity.toDomain(pendingBodyMd: String? = null): Page =
         linkedPageIds = linkedPageIdsCsv.toLongCsvList(),
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = pendingBodyMd ?: bodyMd,
+        bodyTimestamp = bodyTimestamp,
+        bodyFromQueue = pendingBodyMd != null,
         draftBodyMd = draftBodyMd,
     )

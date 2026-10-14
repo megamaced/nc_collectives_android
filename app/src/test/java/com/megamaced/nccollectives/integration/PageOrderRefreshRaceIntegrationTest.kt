@@ -58,6 +58,7 @@ class PageOrderRefreshRaceIntegrationTest {
                 pageDao = env.db.pageDao(),
                 attachmentDao = env.db.attachmentDao(),
                 editQueueDao = env.db.editQueueDao(),
+                pageViewDao = env.db.pageViewDao(),
                 database = env.db,
                 accountGeneration = env.accountGeneration,
             )

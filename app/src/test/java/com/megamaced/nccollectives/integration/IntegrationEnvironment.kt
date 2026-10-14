@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.data.auth.StoredCredentials
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
+import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
@@ -96,6 +97,7 @@ internal class IntegrationEnvironment private constructor(
             pageDao = db.pageDao(),
             editQueueDao = db.editQueueDao(),
             attachmentDao = db.attachmentDao(),
+            pageViewDao = db.pageViewDao(),
             syncScheduler = syncScheduler,
             database = db,
             accountGeneration = accountGeneration,
@@ -104,6 +106,28 @@ internal class IntegrationEnvironment private constructor(
 
     /** The `https://host:port` the mocked credential names. */
     val host: String get() = server.url("/").toString().trimEnd('/')
+
+    /** Insert a live collective row, which the cross-collective page lists require. */
+    suspend fun seedCollective(id: Long = COLLECTIVE_ID) {
+        db.collectiveDao().upsert(
+            CollectiveEntity(
+                id = id,
+                name = "Collective $id",
+                slug = null,
+                emoji = null,
+                circleId = null,
+                canEdit = true,
+                canShare = true,
+                level = 0,
+                userShowMembers = true,
+                userPageOrder = 0,
+                isPageShare = false,
+                trashTimestamp = null,
+                userFavoritePagesCsv = "",
+                lastSyncedAt = 0,
+            ),
+        )
+    }
 
     /**
      * Insert a page row directly, bypassing the network. [bodyMd] is the
@@ -120,7 +144,11 @@ internal class IntegrationEnvironment private constructor(
         collectivePath: String = COLLECTIVE_PATH,
         bodyMd: String? = null,
         bodyEtag: String? = null,
+        bodyTimestamp: Long? = null,
         draftBodyMd: String? = null,
+        serverTimestamp: Long = 0,
+        lastUserId: String = "",
+        tagsCsv: String = "",
     ): PageEntity {
         val entity = PageEntity(
             id = id,
@@ -128,19 +156,21 @@ internal class IntegrationEnvironment private constructor(
             parentId = parentId,
             title = title,
             emoji = null,
-            tagsCsv = "",
+            tagsCsv = tagsCsv,
             subpageOrderCsv = "",
             isFullWidth = false,
             trashTimestamp = null,
-            serverTimestamp = 0,
+            serverTimestamp = serverTimestamp,
             size = 0,
             fileName = fileName,
             filePath = filePath,
             collectivePath = collectivePath,
             linkedPageIdsCsv = "",
+            lastUserId = lastUserId,
             lastUserDisplayName = "",
             bodyMd = bodyMd,
             bodyEtag = bodyEtag,
+            bodyTimestamp = bodyTimestamp,
             draftBodyMd = draftBodyMd,
             lastSyncedAt = 0,
         )

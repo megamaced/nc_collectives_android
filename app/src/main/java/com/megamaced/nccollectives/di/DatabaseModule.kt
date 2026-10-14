@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -37,4 +38,6 @@ object DatabaseModule {
     @Provides fun provideEditQueueDao(db: NcCollectivesDatabase): EditQueueDao = db.editQueueDao()
 
     @Provides fun provideAttachmentDao(db: NcCollectivesDatabase): AttachmentDao = db.attachmentDao()
+
+    @Provides fun providePageViewDao(db: NcCollectivesDatabase): PageViewDao = db.pageViewDao()
 }

@@ -16,8 +16,11 @@ import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
+import com.megamaced.nccollectives.data.db.entity.BODY_TIMESTAMP_UNAVAILABLE
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
+import com.megamaced.nccollectives.data.db.entity.PageViewEntity
 import com.megamaced.nccollectives.data.joinTags
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
@@ -26,10 +29,12 @@ import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageTag
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.model.TagCount
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
@@ -57,6 +62,7 @@ class PageRepositoryImpl
         private val pageDao: PageDao,
         private val editQueueDao: EditQueueDao,
         private val attachmentDao: AttachmentDao,
+        private val pageViewDao: PageViewDao,
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
         private val accountGeneration: AccountGeneration,
@@ -102,6 +108,84 @@ class PageRepositoryImpl
                 .observeRecentAcrossCollectives(limit)
                 .distinctUntilChanged()
                 .map { rows -> rows.map { it.toDomain() } }
+
+        override suspend fun recordView(
+            pageId: Long,
+            shownVersion: Long?,
+            generation: Long,
+        ) {
+            val now = System.currentTimeMillis()
+            database.withTransaction {
+                // An insert, so the same guard as the refresh, checked
+                // against the account the page was opened under: a view must
+                // never land in another account's cache.
+                if (!accountGeneration.isCurrent(generation)) return@withTransaction
+                if (!pageDao.exists(pageId)) return@withTransaction
+                val seen = pageViewDao.get(pageId)?.seenTimestamp ?: 0L
+                pageViewDao.upsert(
+                    PageViewEntity(
+                        pageId = pageId,
+                        lastViewedAt = now,
+                        seenTimestamp = maxOf(seen, shownVersion ?: 0L),
+                    ),
+                )
+            }
+        }
+
+        // R-55, for each of the Home lists below: Room invalidates per table,
+        // so every body write re-runs these, and none of what they return
+        // depends on a body. Filter before mapping.
+        override fun observeRecentlyViewed(limit: Int): Flow<List<PageListItem>> =
+            pageDao
+                .observeRecentlyViewed(limit)
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeUpdatedSinceViewed(
+            userId: String,
+            limit: Int,
+        ): Flow<List<PageListItem>> =
+            pageDao
+                .observeUpdatedSinceViewed(userId, limit)
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeLastEditedBy(
+            userId: String,
+            limit: Int,
+        ): Flow<List<PageListItem>> =
+            pageDao
+                .observeLastEditedBy(userId, limit)
+                .distinctUntilChanged()
+                .map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeAttention(): Flow<PageAttention> =
+            combine(
+                pageDao.observeWithDrafts().distinctUntilChanged(),
+                pageDao.observeWithQueuedEdits().distinctUntilChanged(),
+            ) { conflicts, queued ->
+                PageAttention(
+                    conflicts = conflicts.map { it.toDomain() },
+                    queued = queued.map { it.toDomain() },
+                )
+            }
+
+        override fun observeTagCounts(): Flow<List<TagCount>> =
+            pageDao
+                .observeTagsCsv()
+                .map { csvs -> tagCounts(csvs) }
+                .distinctUntilChanged()
+
+        override fun observePagesWithTag(tagName: String): Flow<List<PageListItem>> =
+            pageDao
+                .observePagesWithTag(TAG_SEP_STRING, tagLikePattern(tagName))
+                .distinctUntilChanged()
+                .map { rows ->
+                    // As in `observePagesWithTagInCollective`.
+                    rows
+                        .filter { tagName in splitTags(it.tagsCsv) }
+                        .map { it.toDomain() }
+                }
 
         override fun observeSubpages(
             collectiveId: Long,
@@ -189,6 +273,7 @@ class PageRepositoryImpl
                         existingBody = existing?.bodyMd,
                         existingEtag = existing?.bodyEtag,
                         existingDraft = existing?.draftBodyMd,
+                        existingBodyTimestamp = existing?.bodyTimestamp,
                         existingTagsCsv = existing?.tagsCsv,
                         tagNamesById = tagNames,
                     )
@@ -288,6 +373,7 @@ class PageRepositoryImpl
                             existingBody = old.bodyMd,
                             existingEtag = old.bodyEtag,
                             existingDraft = old.draftBodyMd,
+                            existingBodyTimestamp = old.bodyTimestamp,
                             existingTagsCsv = old.tagsCsv,
                             // B-69: null is "we didn't resolve the tag list",
                             // which is right — `existingTagsCsv` above is what
@@ -306,6 +392,9 @@ class PageRepositoryImpl
                 // other page's body — so it goes.
                 editQueueDao.deleteForPage(moved.id)
                 editQueueDao.repointPage(old.id, moved.id)
+                // Same primary-key reasoning for the view history.
+                pageViewDao.deleteForPage(moved.id)
+                pageViewDao.repointPage(old.id, moved.id)
                 attachmentRepository.get().rekeyForPage(old.id, moved.id)
                 pageDao.deleteById(old.id)
             }
@@ -328,6 +417,7 @@ class PageRepositoryImpl
             if (pageIds.isEmpty()) return
             attachmentDao.deleteForPageIds(pageIds)
             editQueueDao.deleteForPageIds(pageIds)
+            pageViewDao.deleteForPageIds(pageIds)
         }
 
         override suspend fun getPage(pageId: Long): Page? = pageDao.getById(pageId)?.toDomain(editQueueDao.pendingBody(pageId))
@@ -342,7 +432,13 @@ class PageRepositoryImpl
             )
             return when (result) {
                 is ApiResult.Success -> {
-                    pageDao.updateBody(pageId, result.data.markdown, result.data.etag, System.currentTimeMillis())
+                    pageDao.updateBody(
+                        pageId,
+                        result.data.markdown,
+                        result.data.etag,
+                        result.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                        System.currentTimeMillis(),
+                    )
                     ApiResult.Success(result.data.markdown)
                 }
 
@@ -371,7 +467,7 @@ class PageRepositoryImpl
         override suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean> {
             val entity = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-            val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag)
+            val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag, entity.bodyTimestamp)
             if (plan !is BodyFetchPlan.Revalidate) {
                 return fetchBody(pageId).mapSuccess { true }
             }
@@ -401,6 +497,7 @@ class PageRepositoryImpl
                                 pageId,
                                 body.body.markdown,
                                 body.body.etag,
+                                body.body.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
                                 System.currentTimeMillis(),
                             )
                             ApiResult.Success(true)
@@ -449,7 +546,9 @@ class PageRepositoryImpl
             )
             return when (result) {
                 is ApiResult.Success -> {
-                    pageDao.updateBody(pageId, newBody, result.data, System.currentTimeMillis())
+                    // The user's own text, at an mtime the server doesn't
+                    // report: an unknown version. See `PageEntity.bodyTimestamp`.
+                    pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
                     pageDao.updateDraft(pageId, null)
                     editQueueDao.deleteForPage(pageId)
                     SaveOutcome.Saved
@@ -518,6 +617,7 @@ class PageRepositoryImpl
                                 pageId,
                                 fresh.markdown,
                                 fresh.etag,
+                                fresh.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
                                 System.currentTimeMillis(),
                             )
                         }
@@ -569,7 +669,9 @@ class PageRepositoryImpl
             )
             return when (result) {
                 is ApiResult.Success -> {
-                    pageDao.updateBody(pageId, newBody, result.data, System.currentTimeMillis())
+                    // The user's own text, at an mtime the server doesn't
+                    // report: an unknown version. See `PageEntity.bodyTimestamp`.
+                    pageDao.updateBody(pageId, newBody, result.data, null, System.currentTimeMillis())
                     pageDao.updateDraft(pageId, null)
                     editQueueDao.deleteForPage(pageId)
                     SaveOutcome.Saved
@@ -780,6 +882,7 @@ class PageRepositoryImpl
                         existingBody = null,
                         existingEtag = null,
                         existingDraft = null,
+                        existingBodyTimestamp = null,
                         // B-69: explicitly "resolved against no tags", not
                         // "lookup failed" — a page the server just created
                         // has none. The `refresh` below re-resolves anyway.
@@ -861,6 +964,7 @@ class PageRepositoryImpl
                             existingBody = null,
                             existingEtag = null,
                             existingDraft = null,
+                            existingBodyTimestamp = null,
                             // These rows are never cached — they exist to
                             // render the trash screen — so there is no
                             // existing `tagsCsv` to preserve. A failed tag
@@ -918,13 +1022,8 @@ class PageRepositoryImpl
             // `tagName = "%"` matching every tagged row and loading the
             // whole collective into the post-filter. The DAO query carries
             // `ESCAPE '\\'` to pair with this escaper.
-            val escapedTag = tagName
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
-            val likePattern = "%$TAG_SEP_STRING$escapedTag$TAG_SEP_STRING%"
             return pageDao
-                .observePagesWithTagInCollective(collectiveId, TAG_SEP_STRING, likePattern)
+                .observePagesWithTagInCollective(collectiveId, TAG_SEP_STRING, tagLikePattern(tagName))
                 // R-55: as in `observePageList` — a body write re-runs this
                 // query too, and nothing it returns depends on a body.
                 .distinctUntilChanged()
@@ -1050,6 +1149,7 @@ class PageRepositoryImpl
                     existingBody = null,
                     existingEtag = null,
                     existingDraft = null,
+                    existingBodyTimestamp = null,
                     // B-69: as in `createPage` — the copy carries no resolved
                     // tags yet, which is different from an unknown tag list.
                     // The `refresh` below picks up whatever the server copied.
@@ -1123,12 +1223,20 @@ internal sealed interface BodyFetchPlan {
  * populates on a fetch, so a body without one predates that or came from a
  * server that didn't send one. Fetch it whole and pick up an ETag for next
  * time.
+ *
+ * Likewise a body of unknown version ([bodyTimestamp] null): one from before
+ * that column existed, or the user's own save. A `304` carries no
+ * `Last-Modified`, so only a whole fetch can say which version it is — what
+ * Home's "Updated since you read it" compares against.
+ * [BODY_TIMESTAMP_UNAVAILABLE] is a known answer (the server sends none), so
+ * it revalidates as normal.
  */
 internal fun bodyFetchPlan(
     bodyMd: String?,
     bodyEtag: String?,
+    bodyTimestamp: Long?,
 ): BodyFetchPlan =
-    if (bodyMd != null && bodyEtag != null) {
+    if (bodyMd != null && bodyEtag != null && bodyTimestamp != null) {
         BodyFetchPlan.Revalidate(bodyEtag)
     } else {
         BodyFetchPlan.FetchWhole
@@ -1241,3 +1349,26 @@ internal fun appendedBody(
         base.endsWith("\n") -> base + "\n" + text
         else -> base + "\n\n" + text
     }
+
+/**
+ * B-53: the LIKE pattern for a tag in a `tagsCsv`, with `%`, `_` and `\\`
+ * escaped so a tag name can't act as a wildcard — `tagName = "%"` once
+ * matched every tagged row. The DAO queries carry `ESCAPE '\\'` to pair with
+ * this.
+ */
+internal fun tagLikePattern(tagName: String): String {
+    val escapedTag = tagName
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    return "%$TAG_SEP_STRING$escapedTag$TAG_SEP_STRING%"
+}
+
+/** Tags across [tagsCsvs], counted per page; most used first, then by name. */
+internal fun tagCounts(tagsCsvs: List<String>): List<TagCount> =
+    tagsCsvs
+        .flatMap { splitTags(it).distinct() }
+        .groupingBy { it }
+        .eachCount()
+        .map { (name, count) -> TagCount(name, count) }
+        .sortedWith(compareByDescending<TagCount> { it.pageCount }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })

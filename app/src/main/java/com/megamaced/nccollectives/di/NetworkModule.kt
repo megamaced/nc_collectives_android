@@ -9,6 +9,7 @@ import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.ServerStatusService
+import com.megamaced.nccollectives.data.api.UserApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -130,6 +131,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideServerStatusService(retrofit: Retrofit): ServerStatusService = retrofit.create(ServerStatusService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideUserApi(retrofit: Retrofit): UserApiService = retrofit.create(UserApiService::class.java)
 
     /**
      * Separate OkHttp / Retrofit pair for the GitHub Releases API used by

@@ -13,6 +13,7 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
 import io.mockk.coEvery
@@ -49,6 +50,7 @@ class CollectiveMembersTest {
             pageDao = mockk<PageDao>(),
             attachmentDao = mockk<AttachmentDao>(),
             editQueueDao = mockk<EditQueueDao>(),
+            pageViewDao = mockk<PageViewDao>(),
             database = mockk<NcCollectivesDatabase>(),
             // Real, not a mock: it has no dependencies and the member path
             // does no Room writes for it to guard.

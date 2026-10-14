@@ -87,6 +87,7 @@ class LocalDataWiper
             database.withTransaction {
                 database.attachmentDao().clear()
                 database.editQueueDao().clear()
+                database.pageViewDao().clear()
                 database.pageDao().clear()
                 database.collectiveDao().clear()
             }

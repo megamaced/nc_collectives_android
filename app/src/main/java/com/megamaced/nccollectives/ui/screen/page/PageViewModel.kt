@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
@@ -25,12 +26,15 @@ import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import com.megamaced.nccollectives.util.AttachmentRef
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -106,16 +110,38 @@ class PageViewModel
         private val attachmentRepository: AttachmentRepository,
         private val directEditingRepository: DirectEditingRepository,
         private val userPreferences: UserPreferences,
+        accountGeneration: AccountGeneration,
     ) : ViewModel() {
         private val pageId: Long = checkNotNull(
             savedStateHandle.get<Long>(Destination.PageView.ARG_PAGE_ID),
         )
+
+        /** The account this screen was opened under; see [recordViewsWhileShown]. */
+        private val generation = accountGeneration.current()
 
         val page: StateFlow<Page?> = pageRepository.observePage(pageId).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
             initialValue = null,
         )
+
+        /**
+         * Record each version of the page shown, for Home's "Jump back in"
+         * and "Updated since you read it". Suspends until cancelled.
+         *
+         * The screen runs this while it is resumed, not from `init`: a page
+         * reached again through a saved tab stack reuses this ViewModel, and
+         * that return is a view too. Each run records the version showing
+         * when it starts, then each new version as it replaces it — a cached
+         * body, say, then the refreshed one. The user's own queued text is no
+         * server version at all, so it updates when they last looked without
+         * marking the server's text as read.
+         */
+        suspend fun recordViewsWhileShown() {
+            page.shownVersions().collect { shownVersion ->
+                pageRepository.recordView(pageId, shownVersion, generation)
+            }
+        }
 
         private val _imageBaseUrl = MutableStateFlow<String?>(null)
         val imageBaseUrl: StateFlow<String?> = _imageBaseUrl.asStateFlow()
@@ -638,3 +664,15 @@ private data class SubpageParent(
     val pageId: Long,
     val subpageOrder: List<Long>,
 )
+
+/**
+ * For each body that reaches the screen, the server version it shows: the
+ * cached body's version, or null for the user's own queued text or a body
+ * of unknown version. Nothing until a body exists; a repeat of the same
+ * version is the same view, not a new one.
+ */
+internal fun Flow<Page?>.shownVersions(): Flow<Long?> =
+    filterNotNull()
+        .filter { it.bodyMd != null }
+        .map { shown -> if (shown.bodyFromQueue) null else shown.bodyTimestamp }
+        .distinctUntilChanged()
