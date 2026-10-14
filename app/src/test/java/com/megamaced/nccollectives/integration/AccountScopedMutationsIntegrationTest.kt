@@ -14,6 +14,7 @@ import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.CollectiveRepositoryImpl
 import com.megamaced.nccollectives.di.NetworkModule
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.sync.FullSync
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -284,6 +285,29 @@ class AccountScopedMutationsIntegrationTest {
         }
 
     @Test
+    fun aRefusedNotifyLevelDoesNotRollBackTheNextAccountsCollective() =
+        runTest {
+            env.seedCollective()
+            env.db.collectiveDao().updateNotify(IntegrationEnvironment.COLLECTIVE_ID, NotifyLevel.Mentions.wire)
+            dispatcher
+                .on("/userSettings/notify", failure(), method = "PUT")
+                .whileInFlight("/userSettings/notify") {
+                    switchAccount { env.db.collectiveDao().updateNotify(IntegrationEnvironment.COLLECTIVE_ID, NotifyLevel.Off.wire) }
+                }
+
+            val result = collectives.setNotifyLevel(IntegrationEnvironment.COLLECTIVE_ID, NotifyLevel.All)
+
+            assertTrue("was $result", result is ApiResult.HttpError)
+            assertEquals(
+                NotifyLevel.Off.wire,
+                env.db
+                    .collectiveDao()
+                    .getById(IntegrationEnvironment.COLLECTIVE_ID)
+                    ?.userNotify,
+            )
+        }
+
+    @Test
     fun anAttachmentListFetchedForOneAccountIsNotWrittenToTheNext() =
         runTest {
             env.seedPage(id = 1)
@@ -434,7 +458,14 @@ class AccountScopedMutationsIntegrationTest {
                 NetworkModule.provideRetrofit(AccountBoundCallFactory(env.client, env.accountGeneration), NetworkModule.provideJson()),
             )
             val sync =
-                FullSync(collectives, env.pageRepository, prefs, CurrentUser(userApi, prefs, env.accountGeneration), env.accountGeneration)
+                FullSync(
+                    collectives,
+                    env.pageRepository,
+                    prefs,
+                    CurrentUser(userApi, prefs, env.accountGeneration),
+                    env.alertRepository,
+                    env.accountGeneration,
+                )
 
             sync.run()
 

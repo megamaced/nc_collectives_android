@@ -49,6 +49,7 @@ class HomeFeedRulesTest {
             HomeFeed(recentlyUpdated = page),
             HomeFeed(yourEdits = page),
             HomeFeed(tags = listOf(TagCount("t", 1))),
+            HomeFeed(unseenAlerts = 1),
         ).forEach { assertFalse(it.toString(), it.isEmpty(recentFiltered = false)) }
     }
 

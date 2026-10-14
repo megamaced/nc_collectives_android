@@ -101,6 +101,37 @@ internal fun HomePageRow(
     }
 }
 
+/** The unseen alerts, as a row at the top of "Needs attention" that leads to the Alerts tab. */
+@Composable
+internal fun UnseenAlertsRow(
+    count: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick, role = Role.Button)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(text = "🔔", style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (count == 1) "1 new alert" else "$count new alerts",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = "Mentions and changes in your collectives",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 /** "All" plus one chip per collective; [selected] null is All. */
 @Composable
 internal fun CollectiveFilterChips(

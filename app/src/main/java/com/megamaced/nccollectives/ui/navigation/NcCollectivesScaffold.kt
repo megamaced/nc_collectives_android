@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,9 +28,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -141,8 +145,14 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
 private fun AuthenticatedHost(
     sharePayload: SharePayload?,
     startupRoute: suspend () -> StartupRoute,
+    alertBadge: AlertBadgeViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
+    val unseenAlerts by alertBadge.unseenCount.collectAsStateWithLifecycle()
+    LifecycleStartEffect(alertBadge) {
+        alertBadge.refreshIfStale()
+        onStopOrDispose { }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
     val currentRoute = destination?.route
@@ -237,6 +247,17 @@ private fun AuthenticatedHost(
                         )
                     },
                     label = { Text(tab.label) },
+                    badge = if (tab == TopLevelTab.Alerts && unseenAlerts > 0) {
+                        {
+                            Badge(
+                                modifier = Modifier.semantics {
+                                    contentDescription = "$unseenAlerts new"
+                                },
+                            ) { Text(badgeText(unseenAlerts)) }
+                        }
+                    } else {
+                        null
+                    },
                     navigationSuiteType = adaptiveType,
                 )
             }

@@ -42,6 +42,8 @@ data class HomeFeed(
     val recentlyUpdated: List<PageListItem> = emptyList(),
     val yourEdits: List<PageListItem> = emptyList(),
     val tags: List<TagCount> = emptyList(),
+    /** Alerts not yet seen in the Alerts tab, offered at the top of [attention]'s section. */
+    val unseenAlerts: Int = 0,
 ) {
     /**
      * Nothing in any section. The recent list is only ever narrowed by the
@@ -49,7 +51,8 @@ data class HomeFeed(
      * the chips stay up to widen it again.
      */
     fun isEmpty(recentFiltered: Boolean): Boolean =
-        attention.isEmpty &&
+        unseenAlerts == 0 &&
+            attention.isEmpty &&
             jumpBackIn.isEmpty() &&
             updatedSinceRead.isEmpty() &&
             (recentlyUpdated.isEmpty() && !recentFiltered) &&

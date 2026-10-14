@@ -20,6 +20,7 @@ import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import io.mockk.coEvery
@@ -62,7 +63,9 @@ class HomeScreenNavigationTest {
             every { id } returns MutableStateFlow(null)
             coEvery { refreshIfUnknown() } just runs
         }
-        val viewModel = HomeViewModel(SavedStateHandle(), collectiveRepository, pageRepository, currentUser, mockk(relaxed = true))
+        val alertRepository = mockk<AlertRepository> { every { observeUnseenCount() } returns flowOf(0) }
+        val viewModel =
+            HomeViewModel(SavedStateHandle(), collectiveRepository, pageRepository, currentUser, mockk(relaxed = true), alertRepository)
         lateinit var nav: NavHostController
         rule.setContent {
             nav = rememberNavController()
@@ -75,6 +78,7 @@ class HomeScreenNavigationTest {
                         onOpenSettings = {},
                         onSeeAll = { _, _ -> },
                         onBrowseTag = {},
+                        onOpenAlerts = {},
                         viewModel = viewModel,
                     )
                 }

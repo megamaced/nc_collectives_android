@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 12
+private const val LATEST_VERSION = 13
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -410,6 +410,39 @@ class MigrationTest {
             assertEquals("bob", cursor.stringAt("lastUserId"))
             assertEquals(1_700_000_000L, cursor.longAt("bodyTimestamp"))
             assertEquals(1_700_000_000L, cursor.longAt("seenTimestamp"))
+        }
+        db.close()
+    }
+
+    @Test
+    fun migrate12To13_addsNotifyLevel_keepsCollectives_andAddsAlerts() {
+        helper.createDatabase(TEST_DB, 12).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide", level = 9, userShowMembers = true, userPageOrder = 2)
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 13, true, MIGRATION_12_13)
+
+        assertTrue(db.columnNames("collectives").contains("userNotify"))
+        db.query("SELECT * FROM `collectives` WHERE `id` = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Field Guide", cursor.stringAt("name"))
+            assertEquals(2L, cursor.longAt("userPageOrder"))
+            // Not reported until the next refresh, not "off".
+            assertTrue(cursor.isNullAt("userNotify"))
+        }
+
+        assertEquals(setOf("id"), db.primaryKeyColumns("alerts"))
+        assertTrue(db.indexNames("alerts").contains("index_alerts_timestamp"))
+        db.execSQL(
+            "INSERT INTO `alerts` (`id`, `kind`, `pageId`, `collectiveId`, `actorName`, `pageTitle`, `collectiveName`, " +
+                "`subject`, `timestamp`, `verified`, `seen`) VALUES (5, 'Mention', 11, 7, 'Bob', 'Page', 'Field Guide', " +
+                "'Bob mentioned you', 1700000000, 1, 0)",
+        )
+        db.execSQL("UPDATE `collectives` SET `userNotify` = 2 WHERE `id` = 7")
+        db.query("SELECT * FROM `alerts` JOIN `collectives` ON `collectives`.`id` = `alerts`.`collectiveId`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Mention", cursor.stringAt("kind"))
+            assertEquals(2L, cursor.longAt("userNotify"))
         }
         db.close()
     }

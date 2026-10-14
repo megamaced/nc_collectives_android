@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.DirectEditingService
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import com.megamaced.nccollectives.data.api.HostInterceptor
+import com.megamaced.nccollectives.data.api.NotificationsApiService
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.ServerStatusService
 import com.megamaced.nccollectives.data.api.UserApiService
@@ -141,6 +142,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideUserApi(retrofit: Retrofit): UserApiService = retrofit.create(UserApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideNotificationsApi(retrofit: Retrofit): NotificationsApiService = retrofit.create(NotificationsApiService::class.java)
 
     /**
      * Separate OkHttp / Retrofit pair for the GitHub Releases API used by

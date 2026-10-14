@@ -29,6 +29,7 @@ class HomeContentTest {
     private val opened = mutableListOf<Long>()
     private val seeAll = mutableListOf<HomeSection>()
     private val filters = mutableListOf<Long?>()
+    private var alertsOpened = 0
 
     private fun show(
         feed: HomeFeed?,
@@ -46,6 +47,7 @@ class HomeContentTest {
                 onSeeAll = { seeAll += it },
                 onRecentFilter = { filters += it },
                 onBrowseTag = {},
+                onOpenAlerts = { alertsOpened++ },
             )
         }
     }
@@ -79,6 +81,24 @@ class HomeContentTest {
         listOf(HomeSection.Attention, HomeSection.JumpBackIn, HomeSection.UpdatedSinceRead, HomeSection.YourEdits)
             .forEach { rule.onNodeWithText(it.title).assertDoesNotExist() }
         rule.onNodeWithText("Nothing here yet").assertDoesNotExist()
+    }
+
+    @Test
+    fun unseenAlertsAreOfferedFirstInNeedsAttention_andLeadToTheAlertsTab() {
+        show(feed = HomeFeed(unseenAlerts = 3))
+
+        rule.onNodeWithText(HomeSection.Attention.title).assertExists()
+        rule.onNodeWithText("Nothing here yet").assertDoesNotExist()
+        rule.onNodeWithText("3 new alerts").performClick()
+        assertEquals(1, alertsOpened)
+    }
+
+    @Test
+    fun withNoUnseenAlertsThereIsNoAlertsRow() {
+        show(feed = HomeFeed(updatedSinceRead = pages(1)))
+
+        rule.onNodeWithText("new alert", substring = true).assertDoesNotExist()
+        rule.onNodeWithText(HomeSection.Attention.title).assertDoesNotExist()
     }
 
     @Test

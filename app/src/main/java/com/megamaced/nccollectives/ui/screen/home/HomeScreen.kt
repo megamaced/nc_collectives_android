@@ -60,6 +60,7 @@ internal fun HomeScreen(
     onOpenSettings: () -> Unit,
     onSeeAll: (HomeSection, collectiveFilter: Long?) -> Unit,
     onBrowseTag: (String) -> Unit,
+    onOpenAlerts: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val feed by viewModel.feed.collectAsStateWithLifecycle()
@@ -150,6 +151,7 @@ internal fun HomeScreen(
                 onSeeAll = { section -> onSeeAll(section, recentFilter.takeIf { section == HomeSection.RecentlyUpdated }) },
                 onRecentFilter = viewModel::setRecentFilter,
                 onBrowseTag = onBrowseTag,
+                onOpenAlerts = onOpenAlerts,
             )
         }
     }
@@ -190,6 +192,7 @@ internal fun HomeContent(
     onSeeAll: (HomeSection) -> Unit,
     onRecentFilter: (Long?) -> Unit,
     onBrowseTag: (String) -> Unit,
+    onOpenAlerts: () -> Unit,
 ) {
     if (feed == null) {
         Box(Modifier.fillMaxSize())
@@ -217,12 +220,15 @@ internal fun HomeContent(
         contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
     ) {
         val attention = feed.attention.rows()
-        if (attention.isNotEmpty()) {
+        if (attention.isNotEmpty() || feed.unseenAlerts > 0) {
             item(key = "header-attention") {
                 HomeSectionHeader(
                     title = HomeSection.Attention.title,
                     onSeeAll = seeAll(HomeSection.Attention, attention.size, HOME_PREVIEW_ROWS),
                 )
+            }
+            if (feed.unseenAlerts > 0) {
+                item(key = "attention-alerts") { UnseenAlertsRow(feed.unseenAlerts, onClick = onOpenAlerts) }
             }
             items(attention.take(HOME_PREVIEW_ROWS), key = { "attention-${it.page.id}" }) { row ->
                 HomePageRow(row.page, labels[row.page.collectiveId], row.supporting, onClick = { onOpenPage(row.page.id) })

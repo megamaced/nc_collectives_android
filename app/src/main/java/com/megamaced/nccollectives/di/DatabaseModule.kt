@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.megamaced.nccollectives.data.db.ALL_MIGRATIONS
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
+import com.megamaced.nccollectives.data.db.dao.AlertDao
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
@@ -40,4 +41,6 @@ object DatabaseModule {
     @Provides fun provideAttachmentDao(db: NcCollectivesDatabase): AttachmentDao = db.attachmentDao()
 
     @Provides fun providePageViewDao(db: NcCollectivesDatabase): PageViewDao = db.pageViewDao()
+
+    @Provides fun provideAlertDao(db: NcCollectivesDatabase): AlertDao = db.alertDao()
 }

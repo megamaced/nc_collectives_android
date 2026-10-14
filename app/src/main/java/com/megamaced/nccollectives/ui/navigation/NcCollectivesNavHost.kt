@@ -60,6 +60,9 @@ internal fun NcCollectivesNavHost(
                             Destination.TagBrowse.route(TopLevelTab.Home, Destination.TagBrowse.ALL_COLLECTIVES, tagName),
                         )
                     },
+                    onOpenAlerts = {
+                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) navController.navigateToTab(TopLevelTab.Alerts)
+                    },
                 )
             }
             composable(
@@ -132,9 +135,14 @@ internal fun NcCollectivesNavHost(
             }
         }
         tabGraph(TopLevelTab.Alerts, navController, innerPadding) {
-            composable(TopLevelTab.Alerts.rootRoute) {
+            composable(TopLevelTab.Alerts.rootRoute) { entry ->
+                val tab = TopLevelTab.Alerts
                 ReturnHomeOnBack(navController)
-                AlertsScreen(innerPadding = innerPadding)
+                AlertsScreen(
+                    innerPadding = innerPadding,
+                    onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(tab, pageId)) },
+                    onOpenCollective = { id -> navController.navigateFrom(entry, Destination.PageTree.route(tab, id)) },
+                )
             }
         }
         composable(Destination.ShareCapture.ROUTE) {

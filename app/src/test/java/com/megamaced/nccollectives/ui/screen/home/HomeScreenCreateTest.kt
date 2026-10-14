@@ -18,6 +18,7 @@ import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import io.mockk.coEvery
@@ -46,6 +47,8 @@ class HomeScreenCreateTest {
     val rule = createComposeRule()
 
     private val answer = CompletableDeferred<ApiResult<PageCreation>>()
+    private val unseenAlerts = MutableStateFlow(0)
+    private val alertRepository = mockk<AlertRepository> { every { observeUnseenCount() } returns unseenAlerts }
     private val pageRepository = mockk<PageRepository>(relaxed = true) {
         every { observeAttention() } returns flowOf(PageAttention(emptyList(), emptyList()))
         every { observeRecentlyViewed(any()) } returns flowOf(emptyList())
@@ -68,7 +71,8 @@ class HomeScreenCreateTest {
 
     @Before
     fun setUp() {
-        viewModel = HomeViewModel(SavedStateHandle(), collectiveRepository, pageRepository, currentUser, mockk(relaxed = true))
+        viewModel =
+            HomeViewModel(SavedStateHandle(), collectiveRepository, pageRepository, currentUser, mockk(relaxed = true), alertRepository)
         rule.setContent {
             if (showHome) {
                 HomeScreen(
@@ -77,6 +81,7 @@ class HomeScreenCreateTest {
                     onOpenSettings = {},
                     onSeeAll = { _, _ -> },
                     onBrowseTag = {},
+                    onOpenAlerts = {},
                     viewModel = viewModel,
                 )
             }

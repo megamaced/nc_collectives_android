@@ -22,6 +22,7 @@ import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
@@ -50,14 +51,14 @@ class CollectiveRepositoryImpl
 
         override suspend fun cachedCollectives(): List<Collective> = dao.list().map { it.toDomain() }
 
-        // Under [pageOrderLock]: see there for the race it closes. Issue #20:
-        // the generation is captured before the request goes out and checked
-        // inside the transaction that writes its response, so a wipe landing
-        // in between abandons the write instead of resurrecting the outgoing
-        // account's collectives under the incoming one.
+        // Under [userSettingsLock]: see there for the race it closes. Issue
+        // #20: the generation is captured before the request goes out and
+        // checked inside the transaction that writes its response, so a wipe
+        // landing in between abandons the write instead of resurrecting the
+        // outgoing account's collectives under the incoming one.
         override suspend fun refresh(): ApiResult<Unit> =
             accountGeneration.bound { generation ->
-                pageOrderLock.withLock {
+                userSettingsLock.withLock {
                     refreshLocked(generation)
                 }
             }
@@ -140,9 +141,11 @@ class CollectiveRepositoryImpl
         }
 
         /**
-         * Held by [setPageOrder] and by [refresh], each across its request
-         * *and* its cache write, so neither can land a stale `userPageOrder`
-         * over the other's.
+         * Held by the per-user setting setters ([setPageOrder],
+         * [setNotifyLevel]) and by [refresh], each across its request *and*
+         * its cache write, so none can land a stale `userPageOrder` or
+         * `userNotify` over another's. Page order is the worked example
+         * below; the notification level is the same in every respect.
          *
          * Between two setters: each takes the cached order as its rollback
          * point and restores it on failure, which is only right if no other
@@ -164,14 +167,14 @@ class CollectiveRepositoryImpl
          * emoji setters update their own columns only, and a create inserts
          * a collective no pick can be aimed at yet.
          */
-        private val pageOrderLock = Mutex()
+        private val userSettingsLock = Mutex()
 
         override suspend fun setPageOrder(
             collectiveId: Long,
             order: PageOrder,
         ): ApiResult<Unit> =
             accountGeneration.bound { generation ->
-                pageOrderLock.withLock {
+                userSettingsLock.withLock {
                     val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
                         IllegalStateException("Collective $collectiveId not cached"),
                     )
@@ -181,6 +184,26 @@ class CollectiveRepositoryImpl
                     val result = apiCall { api.setPageOrder(collectiveId, order.wire) }
                     if (result !is ApiResult.Success) {
                         writeUnder(generation) { dao.updatePageOrder(collectiveId, current.userPageOrder) }
+                    }
+                    result
+                }
+            }
+
+        override suspend fun setNotifyLevel(
+            collectiveId: Long,
+            level: NotifyLevel,
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock {
+                    val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
+                        IllegalStateException("Collective $collectiveId not cached"),
+                    )
+                    if (current.userNotify == level.wire) return@withLock ApiResult.Success(Unit)
+
+                    if (!writeUnder(generation) { dao.updateNotify(collectiveId, level.wire) }) return@withLock accountChanged()
+                    val result = apiCall { api.setNotify(collectiveId, level.wire) }
+                    if (result !is ApiResult.Success) {
+                        writeUnder(generation) { dao.updateNotify(collectiveId, current.userNotify) }
                     }
                     result
                 }

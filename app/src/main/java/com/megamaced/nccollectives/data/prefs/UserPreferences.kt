@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -203,6 +204,23 @@ class UserPreferences
         ) {
             context.dataStore.edit { prefs ->
                 if (stillCurrent()) prefs[KEY_CURRENT_USER_ID] = userId
+            }
+        }
+
+        /**
+         * Whether the signed-in account's server provides notifications:
+         * null until it has been asked, false when it answered that it
+         * doesn't. Account-scoped, like [currentUserId].
+         */
+        val notificationsSupported: Flow<Boolean?> = context.dataStore.data.map { it[KEY_NOTIFICATIONS_SUPPORTED] }
+
+        /** Store [supported] only if [stillCurrent] holds inside the write; see [setCurrentUserId]. */
+        suspend fun setNotificationsSupported(
+            supported: Boolean,
+            stillCurrent: () -> Boolean,
+        ) {
+            context.dataStore.edit { prefs ->
+                if (stillCurrent()) prefs[KEY_NOTIFICATIONS_SUPPORTED] = supported
             }
         }
 
@@ -409,6 +427,7 @@ class UserPreferences
             val KEY_START_SCREEN = stringPreferencesKey("start_screen")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
             val KEY_CURRENT_USER_ID = stringPreferencesKey("current_user_id")
+            val KEY_NOTIFICATIONS_SUPPORTED = booleanPreferencesKey("notifications_supported")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
             val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")

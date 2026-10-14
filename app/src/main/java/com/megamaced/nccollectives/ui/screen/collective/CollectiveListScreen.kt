@@ -56,6 +56,7 @@ import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
+import com.megamaced.nccollectives.ui.screen.alerts.NotifyLevelChooser
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +75,9 @@ internal fun CollectiveListScreen(
     var showCreateSheet by remember { mutableStateOf(false) }
     var emojiTarget by remember { mutableStateOf<Collective?>(null) }
     var pendingTrash by remember { mutableStateOf<Collective?>(null) }
+    // An id, not the row: the dialog follows the live row, so a level just
+    // chosen shows as chosen.
+    var notifyTarget by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     // The FAB keeps its label at the top of the list and shrinks to its icon
     // once the user scrolls into it.
@@ -172,6 +176,7 @@ internal fun CollectiveListScreen(
                             onClick = { onCollectiveClick(collective.id) },
                             onSetEmoji = { emojiTarget = collective },
                             onTrash = { pendingTrash = collective },
+                            onNotifications = { notifyTarget = collective.id }.takeIf { collective.notifyLevel != null },
                         )
                     }
                 }
@@ -194,6 +199,21 @@ internal fun CollectiveListScreen(
                 emojiTarget = null
             },
             onDismiss = { emojiTarget = null },
+        )
+    }
+
+    collectives.firstOrNull { it.id == notifyTarget }?.let { target ->
+        AlertDialog(
+            onDismissRequest = { notifyTarget = null },
+            title = { Text("Notifications") },
+            text = {
+                NotifyLevelChooser(
+                    title = target.label,
+                    level = target.notifyLevel,
+                    onSelect = { viewModel.setNotifyLevel(target.id, it) },
+                )
+            },
+            confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text("Done") } },
         )
     }
 
@@ -235,6 +255,7 @@ private fun CollectiveRow(
     onClick: () -> Unit,
     onSetEmoji: () -> Unit,
     onTrash: () -> Unit,
+    onNotifications: (() -> Unit)?,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -274,6 +295,15 @@ private fun CollectiveRow(
                         onSetEmoji()
                     },
                 )
+                if (onNotifications != null) {
+                    DropdownMenuItem(
+                        text = { Text("Notifications…") },
+                        onClick = {
+                            menuExpanded = false
+                            onNotifications()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Move to trash") },
                     onClick = {

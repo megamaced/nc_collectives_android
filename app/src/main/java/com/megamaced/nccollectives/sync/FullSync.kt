@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import kotlinx.coroutines.async
@@ -59,6 +60,7 @@ class FullSync
         private val pageRepository: PageRepository,
         private val userPreferences: UserPreferences,
         private val currentUser: CurrentUser,
+        private val alertRepository: AlertRepository,
         private val accountGeneration: AccountGeneration,
     ) {
         // One account for the whole run: every request in it is bound to the
@@ -68,9 +70,14 @@ class FullSync
 
         private suspend fun runBound(generation: Long): SyncOutcome {
             val outcome = pull()
-            // Once per account, so Home can tell the user's own edits from
-            // everyone else's. Best effort: it never fails the sync.
-            if (outcome == SyncOutcome.Success) currentUser.refreshIfUnknown()
+            if (outcome == SyncOutcome.Success) {
+                // Once per account, so Home can tell the user's own edits
+                // from everyone else's. Best effort: it never fails the sync.
+                currentUser.refreshIfUnknown()
+                // Every sync, so the Alerts badge keeps up without the app
+                // posting notifications of its own. Also best effort.
+                alertRepository.refresh()
+            }
             val now = System.currentTimeMillis()
             val stillCurrent = { accountGeneration.isCurrent(generation) }
             when (outcome) {

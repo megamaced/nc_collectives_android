@@ -9,6 +9,7 @@ import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.sortedByTitle
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.FullSync
@@ -66,6 +67,7 @@ class HomeViewModel
         private val pageRepository: PageRepository,
         private val currentUser: CurrentUser,
         private val fullSync: FullSync,
+        alertRepository: AlertRepository,
     ) : ViewModel() {
         private val liveCollectives = collectiveRepository.observeCollectives()
 
@@ -109,11 +111,12 @@ class HomeViewModel
                     yourEdits = edits,
                     tags = tags,
                 )
-            }.stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-                initialValue = null,
-            )
+            }.combine(alertRepository.observeUnseenCount()) { feed, unseen -> feed.copy(unseenAlerts = unseen) }
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                    initialValue = null,
+                )
 
         /** The collective a new page is going into, while the New page dialog is up. */
         private val _newPageCollectiveId = MutableStateFlow<Long?>(null)

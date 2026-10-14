@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.prefs.CollectiveSort
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Collated
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.collated
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -206,6 +207,15 @@ class CollectiveListViewModel
         ) {
             viewModelScope.launch {
                 postMessage(repository.setCollectiveEmoji(collectiveId, emoji).userMessage())
+            }
+        }
+
+        fun setNotifyLevel(
+            collectiveId: Long,
+            level: NotifyLevel,
+        ) {
+            viewModelScope.launch {
+                postMessage(repository.setNotifyLevel(collectiveId, level).userMessage())
             }
         }
 

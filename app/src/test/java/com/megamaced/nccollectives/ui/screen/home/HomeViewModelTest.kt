@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageCreation
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.FullSync
@@ -53,6 +54,8 @@ class HomeViewModelTest {
     private val collectiveRepository = mockk<CollectiveRepository> {
         every { observeCollectives() } returns collectives
     }
+    private val unseenAlerts = MutableStateFlow(0)
+    private val alertRepository = mockk<AlertRepository> { every { observeUnseenCount() } returns unseenAlerts }
     private val pageRepository = mockk<PageRepository>(relaxed = true) {
         every { observeAttention() } returns flowOf(PageAttention(emptyList(), emptyList()))
         every { observeRecentlyViewed(any()) } returns flowOf(emptyList())
@@ -87,7 +90,14 @@ class HomeViewModelTest {
     }
 
     private fun viewModel(saved: Map<String, Any?> = emptyMap()) =
-        HomeViewModel(SavedStateHandle(saved), collectiveRepository, pageRepository, currentUser, mockk<FullSync>(relaxed = true))
+        HomeViewModel(
+            SavedStateHandle(saved),
+            collectiveRepository,
+            pageRepository,
+            currentUser,
+            mockk<FullSync>(relaxed = true),
+            alertRepository,
+        )
 
     /** Keep the feed's `WhileSubscribed` upstream running for the test. */
     private fun TestScope.subscribe(viewModel: HomeViewModel) {
@@ -110,6 +120,17 @@ class HomeViewModelTest {
             attention.emit(PageAttention(emptyList(), emptyList()))
             advanceUntilIdle()
             assertNotNull(vm.feed.value)
+        }
+
+    @Test
+    fun theFeedCarriesTheUnseenAlerts() =
+        runTest(dispatcher) {
+            val vm = viewModel()
+            subscribe(vm)
+            unseenAlerts.value = 2
+            advanceUntilIdle()
+
+            assertEquals(2, vm.feed.value?.unseenAlerts)
         }
 
     @Test
@@ -194,7 +215,7 @@ class HomeViewModelTest {
     fun aSavedFilterOnAGoneCollectiveFallsBackToAll_andIsForgotten() =
         runTest(dispatcher) {
             val saved = SavedStateHandle(mapOf("recentFilter" to 99L))
-            val vm = HomeViewModel(saved, collectiveRepository, pageRepository, currentUser, mockk(relaxed = true))
+            val vm = HomeViewModel(saved, collectiveRepository, pageRepository, currentUser, mockk(relaxed = true), alertRepository)
             subscribe(vm)
             advanceUntilIdle()
 

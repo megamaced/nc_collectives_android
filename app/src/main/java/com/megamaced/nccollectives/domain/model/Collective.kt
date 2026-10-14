@@ -35,6 +35,8 @@ data class Collective(
     val userShowMembers: Boolean,
     /** How this user orders this collective's pages, shared with the web app. */
     val pageOrder: PageOrder,
+    /** Null when the server doesn't report it, and the app then offers no control for it. */
+    val notifyLevel: NotifyLevel? = null,
     val isPageShare: Boolean,
     val trashed: Boolean,
     val favoritePageIds: Set<Long>,

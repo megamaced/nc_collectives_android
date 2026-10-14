@@ -59,6 +59,12 @@ data class CollectiveDto(
      * what the web app shows too.
      */
     val userPageOrder: Int = 0,
+    /**
+     * How much this collective notifies the user: 0 off, 1 mentions, 2 all
+     * changes (`NotifyLevel`). Null on a server without the setting, where
+     * the app offers no control for it.
+     */
+    val userNotify: Int? = null,
 )
 
 @Serializable
