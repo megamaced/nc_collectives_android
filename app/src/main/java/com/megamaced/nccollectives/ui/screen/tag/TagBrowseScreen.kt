@@ -99,7 +99,7 @@ internal fun TagBrowseScreen(
                         TagBrowseRowItem(
                             row = row,
                             onOpen = { onOpenPage(row.page.id) },
-                            onToggleFavorite = { viewModel.toggleFavorite(row.page.id, row.isFavorite) },
+                            onToggleFavorite = { viewModel.toggleFavorite(row) },
                         )
                     }
                 }
@@ -131,9 +131,15 @@ private fun TagBrowseRowItem(
                 text = row.page.title,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            if (row.page.lastUserDisplayName.isNotEmpty()) {
+            val subtitle = listOfNotNull(
+                row.collectiveLabel,
+                row.page.lastUserDisplayName
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { "Edited by $it" },
+            ).joinToString(" · ")
+            if (subtitle.isNotEmpty()) {
                 Text(
-                    text = "Edited by ${row.page.lastUserDisplayName}",
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

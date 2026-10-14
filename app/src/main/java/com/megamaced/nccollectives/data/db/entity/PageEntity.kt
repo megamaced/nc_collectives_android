@@ -41,6 +41,8 @@ data class PageEntity(
     val filePath: String,
     val collectivePath: String,
     val linkedPageIdsCsv: String,
+    /** Server user id of the page's last editor; empty if the server didn't say. */
+    val lastUserId: String,
     val lastUserDisplayName: String,
     /**
      * Cached markdown body once first loaded over WebDAV. Null until viewed.
@@ -54,6 +56,18 @@ data class PageEntity(
      */
     val bodyEtag: String?,
     /**
+     * Server modification time of the version in [bodyMd], in seconds — the
+     * same file mtime the page list reports as [serverTimestamp], read from
+     * the WebDAV `Last-Modified` of the fetch that brought the body in.
+     *
+     * Null when the cached body isn't a known server version: never fetched
+     * since this column was added, or the user's own save, whose new mtime
+     * the server doesn't report. Either way the next open fetches it whole.
+     * [BODY_TIMESTAMP_UNAVAILABLE] when the server sent no `Last-Modified`,
+     * so a server that never does isn't re-fetched in full on every open.
+     */
+    val bodyTimestamp: Long?,
+    /**
      * The user's pending markdown body that lost an `If-Match` race against
      * the server. Set when a save returns 412 (and the server version wins);
      * surfaced via `ConflictBanner` on the next page open so the user can
@@ -62,3 +76,6 @@ data class PageEntity(
     val draftBodyMd: String?,
     val lastSyncedAt: Long,
 )
+
+/** [PageEntity.bodyTimestamp] for a body fetched without a `Last-Modified`. */
+const val BODY_TIMESTAMP_UNAVAILABLE = 0L

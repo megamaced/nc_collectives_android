@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -67,6 +68,17 @@ enum class TextScale(
  *  - `AlwaysCollaborative` → `PreferCollaborative`.
  */
 enum class EditorPreference { PreferPlain, PreferCollaborative }
+
+/**
+ * Tab the app opens on when no startup collective is set.
+ *
+ * A device setting rather than an account one, so it survives an account
+ * switch; the startup collective, which names one account's collective, does
+ * not. A missing or unknown stored value reads as [Home]. That includes
+ * installs from before 3.0, where the only choice besides a collective was
+ * the collective list.
+ */
+enum class StartScreen { Home, CollectiveList }
 
 /**
  * Period for the periodic metadata sync. `Off` cancels the WorkManager
@@ -135,11 +147,13 @@ data class UserPrefs(
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
     val collectiveSort: CollectiveSort = CollectiveSort.NameAscending,
+    /** Tab to open on launch when [defaultCollectiveId] is null. */
+    val startScreen: StartScreen = StartScreen.Home,
     /**
-     * Collective to open straight into on launch, or null to land on the
-     * collective list (the default). Resolved once per app launch by
-     * `AuthGateViewModel.resolveStartupCollective`, which drops a stale id
-     * if the collective is gone.
+     * Collective to open straight into on launch, or null to land on
+     * [startScreen]. Resolved once per app launch by
+     * `AuthGateViewModel.resolveStartupRoute`, which drops a stale id if the
+     * collective is gone.
      */
     val defaultCollectiveId: Long? = null,
 )
@@ -173,6 +187,43 @@ class UserPreferences
 
         val syncStatus: Flow<SyncStatus> = context.dataStore.data.map { it.toSyncStatus() }
 
+        /**
+         * The signed-in account's server user id, once `CurrentUser` has
+         * asked. Account-scoped: an account switch clears it.
+         */
+        val currentUserId: Flow<String?> = context.dataStore.data.map { it[KEY_CURRENT_USER_ID] }
+
+        /**
+         * Store [userId] only if [stillCurrent] holds *inside* the write.
+         * DataStore serialises edits, and `clearAccountScoped` is one, so the
+         * check can't pass for an account a switch has already cleared.
+         */
+        suspend fun setCurrentUserId(
+            userId: String,
+            stillCurrent: () -> Boolean,
+        ) {
+            context.dataStore.edit { prefs ->
+                if (stillCurrent()) prefs[KEY_CURRENT_USER_ID] = userId
+            }
+        }
+
+        /**
+         * Whether the signed-in account's server provides notifications:
+         * null until it has been asked, false when it answered that it
+         * doesn't. Account-scoped, like [currentUserId].
+         */
+        val notificationsSupported: Flow<Boolean?> = context.dataStore.data.map { it[KEY_NOTIFICATIONS_SUPPORTED] }
+
+        /** Store [supported] only if [stillCurrent] holds inside the write; see [setCurrentUserId]. */
+        suspend fun setNotificationsSupported(
+            supported: Boolean,
+            stillCurrent: () -> Boolean,
+        ) {
+            context.dataStore.edit { prefs ->
+                if (stillCurrent()) prefs[KEY_NOTIFICATIONS_SUPPORTED] = supported
+            }
+        }
+
         suspend fun setThemeMode(mode: ThemeMode) {
             context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
         }
@@ -191,6 +242,17 @@ class UserPreferences
 
         suspend fun setCollectiveSort(sort: CollectiveSort) {
             context.dataStore.edit { it[KEY_COLLECTIVE_SORT] = sort.name }
+        }
+
+        /**
+         * Open on [screen] at launch, with no startup collective. One edit, so
+         * the two keys can't be observed half-changed.
+         */
+        suspend fun setStartScreen(screen: StartScreen) {
+            context.dataStore.edit { prefs ->
+                prefs[KEY_START_SCREEN] = screen.name
+                prefs.remove(KEY_DEFAULT_COLLECTIVE_ID)
+            }
         }
 
         /**
@@ -226,22 +288,29 @@ class UserPreferences
         /**
          * Stamp a clean sync. Clears any recorded failure: the UI should say
          * "synced 2 minutes ago", not keep showing an error the next sync
-         * already recovered from.
+         * already recovered from. Only if [stillCurrent] holds inside the
+         * write, as in [setCurrentUserId]: a sync is the account's.
          */
-        suspend fun recordSyncSuccess(epochMillis: Long) {
+        suspend fun recordSyncSuccess(
+            epochMillis: Long,
+            stillCurrent: () -> Boolean,
+        ) {
             context.dataStore.edit { prefs ->
+                if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_SUCCESS_AT] = epochMillis
                 prefs.remove(KEY_SYNC_LAST_FAILURE_AT)
                 prefs.remove(KEY_SYNC_LAST_FAILURE_MESSAGE)
             }
         }
 
-        /** Stamp a failed sync, leaving the last-success time intact. */
+        /** Stamp a failed sync, leaving the last-success time intact; guarded as [recordSyncSuccess]. */
         suspend fun recordSyncFailure(
             epochMillis: Long,
             message: String,
+            stillCurrent: () -> Boolean,
         ) {
             context.dataStore.edit { prefs ->
+                if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_FAILURE_AT] = epochMillis
                 prefs[KEY_SYNC_LAST_FAILURE_MESSAGE] = message
             }
@@ -280,6 +349,7 @@ class UserPreferences
                 val syncCadence = prefs[KEY_SYNC_CADENCE]
                 val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
                 val collectiveSort = prefs[KEY_COLLECTIVE_SORT]
+                val startScreen = prefs[KEY_START_SCREEN]
 
                 prefs.clear()
 
@@ -288,6 +358,7 @@ class UserPreferences
                 syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
                 editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
                 collectiveSort?.let { prefs[KEY_COLLECTIVE_SORT] = it }
+                startScreen?.let { prefs[KEY_START_SCREEN] = it }
             }
         }
 
@@ -323,6 +394,8 @@ class UserPreferences
                 }
                 ?: EditorPreference.PreferPlain
             val collectiveSort = CollectiveSort.fromStored(this[KEY_COLLECTIVE_SORT])
+            val startScreen = this[KEY_START_SCREEN]?.let { runCatching { StartScreen.valueOf(it) }.getOrNull() }
+                ?: StartScreen.Home
             return UserPrefs(
                 themeMode = mode,
                 textScale = textScale,
@@ -330,6 +403,7 @@ class UserPreferences
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
                 collectiveSort = collectiveSort,
+                startScreen = startScreen,
                 defaultCollectiveId = this[KEY_DEFAULT_COLLECTIVE_ID],
             )
         }
@@ -350,7 +424,10 @@ class UserPreferences
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
             val KEY_COLLECTIVE_SORT = stringPreferencesKey("collective_sort")
+            val KEY_START_SCREEN = stringPreferencesKey("start_screen")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
+            val KEY_CURRENT_USER_ID = stringPreferencesKey("current_user_id")
+            val KEY_NOTIFICATIONS_SUPPORTED = booleanPreferencesKey("notifications_supported")
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
             val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")

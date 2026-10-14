@@ -32,13 +32,59 @@ class ParseSemVerTest {
     }
 
     @Test
-    fun `a prerelease suffix is dropped`() {
-        assertEquals(SemVer(2, 10, 0), parseSemVer("2.10.0-rc1"))
+    fun `a pre-release suffix is kept as dot-separated identifiers`() {
+        assertEquals(SemVer(2, 10, 0, listOf("rc1")), parseSemVer("2.10.0-rc1"))
+        assertEquals(SemVer(3, 0, 0, listOf("beta", "2")), parseSemVer("v3.0.0-beta.2"))
+    }
+
+    @Test
+    fun `hyphens inside a pre-release identifier are allowed`() {
+        assertEquals(SemVer(3, 0, 0, listOf("beta-x", "1")), parseSemVer("3.0.0-beta-x.1"))
     }
 
     @Test
     fun `build metadata is dropped`() {
         assertEquals(SemVer(2, 10, 0), parseSemVer("2.10.0+build.7"))
+        assertEquals(SemVer(2, 10, 0), parseSemVer("2.10.0+build-7"))
+        assertEquals(SemVer(3, 0, 0, listOf("beta", "1")), parseSemVer("3.0.0-beta.1+debug"))
+    }
+
+    @Test
+    fun `an empty pre-release or identifier is rejected`() {
+        assertNull(parseSemVer("3.0.0-"))
+        assertNull(parseSemVer("3.0.0-beta..1"))
+        assertNull(parseSemVer("3.0.0-beta."))
+    }
+
+    @Test
+    fun `a numeric pre-release identifier with a leading zero is rejected`() {
+        assertNull(parseSemVer("3.0.0-beta.01"))
+        assertNull(parseSemVer("3.0.0-00"))
+    }
+
+    @Test
+    fun `zero itself and alphanumerics starting with zero are allowed`() {
+        assertEquals(SemVer(3, 0, 0, listOf("beta", "0")), parseSemVer("3.0.0-beta.0"))
+        assertEquals(SemVer(3, 0, 0, listOf("01a")), parseSemVer("3.0.0-01a"))
+    }
+
+    @Test
+    fun `malformed build metadata is rejected`() {
+        assertNull(parseSemVer("3.0.0+"))
+        assertNull(parseSemVer("3.0.0+build..7"))
+        assertNull(parseSemVer("3.0.0+a+b"))
+        assertNull(parseSemVer("3.0.0-beta.1+"))
+    }
+
+    @Test
+    fun `build metadata may have leading zeros`() {
+        assertEquals(SemVer(3, 0, 0), parseSemVer("3.0.0+007"))
+    }
+
+    @Test
+    fun `a pre-release identifier outside the allowed characters is rejected`() {
+        assertNull(parseSemVer("3.0.0-beta_1"))
+        assertNull(parseSemVer("3.0.0-bêta"))
     }
 
     @Test
@@ -87,5 +133,64 @@ class ParseSemVerTest {
         val older = parseSemVer("2.9.0")!!
         val newer = parseSemVer("2.10.0")!!
         assertTrue(older < newer)
+    }
+
+    @Test
+    fun `a release outranks its own pre-releases`() {
+        // The beta tester's case: running 3.0.0-beta.N, final 3.0.0 must be newer.
+        assertTrue(parseSemVer("3.0.0-beta.1")!! < parseSemVer("3.0.0")!!)
+        assertTrue(parseSemVer("3.0.0-beta.9")!! < parseSemVer("v3.0.0")!!)
+        assertTrue(parseSemVer("3.0.0")!! > parseSemVer("3.0.0-rc.1")!!)
+    }
+
+    @Test
+    fun `a pre-release outranks the previous release`() {
+        assertTrue(parseSemVer("3.0.0-beta.1")!! > parseSemVer("2.13.2")!!)
+    }
+
+    @Test
+    fun `numeric pre-release identifiers order by value`() {
+        assertTrue(parseSemVer("3.0.0-beta.2")!! < parseSemVer("3.0.0-beta.10")!!)
+        assertTrue(parseSemVer("3.0.0-beta.1")!! < parseSemVer("3.0.0-beta.2")!!)
+        assertTrue(parseSemVer("3.0.0-1")!! < parseSemVer("3.0.0-99999999999999999999")!!)
+    }
+
+    @Test
+    fun `alphanumeric pre-release identifiers order in ASCII order`() {
+        assertTrue(parseSemVer("3.0.0-alpha")!! < parseSemVer("3.0.0-beta")!!)
+        assertTrue(parseSemVer("3.0.0-beta.1")!! < parseSemVer("3.0.0-rc.1")!!)
+    }
+
+    @Test
+    fun `numeric identifiers sort below alphanumeric ones`() {
+        assertTrue(parseSemVer("3.0.0-1")!! < parseSemVer("3.0.0-alpha")!!)
+        assertTrue(parseSemVer("3.0.0-alpha.1")!! < parseSemVer("3.0.0-alpha.beta")!!)
+    }
+
+    @Test
+    fun `a longer pre-release outranks its own prefix`() {
+        assertTrue(parseSemVer("3.0.0-alpha")!! < parseSemVer("3.0.0-alpha.1")!!)
+    }
+
+    @Test
+    fun `the SemVer specification's example chain is in ascending order`() {
+        val chain =
+            listOf(
+                "1.0.0-alpha",
+                "1.0.0-alpha.1",
+                "1.0.0-alpha.beta",
+                "1.0.0-beta",
+                "1.0.0-beta.2",
+                "1.0.0-beta.11",
+                "1.0.0-rc.1",
+                "1.0.0",
+            ).map { parseSemVer(it)!! }
+        chain.zipWithNext().forEach { (lower, higher) -> assertTrue("$lower < $higher", lower < higher) }
+    }
+
+    @Test
+    fun `build metadata takes no part in precedence`() {
+        assertEquals(0, parseSemVer("3.0.0-beta.1+debug")!!.compareTo(parseSemVer("3.0.0-beta.1")!!))
+        assertEquals(0, parseSemVer("2.13.2+debug")!!.compareTo(parseSemVer("2.13.2")!!))
     }
 }

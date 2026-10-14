@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.data.prefs.CollectiveSort
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Collated
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.collated
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -91,18 +92,6 @@ class CollectiveListViewModel
                     initialValue = emptyList(),
                 )
 
-        /**
-         * Most recently changed pages across every collective, for the strip
-         * above the list. From the cache, so it moves when a sync or a
-         * collective open brings new metadata in — see [pullToRefresh].
-         */
-        val recentPages: StateFlow<List<PageListItem>> =
-            pageRepository.observeRecentPagesAcrossCollectives(RECENT_LIMIT).stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-                initialValue = emptyList(),
-            )
-
         private val _uiState = MutableStateFlow(CollectiveListUiState())
         val uiState: StateFlow<CollectiveListUiState> = _uiState.asStateFlow()
 
@@ -157,10 +146,9 @@ class CollectiveListViewModel
         /**
          * The explicit pull. Unlike [refresh], which only re-lists
          * collectives, this pulls page metadata for every collective too —
-         * the same run as Settings → Sync now — because this screen now
-         * shows other collectives' pages (the recent strip, the
-         * "Last edited" order), and someone who pulls to refresh expects
-         * those to move. The automatic refreshes stay light: one request,
+         * the same run as Settings → Sync now — because the "Last edited"
+         * order goes by every collective's pages, and someone who pulls to
+         * refresh expects it to move. The automatic refreshes stay light: one request,
          * not two per collective on every return to this screen.
          */
         fun pullToRefresh() {
@@ -222,16 +210,20 @@ class CollectiveListViewModel
             }
         }
 
+        fun setNotifyLevel(
+            collectiveId: Long,
+            level: NotifyLevel,
+        ) {
+            viewModelScope.launch {
+                postMessage(repository.setNotifyLevel(collectiveId, level).userMessage())
+            }
+        }
+
         fun trash(collectiveId: Long) {
             viewModelScope.launch {
                 val result = repository.trashCollective(collectiveId)
                 postMessage(if (result is ApiResult.Success) "Moved to trash" else result.userMessage())
             }
-        }
-
-        private companion object {
-            /** Same size as the strip inside a collective. */
-            const val RECENT_LIMIT = 8
         }
     }
 

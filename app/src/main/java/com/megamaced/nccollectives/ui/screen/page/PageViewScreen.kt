@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,11 +24,14 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
@@ -48,15 +54,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
@@ -69,6 +82,7 @@ import com.megamaced.nccollectives.ui.components.MarkdownView
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.ui.components.SubpageChipRow
 import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
+import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.AttachmentRef
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -118,6 +132,38 @@ internal fun PageViewScreen(
     var bodyTopPx by remember { mutableIntStateOf(0) }
     val scrollHeadroomPx = with(LocalDensity.current) { OUTLINE_SCROLL_HEADROOM.roundToPx() }
 
+    // Top bar, navigation bar and the Edit label follow the body's scroll.
+    val chrome = rememberReadingChrome(bodyScrollState)
+
+    // B-76: the route lookup is async, and the first one per session is a
+    // network round trip, so nothing on screen moves while it runs. Guarded
+    // here so a second tap can't start a second lookup, and in the nav host by
+    // `launchSingleTop` on both editor routes — otherwise a second editor
+    // entry, which for the web editor means a second `directediting` session
+    // on the same page.
+    val startEdit: () -> Unit = {
+        if (!resolvingEditRoute) {
+            resolvingEditRoute = true
+            editScope.launch {
+                try {
+                    // Resolve EditorPreference + server capability, then
+                    // route. Once memoised by DirectEditingRepository the
+                    // lookup is effectively instant.
+                    val decision = viewModel.resolveEditRoute()
+                    decision.fallbackMessage?.let { msg ->
+                        snackbarHostState.showSnackbar(msg)
+                    }
+                    when (decision.route) {
+                        EditRoute.Plain -> onEdit()
+                        EditRoute.Web -> onEditWeb()
+                    }
+                } finally {
+                    resolvingEditRoute = false
+                }
+            }
+        }
+    }
+
     // Trashing drops the page's Room row, so `page` goes null while the undo
     // snackbar is still up (B-75). Keep rendering the last version we had —
     // swapping the body for a spinner under a "Moved to trash" message reads
@@ -127,6 +173,13 @@ internal fun PageViewScreen(
         page?.let { lastLoadedPage = it }
     }
     val visiblePage = page ?: lastLoadedPage
+
+    // Recorded while the screen is in front, including a return to it
+    // through a saved tab stack. See `PageViewModel.recordViewsWhileShown`.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.recordViewsWhileShown() }
+    }
 
     // B-81: `statusMessage` only. An `errorMessage` is the full-screen error
     // state's, and this was the one screen that also snackbarred it — which
@@ -189,7 +242,9 @@ internal fun PageViewScreen(
     }
 
     Scaffold(
-        modifier = Modifier.padding(innerPadding),
+        modifier = Modifier
+            .padding(innerPadding)
+            .readingChrome(chrome),
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
@@ -197,6 +252,8 @@ internal fun PageViewScreen(
                     Text(
                         text = visiblePage?.title.orEmpty(),
                         style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
@@ -211,41 +268,6 @@ internal fun PageViewScreen(
                                 imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                                 contentDescription = if (isFavorite) "Unfavorite" else "Favorite",
                             )
-                        }
-                        IconButton(
-                            // B-76: nothing on screen moves while the route is
-                            // being resolved, and the first lookup per session
-                            // is a network round trip — so a second tap used to
-                            // push a second editor destination, which for the
-                            // web editor means two `directediting` sessions on
-                            // the same page. `launchSingleTop` on both edit
-                            // navigations (NcCollectivesNavHost) is the other
-                            // half of this.
-                            enabled = !resolvingEditRoute,
-                            onClick = {
-                                // Resolve EditorPreference + server capability,
-                                // then route. The decision is async because the
-                                // first capability lookup hits the network; once
-                                // memoised by DirectEditingRepository the call is
-                                // effectively instant.
-                                resolvingEditRoute = true
-                                editScope.launch {
-                                    try {
-                                        val decision = viewModel.resolveEditRoute()
-                                        decision.fallbackMessage?.let { msg ->
-                                            snackbarHostState.showSnackbar(msg)
-                                        }
-                                        when (decision.route) {
-                                            EditRoute.Plain -> onEdit()
-                                            EditRoute.Web -> onEditWeb()
-                                        }
-                                    } finally {
-                                        resolvingEditRoute = false
-                                    }
-                                }
-                            },
-                        ) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }
                         // Only worth a toolbar slot once there is somewhere
                         // to jump to. One heading is an index of one.
@@ -331,9 +353,27 @@ internal fun PageViewScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                // Transparent scrolled too: the body is laid out below the
+                // bar, never under it, so the scrolled tint would only mark
+                // this one bar out from every other screen's.
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
                 windowInsets = WindowInsets(0, 0, 0, 0),
+                scrollBehavior = chrome.topBarScrollBehavior,
             )
+        },
+        floatingActionButton = {
+            // Gated on the live row, like the actions above: during the
+            // trash-undo window the page is gone and there is nothing to edit.
+            if (page != null) {
+                EditFab(
+                    expanded = !chrome.scrollingForward || bodyScrollState.value == 0,
+                    busy = resolvingEditRoute,
+                    onClick = startEdit,
+                )
+            }
         },
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data -> Snackbar(snackbarData = data) }
@@ -391,6 +431,10 @@ internal fun PageViewScreen(
             onSelect = { heading ->
                 showOutline = false
                 editScope.launch {
+                    // A scroll made in code doesn't pass through nested
+                    // scrolling, so the chrome would stay as it was. Show it,
+                    // so a heading always lands just under a visible top bar.
+                    chrome.reveal()
                     // `topOf` is null only if the body has not been laid out,
                     // which cannot happen while its index is on screen — but
                     // fall back to the top rather than assert it.
@@ -498,18 +542,18 @@ private fun PageViewContent(
     onAttachmentLink: (AttachmentRef) -> Unit,
     onBrowseTag: (String) -> Unit,
 ) {
-    // Captured so the body's offset can be expressed in content space:
-    // `positionInWindow` of the body minus that of the viewport gives its
-    // on-screen offset, and adding the current scroll makes it absolute.
-    // Doing it this way rather than reading `positionInParent` keeps the
-    // arithmetic correct however `verticalScroll` chooses to place content.
-    var viewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // The scrolled content's own coordinates: read *inside* `verticalScroll`,
+    // so they move with the scroll, and the body's position relative to them
+    // is its content-space offset whatever the scroll is. (Relative to the
+    // viewport outside the scroll, the same body moves by every pixel
+    // scrolled.)
+    var contentCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .onGloballyPositioned { viewportCoordinates = it }
+            .onGloballyPositioned { contentCoordinates = it }
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -577,11 +621,8 @@ private fun PageViewContent(
             MarkdownView(
                 markdown = body,
                 modifier = Modifier.onGloballyPositioned { coordinates ->
-                    val viewport = viewportCoordinates ?: return@onGloballyPositioned
-                    val top = (
-                        coordinates.positionInWindow().y - viewport.positionInWindow().y
-                    ).roundToInt() + scrollState.value
-                    onBodyPositioned(top)
+                    val content = contentCoordinates ?: return@onGloballyPositioned
+                    onBodyPositioned(content.localPositionOf(coordinates, Offset.Zero).y.roundToInt())
                 },
                 imageBaseUrl = imageBaseUrl,
                 pageId = page.id,
@@ -591,7 +632,46 @@ private fun PageViewContent(
             )
         }
         BacklinkChipRow(pages = backlinks, onOpenPage = onOpenPage)
+        Spacer(modifier = Modifier.height(FAB_CLEARANCE))
     }
+}
+
+/**
+ * Edit, as the screen's floating action button. Labelled while the user is
+ * at the top or scrolling back, icon-only while reading forward.
+ *
+ * Material 3 1.4's extended FAB has no `enabled` parameter, so the busy state
+ * is drawn here: a spinner in place of the icon while the editor route is
+ * resolved, reported to accessibility services as disabled. The caller
+ * ignores taps meanwhile. The name sits on the button itself because the
+ * label slot is hidden from accessibility services.
+ */
+@Composable
+private fun EditFab(
+    expanded: Boolean,
+    busy: Boolean,
+    onClick: () -> Unit,
+) {
+    ExtendedFloatingActionButton(
+        text = { Text("Edit") },
+        icon = {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = LocalContentColor.current,
+                )
+            } else {
+                Icon(Icons.Filled.Edit, contentDescription = null)
+            }
+        },
+        onClick = onClick,
+        expanded = expanded,
+        modifier = Modifier.semantics {
+            contentDescription = "Edit"
+            if (busy) disabled()
+        },
+    )
 }
 
 /**

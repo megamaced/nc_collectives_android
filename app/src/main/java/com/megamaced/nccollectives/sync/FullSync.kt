@@ -2,7 +2,11 @@ package com.megamaced.nccollectives.sync
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.auth.CurrentUser
+import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import kotlinx.coroutines.async
@@ -55,12 +59,29 @@ class FullSync
         private val collectiveRepository: CollectiveRepository,
         private val pageRepository: PageRepository,
         private val userPreferences: UserPreferences,
+        private val currentUser: CurrentUser,
+        private val alertRepository: AlertRepository,
+        private val accountGeneration: AccountGeneration,
     ) {
-        suspend fun run(): SyncOutcome {
+        // One account for the whole run: every request in it is bound to the
+        // account current when it started, so a run a switch overtakes goes
+        // nowhere rather than on to the next account.
+        suspend fun run(): SyncOutcome = accountGeneration.bound { generation -> runBound(generation) }
+
+        private suspend fun runBound(generation: Long): SyncOutcome {
             val outcome = pull()
+            if (outcome == SyncOutcome.Success) {
+                // Once per account, so Home can tell the user's own edits
+                // from everyone else's. Best effort: it never fails the sync.
+                currentUser.refreshIfUnknown()
+                // Every sync, so the Alerts badge keeps up without the app
+                // posting notifications of its own. Also best effort.
+                alertRepository.refresh()
+            }
             val now = System.currentTimeMillis()
+            val stillCurrent = { accountGeneration.isCurrent(generation) }
             when (outcome) {
-                SyncOutcome.Success -> userPreferences.recordSyncSuccess(now)
+                SyncOutcome.Success -> userPreferences.recordSyncSuccess(now, stillCurrent)
 
                 // Deliberately not stamped as a failure: a sign-out is either
                 // imminent (which wipes DataStore anyway) or the streak hasn't
@@ -68,9 +89,9 @@ class FullSync
                 // something the user can act on from the Settings screen.
                 SyncOutcome.Unauthorised -> Unit
 
-                is SyncOutcome.Retryable -> userPreferences.recordSyncFailure(now, outcome.message)
+                is SyncOutcome.Retryable -> userPreferences.recordSyncFailure(now, outcome.message, stillCurrent)
 
-                is SyncOutcome.Failed -> userPreferences.recordSyncFailure(now, outcome.message)
+                is SyncOutcome.Failed -> userPreferences.recordSyncFailure(now, outcome.message, stillCurrent)
             }
             return outcome
         }

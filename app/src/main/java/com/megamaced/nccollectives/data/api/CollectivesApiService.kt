@@ -175,6 +175,18 @@ interface CollectivesApiService {
     )
 
     /**
+     * Sets how much [collectiveId] notifies the user — the web app's
+     * per-collective notifications menu. [notify] is the `NotifyLevel.wire`
+     * value; the server rejects anything outside 0–2.
+     */
+    @FormUrlEncoded
+    @PUT("ocs/v2.php/apps/collectives/api/v1.0/collectives/{collectiveId}/userSettings/notify")
+    suspend fun setNotify(
+        @Path("collectiveId") collectiveId: Long,
+        @Field("notify") notify: Int,
+    )
+
+    /**
      * Duplicate a page (Batch 23). Same update endpoint as [updatePage] —
      * `{copy: true}` server-side triggers the duplicate codepath. Supports
      * leaf and folder pages. An optional `title` overrides the copy's

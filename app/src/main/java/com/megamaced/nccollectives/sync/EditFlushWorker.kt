@@ -7,11 +7,15 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.api.isAccountChanged
+import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.entity.BODY_TIMESTAMP_UNAVAILABLE
 import com.megamaced.nccollectives.data.db.entity.EditQueueEntity
+import com.megamaced.nccollectives.data.repository.writeUnder
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.NonCancellable
@@ -59,6 +63,11 @@ class EditFlushWorker
             // worker cannot stop it, so an account switch has no other way
             // to keep its writes out of the incoming account's cache.
             val generation = accountGeneration.current()
+            // And every request the run makes is bound to it.
+            return withContext(AccountBinding(generation)) { flush(generation) }
+        }
+
+        private suspend fun flush(generation: Long): Result {
             val entries = editQueueDao.pendingEntries()
             if (entries.isEmpty()) return Result.success()
 
@@ -67,13 +76,19 @@ class EditFlushWorker
                 // Issue #30: claiming the row is also what spends one of its
                 // own attempts. `attemptsSoFar` is what the classifier below
                 // is given, in place of this worker's `runAttemptCount`.
-                editQueueDao.markInFlight(entry.pageId)
+                //
+                // Every write in the run is under its generation. Once the
+                // account has gone, the rows left are the outgoing
+                // account's and go with its cache: the run is abandoned,
+                // not retried, and writes nothing more — a row under the
+                // same page id is now the next account's.
+                if (!underRun(generation) { editQueueDao.markInFlight(entry.pageId) }) return Result.success()
                 val attemptsSoFar = entry.attempts + 1
                 val page = pageDao.getById(entry.pageId)
                 if (page == null) {
                     // The page disappeared locally (collective removed?). Drop
                     // the queue row — nothing to flush.
-                    editQueueDao.deleteForPage(entry.pageId)
+                    underRun(generation) { editQueueDao.deleteForPage(entry.pageId) }
                     continue
                 }
 
@@ -89,6 +104,7 @@ class EditFlushWorker
                         filePath = page.filePath,
                         fileName = page.fileName,
                     )
+                    if (currentServer.isAccountChanged()) return Result.success()
                     val currentEtag = when (currentServer) {
                         is ApiResult.Success -> {
                             currentServer.data.etag
@@ -105,18 +121,26 @@ class EditFlushWorker
                             // the budget is not data loss: the text lands on
                             // the page row as a draft and the ConflictBanner
                             // offers it.
-                            if (settleFlushFailure(entry, currentServer, attemptsSoFar)) retry = true
+                            when (settleFailure(entry, currentServer, attemptsSoFar, generation)) {
+                                FlushRowOutcome.RetryLater -> retry = true
+                                FlushRowOutcome.Abandoned -> return Result.success()
+                                else -> Unit
+                            }
                             continue
                         }
 
                         ApiResult.Unauthorised -> {
-                            editQueueDao.setStatus(entry.pageId, "PENDING")
+                            underRun(generation) { editQueueDao.setStatus(entry.pageId, "PENDING") }
                             return Result.success() // SessionManager surfaces re-auth
                         }
 
                         else -> {
                             Timber.w("Flush preflight failed for page %d: %s", entry.pageId, currentServer)
-                            if (settleFlushFailure(entry, currentServer, attemptsSoFar)) retry = true
+                            when (settleFailure(entry, currentServer, attemptsSoFar, generation)) {
+                                FlushRowOutcome.RetryLater -> retry = true
+                                FlushRowOutcome.Abandoned -> return Result.success()
+                                else -> Unit
+                            }
                             continue
                         }
                     }
@@ -141,13 +165,17 @@ class EditFlushWorker
                     if (currentEtag != entry.baseEtag) {
                         // Server moved on. Server wins; keep the user's
                         // body as a draft and flag the row.
-                        pageDao.updateBody(
-                            entry.pageId,
-                            currentServer.data.markdown,
-                            currentEtag,
-                            System.currentTimeMillis(),
-                        )
-                        parkAsConflict(entry)
+                        val parked = underRun(generation) {
+                            pageDao.updateBody(
+                                entry.pageId,
+                                currentServer.data.markdown,
+                                currentEtag,
+                                currentServer.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                                System.currentTimeMillis(),
+                            )
+                            parkAsConflictWrites(entry)
+                        }
+                        if (!parked) return Result.success()
                         Timber.i("Edit on page %d conflicted; kept local draft", entry.pageId)
                         continue
                     }
@@ -163,6 +191,8 @@ class EditFlushWorker
                     // the precondition header".
                     baseEtag = if (entry.forceWrite) null else entry.baseEtag,
                 )
+                // Refused before it left the device: nothing to record.
+                if (putResult.isAccountChanged()) return Result.success()
                 // B-64: the write has left the device — record what happened
                 // to it even if we're being cancelled. Nothing durable exists
                 // between `saveBody` returning and these DB writes, so a
@@ -178,7 +208,7 @@ class EditFlushWorker
                 when (outcome) {
                     FlushRowOutcome.Settled -> Unit
                     FlushRowOutcome.RetryLater -> retry = true
-                    FlushRowOutcome.SessionGone -> return Result.success()
+                    FlushRowOutcome.SessionGone, FlushRowOutcome.Abandoned -> return Result.success()
                 }
             }
             return if (retry) Result.retry() else Result.success()
@@ -208,12 +238,15 @@ class EditFlushWorker
                         // into the next account's cache.
                         if (!accountGeneration.isCurrent(generation)) {
                             Timber.i("Account changed mid-flush; not recording the write for page %d", entry.pageId)
-                            return@withTransaction FlushRowOutcome.Settled
+                            return@withTransaction FlushRowOutcome.Abandoned
                         }
+                        // The user's own text: the server doesn't say what
+                        // mtime it gave the write, so the version is unknown.
                         pageDao.updateBody(
                             entry.pageId,
                             entry.newBodyMd,
                             result.data,
+                            null,
                             System.currentTimeMillis(),
                         )
                         pageDao.updateDraft(entry.pageId, null)
@@ -240,63 +273,69 @@ class EditFlushWorker
                     // (which `replaceWithDraft` may have just refreshed),
                     // surface the conflict. The user resolves via the
                     // banner; the queue row is left as CONFLICTED.
-                    if (entry.forceWrite) {
-                        editQueueDao.setStatus(entry.pageId, "CONFLICTED")
-                    } else {
-                        parkAsConflict(entry)
+                    val recorded = underRun(generation) {
+                        if (entry.forceWrite) {
+                            editQueueDao.setStatus(entry.pageId, "CONFLICTED")
+                        } else {
+                            parkAsConflictWrites(entry)
+                        }
                     }
-                    FlushRowOutcome.Settled
+                    if (recorded) FlushRowOutcome.Settled else FlushRowOutcome.Abandoned
                 }
 
                 // Issue #30: no longer an unconditional retry — the per-row
                 // budget covers a server that is reachable by WorkManager's
                 // reckoning and unreachable in fact.
                 is ApiResult.NetworkError -> {
-                    settleFailure(entry, result, attemptsSoFar)
+                    settleFailure(entry, result, attemptsSoFar, generation)
                 }
 
                 ApiResult.Unauthorised -> {
-                    editQueueDao.setStatus(entry.pageId, "PENDING")
+                    underRun(generation) { editQueueDao.setStatus(entry.pageId, "PENDING") }
                     FlushRowOutcome.SessionGone
                 }
 
                 is ApiResult.HttpError -> {
                     Timber.w("Flush HTTP %d for page %d: %s", result.code, entry.pageId, result.message)
-                    settleFailure(entry, result, attemptsSoFar)
+                    settleFailure(entry, result, attemptsSoFar, generation)
                 }
 
                 is ApiResult.Unexpected -> {
                     Timber.w(result.cause, "Flush unexpected error for page %d", entry.pageId)
-                    settleFailure(entry, result, attemptsSoFar)
+                    settleFailure(entry, result, attemptsSoFar, generation)
                 }
             }
-
-        /**
-         * As [settleFailure], for the arms outside `recordPutOutcome` that
-         * only need to know whether to ask for another run.
-         */
-        private suspend fun settleFlushFailure(
-            entry: EditQueueEntity,
-            result: ApiResult<*>,
-            attemptsSoFar: Int,
-        ): Boolean = settleFailure(entry, result, attemptsSoFar) == FlushRowOutcome.RetryLater
 
         private suspend fun settleFailure(
             entry: EditQueueEntity,
             result: ApiResult<*>,
             attemptsSoFar: Int,
+            generation: Long,
         ): FlushRowOutcome =
             when (flushFailureAction(httpStatusOf(result), attemptsSoFar)) {
                 FlushFailureAction.Terminal -> {
-                    parkAsConflict(entry)
-                    FlushRowOutcome.Settled
+                    if (underRun(generation) { parkAsConflictWrites(entry) }) {
+                        Timber.w("Giving up on the queued edit for page %d; kept it as a draft", entry.pageId)
+                        FlushRowOutcome.Settled
+                    } else {
+                        FlushRowOutcome.Abandoned
+                    }
                 }
 
                 FlushFailureAction.RetryLater -> {
-                    editQueueDao.setStatus(entry.pageId, "PENDING")
-                    FlushRowOutcome.RetryLater
+                    if (underRun(generation) { editQueueDao.setStatus(entry.pageId, "PENDING") }) {
+                        FlushRowOutcome.RetryLater
+                    } else {
+                        FlushRowOutcome.Abandoned
+                    }
                 }
             }
+
+        /** [writes] in one transaction while this run's account is current; see `NcCollectivesDatabase.writeUnder`. */
+        private suspend fun underRun(
+            generation: Long,
+            writes: suspend () -> Unit,
+        ): Boolean = database.writeUnder(accountGeneration, generation, writes)
 
         /**
          * Give up on [entry] without discarding what the user wrote: the text
@@ -305,20 +344,18 @@ class EditFlushWorker
          * stops handing it back. "Conflicted" is a slightly generous label
          * for a 403 or a 404, but it is the one state the UI already knows
          * how to offer a way out of — copy, discard, or force-replace.
+         * The caller holds the transaction, under the run's generation.
          */
-        private suspend fun parkAsConflict(entry: EditQueueEntity) {
-            database.withTransaction {
-                // Issue #18: park the body the row holds *now*, not the one
-                // this run snapshotted. A save that landed while the PUT was
-                // in flight replaced it with a newer body containing the
-                // user's latest work, and `CONFLICTED` rows are read by
-                // nothing — parking the snapshot would strand that work
-                // where neither the editor nor the banner can reach it.
-                val latest = editQueueDao.forPage(entry.pageId)?.newBodyMd ?: entry.newBodyMd
-                pageDao.updateDraft(entry.pageId, latest)
-                editQueueDao.setStatus(entry.pageId, "CONFLICTED")
-            }
-            Timber.w("Giving up on the queued edit for page %d; kept it as a draft", entry.pageId)
+        private suspend fun parkAsConflictWrites(entry: EditQueueEntity) {
+            // Issue #18: park the body the row holds *now*, not the one this
+            // run snapshotted. A save that landed while the PUT was in flight
+            // replaced it with a newer body containing the user's latest
+            // work, and `CONFLICTED` rows are read by nothing — parking the
+            // snapshot would strand that work where neither the editor nor
+            // the banner can reach it.
+            val latest = editQueueDao.forPage(entry.pageId)?.newBodyMd ?: entry.newBodyMd
+            pageDao.updateDraft(entry.pageId, latest)
+            editQueueDao.setStatus(entry.pageId, "CONFLICTED")
         }
     }
 
@@ -355,6 +392,9 @@ internal enum class FlushRowOutcome {
 
     /** The session is gone — stop the whole drain, `SessionManager` owns it. */
     SessionGone,
+
+    /** The run's account has gone — stop, and write nothing more: the rows go with its cache. */
+    Abandoned,
 }
 
 /** Whether a failed flush attempt is worth repeating. */

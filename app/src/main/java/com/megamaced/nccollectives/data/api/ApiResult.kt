@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.api
 
+import com.megamaced.nccollectives.data.auth.AccountChangedException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
 import retrofit2.HttpException
@@ -45,6 +46,11 @@ internal inline fun <T> apiCall(block: () -> T): ApiResult<T> =
             412 -> ApiResult.Conflict
             else -> ApiResult.HttpError(e.code(), e.message())
         }
+    } catch (e: AccountChangedException) {
+        // Abandoned, not offline: see `AccountChangedException`. Ahead of
+        // IOException, which it is, so it never reads as a network failure
+        // to retry or queue behind.
+        ApiResult.Unexpected(e)
     } catch (e: IOException) {
         ApiResult.NetworkError(e)
     } catch (e: SerializationException) {
@@ -74,3 +80,6 @@ internal inline fun <T> ApiResult<T>.ifSuccess(block: (T) -> Unit): ApiResult<T>
     if (this is ApiResult.Success) block(data)
     return this
 }
+
+/** Whether this is work abandoned because its account was switched away: see `AccountChangedException`. */
+internal fun ApiResult<*>.isAccountChanged(): Boolean = this is ApiResult.Unexpected && cause is AccountChangedException

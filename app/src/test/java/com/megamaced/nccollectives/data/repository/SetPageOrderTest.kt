@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.repository
 
+import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CirclesApiService
 import com.megamaced.nccollectives.data.api.CollectivesApiService
@@ -10,12 +11,14 @@ import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.domain.model.PageOrder
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -35,6 +38,7 @@ class SetPageOrderTest {
     private var cachedOrder = PageOrder.Custom.wire
     private val api = mockk<CollectivesApiService>()
     private val dao = mockk<CollectiveDao>()
+    private val database = mockk<NcCollectivesDatabase>()
 
     private val repository =
         CollectiveRepositoryImpl(
@@ -44,11 +48,16 @@ class SetPageOrderTest {
             pageDao = mockk<PageDao>(),
             attachmentDao = mockk<AttachmentDao>(),
             editQueueDao = mockk<EditQueueDao>(),
-            database = mockk<NcCollectivesDatabase>(),
+            pageViewDao = mockk<PageViewDao>(),
+            database = database,
             accountGeneration = AccountGeneration(),
         )
 
     init {
+        // Room's transaction is a static extension; the writes it wraps are
+        // what these tests are about, so it just runs them.
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        coEvery { database.withTransaction(any<suspend () -> Any?>()) } coAnswers { secondArg<suspend () -> Any?>().invoke() }
         coEvery { dao.getById(COLLECTIVE_ID) } answers {
             CollectiveDto(id = COLLECTIVE_ID, name = "Field Guide", userPageOrder = cachedOrder).toEntity(now = 0L)
         }

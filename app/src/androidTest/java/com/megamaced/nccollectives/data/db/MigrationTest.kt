@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 11
+private const val LATEST_VERSION = 13
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -365,6 +365,84 @@ class MigrationTest {
         db.query("SELECT * FROM `collectives` WHERE `id` = 8").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals(4L, cursor.longAt("userPageOrder"))
+        }
+        db.close()
+    }
+
+    /**
+     * v12 adds what Home needs. Every cached body, etag and conflict draft
+     * has to come through untouched; existing pages take an unknown last
+     * editor ('') and an unknown body version (NULL), which the next refresh
+     * and the next open fill in; and `page_views` arrives empty.
+     */
+    @Test
+    fun migrate11To12_addsEditorAndBodyVersion_keepsBodies_andAddsPageViews() {
+        helper.createDatabase(TEST_DB, 11).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide", level = 9, userShowMembers = true, userPageOrder = 0)
+            db.insertPage(id = 11L, collectiveId = 7L, title = "Cached", serverTimestamp = 100L, bodyMd = "# body")
+            db.execSQL("UPDATE `pages` SET `bodyEtag` = 'etag-1', `draftBodyMd` = '# draft' WHERE `id` = 11")
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 12, true, MIGRATION_11_12)
+
+        assertTrue(db.columnNames("pages").containsAll(setOf("lastUserId", "bodyTimestamp")))
+        db.query("SELECT * FROM `pages` WHERE `id` = 11").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("# body", cursor.stringAt("bodyMd"))
+            assertEquals("etag-1", cursor.stringAt("bodyEtag"))
+            assertEquals("# draft", cursor.stringAt("draftBodyMd"))
+            assertEquals("", cursor.stringAt("lastUserId"))
+            assertTrue(cursor.isNullAt("bodyTimestamp"))
+        }
+
+        assertEquals(setOf("pageId"), db.primaryKeyColumns("page_views"))
+        assertTrue(db.indexNames("page_views").contains("index_page_views_lastViewedAt"))
+        db.query("SELECT COUNT(*) FROM `page_views`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0L, cursor.getLong(0))
+        }
+
+        // The new columns and table take the values the app writes.
+        db.execSQL("UPDATE `pages` SET `lastUserId` = 'bob', `bodyTimestamp` = 1700000000 WHERE `id` = 11")
+        db.execSQL("INSERT INTO `page_views` (`pageId`, `lastViewedAt`, `seenTimestamp`) VALUES (11, 5, 1700000000)")
+        db.query("SELECT * FROM `pages` JOIN `page_views` ON `page_views`.`pageId` = `pages`.`id`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("bob", cursor.stringAt("lastUserId"))
+            assertEquals(1_700_000_000L, cursor.longAt("bodyTimestamp"))
+            assertEquals(1_700_000_000L, cursor.longAt("seenTimestamp"))
+        }
+        db.close()
+    }
+
+    @Test
+    fun migrate12To13_addsNotifyLevel_keepsCollectives_andAddsAlerts() {
+        helper.createDatabase(TEST_DB, 12).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide", level = 9, userShowMembers = true, userPageOrder = 2)
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 13, true, MIGRATION_12_13)
+
+        assertTrue(db.columnNames("collectives").contains("userNotify"))
+        db.query("SELECT * FROM `collectives` WHERE `id` = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Field Guide", cursor.stringAt("name"))
+            assertEquals(2L, cursor.longAt("userPageOrder"))
+            // Not reported until the next refresh, not "off".
+            assertTrue(cursor.isNullAt("userNotify"))
+        }
+
+        assertEquals(setOf("id"), db.primaryKeyColumns("alerts"))
+        assertTrue(db.indexNames("alerts").contains("index_alerts_timestamp"))
+        db.execSQL(
+            "INSERT INTO `alerts` (`id`, `kind`, `pageId`, `collectiveId`, `actorName`, `pageTitle`, `collectiveName`, " +
+                "`subject`, `timestamp`, `verified`, `seen`) VALUES (5, 'Mention', 11, 7, 'Bob', 'Page', 'Field Guide', " +
+                "'Bob mentioned you', 1700000000, 1, 0)",
+        )
+        db.execSQL("UPDATE `collectives` SET `userNotify` = 2 WHERE `id` = 7")
+        db.query("SELECT * FROM `alerts` JOIN `collectives` ON `collectives`.`id` = `alerts`.`collectiveId`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Mention", cursor.stringAt("kind"))
+            assertEquals(2L, cursor.longAt("userNotify"))
         }
         db.close()
     }

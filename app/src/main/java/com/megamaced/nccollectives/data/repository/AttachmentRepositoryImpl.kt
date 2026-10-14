@@ -4,12 +4,13 @@ import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
-import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.mapSuccess
+import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +42,7 @@ class AttachmentRepositoryImpl
         private val bodyService: PageBodyService,
         private val syncScheduler: SyncScheduler,
         private val database: NcCollectivesDatabase,
+        private val accountGeneration: AccountGeneration,
     ) : AttachmentRepository {
         override fun observeForPage(pageId: Long): Flow<List<Attachment>> =
             attachmentDao.observeForPage(pageId).map { rows ->
@@ -58,7 +61,16 @@ class AttachmentRepositoryImpl
                 }
             }
 
-        override suspend fun refresh(pageId: Long): ApiResult<Unit> {
+        // Bound from before the row is read, as everything here that reads
+        // the cache and then sends or writes what it read: see
+        // `AccountGeneration.bound`.
+        override suspend fun refresh(pageId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation -> refreshBound(pageId, generation) }
+
+        private suspend fun refreshBound(
+            pageId: Long,
+            generation: Long,
+        ): ApiResult<Unit> {
             val page = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             // OCS-3: typed JSON list replaces the WebDAV PROPFIND + XML
@@ -75,7 +87,7 @@ class AttachmentRepositoryImpl
                     // if the user just queued an upload, the worker still
                     // owns that row; replacing it with status=REMOTE +
                     // localUriString=null would orphan the staged bytes.
-                    database.withTransaction {
+                    val recorded = writeUnder(generation) {
                         val existing = attachmentDao
                             .listForPage(pageId)
                             .associateBy { it.id }
@@ -140,7 +152,7 @@ class AttachmentRepositoryImpl
                             attachmentDao.deleteMissingRemoteForPage(pageId, keepIds)
                         }
                     }
-                    ApiResult.Success(Unit)
+                    if (recorded) ApiResult.Success(Unit) else accountChanged()
                 }
 
                 // Issue #26: `mapSuccess` rather than the hand-rolled
@@ -160,6 +172,28 @@ class AttachmentRepositoryImpl
             sourceUri: Uri,
             suggestedFileName: String,
             contentType: String?,
+        ): String? =
+            accountGeneration.bound { generation ->
+                // The staging copy is this call's own from the moment it
+                // exists. Whatever ends the call — a refusal, a failed copy,
+                // cancellation part way through it — deletes it here, unless
+                // it was moved to the row's name, after which this path
+                // names nothing.
+                val copy = AtomicReference<File?>()
+                try {
+                    enqueueUploadBound(pageId, sourceUri, suggestedFileName, contentType, generation, copy::set)
+                } finally {
+                    copy.get()?.delete()
+                }
+            }
+
+        private suspend fun enqueueUploadBound(
+            pageId: Long,
+            sourceUri: Uri,
+            suggestedFileName: String,
+            contentType: String?,
+            generation: Long,
+            ownCopy: (File) -> Unit,
         ): String? {
             val resolvedName = resolveCollisionFreeName(pageId, suggestedFileName)
             val resolvedType = contentType ?: guessMimeType(resolvedName)
@@ -169,21 +203,34 @@ class AttachmentRepositoryImpl
             // the OS may evict the photo-picker cache before the worker
             // runs — copying here is the only way to guarantee the worker
             // can still read the bytes on the other side of process death.
-            val stagedFile = copyToStaging(pageId, resolvedName, sourceUri)
-                ?: return null
+            val copy = copyToStaging(sourceUri, ownCopy) ?: return null
+            val key = AttachmentEntity.key(pageId, resolvedName)
+            val stagedFile = stagedFileFor(context, key)
             val entity = AttachmentEntity(
-                id = AttachmentEntity.key(pageId, resolvedName),
+                id = key,
                 pageId = pageId,
                 fileName = resolvedName,
                 contentType = resolvedType,
-                size = stagedFile.length(),
+                size = copy.length(),
                 lastModifiedMs = System.currentTimeMillis(),
                 etag = null,
                 status = AttachmentEntity.STATUS_PENDING,
                 localUriString = Uri.fromFile(stagedFile).toString(),
                 lastSyncedAt = System.currentTimeMillis(),
             )
-            attachmentDao.upsert(entity)
+            // The copy is this call's own file until it is moved to the
+            // row's name, and the move and the insert happen together under
+            // the generation. After a switch the row would have the worker
+            // upload these bytes to the next account's page under the same
+            // id, and the name may be a staged file of the next account's.
+            // Inside the transaction, the wipe that a switch runs can't
+            // clear the cache until the move has been made or skipped.
+            var moved = false
+            val recorded = writeUnder(generation) {
+                moved = copy.renameTo(stagedFile)
+                if (moved) attachmentDao.upsert(entity)
+            }
+            if (!recorded || !moved) return null
             syncScheduler.flushAttachmentUploadsWhenOnline()
             // S-15: camera captures and any other own-FileProvider sources
             // are now redundant — the bytes live in the staged copy and
@@ -208,16 +255,20 @@ class AttachmentRepositoryImpl
             }
         }
 
+        /**
+         * Copy [sourceUri] into a new file in the staging directory, handed
+         * to [own] as soon as it exists, before anything can fail or be
+         * cancelled. The caller moves it to the row's name, which is keyed
+         * the same as the row so the worker can find and delete it without
+         * an extra Room read, and deletes it otherwise.
+         */
         private suspend fun copyToStaging(
-            pageId: Long,
-            resolvedName: String,
             sourceUri: Uri,
+            own: (File) -> Unit,
         ): File? =
             withContext(Dispatchers.IO) {
                 val dir = File(context.cacheDir, "attachments-pending").apply { mkdirs() }
-                // Encode the file with the same key the DB row uses so the
-                // worker can find/delete it without an extra Room read.
-                val staged = File(dir, AttachmentEntity.key(pageId, resolvedName).replace('/', '_'))
+                val staged = File.createTempFile("staging-", ".part", dir).also(own)
                 try {
                     context.contentResolver.openInputStream(sourceUri)?.use { input ->
                         staged.outputStream().use { output -> input.copyTo(output) }
@@ -225,11 +276,9 @@ class AttachmentRepositoryImpl
                     staged
                 } catch (e: SecurityException) {
                     Timber.w(e, "Source URI %s not readable for staging", sourceUri)
-                    staged.delete()
                     null
                 } catch (e: java.io.IOException) {
                     Timber.w(e, "Failed to stage %s", sourceUri)
-                    staged.delete()
                     null
                 }
             }
@@ -237,6 +286,12 @@ class AttachmentRepositoryImpl
         override suspend fun delete(
             pageId: Long,
             fileName: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> deleteBound(pageId, fileName, generation) }
+
+        private suspend fun deleteBound(
+            pageId: Long,
+            fileName: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val page = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
@@ -258,7 +313,9 @@ class AttachmentRepositoryImpl
                 // response was lost is exactly how #24's If-None-Match
                 // handling can leave one — and uniformity is worth more here
                 // than saving a DELETE that 404s.
-                attachmentDao.setStatus(key, AttachmentEntity.STATUS_DELETING)
+                // Under the generation: a tombstone on the next account's row
+                // under the same key would have the worker delete its file.
+                if (!writeUnder(generation) { attachmentDao.setStatus(key, AttachmentEntity.STATUS_DELETING) }) return accountChanged()
                 syncScheduler.flushAttachmentUploadsWhenOnline()
                 return ApiResult.Success(Unit)
             }
@@ -269,7 +326,7 @@ class AttachmentRepositoryImpl
             // inline to populate it before deleting.
             var serverId = existing?.serverAttachmentId
             if (serverId == null) {
-                val refreshed = refresh(pageId)
+                val refreshed = refreshBound(pageId, generation)
                 if (refreshed !is ApiResult.Success) return refreshed
                 serverId = attachmentDao.getById(key)?.serverAttachmentId
                     ?: return ApiResult.Unexpected(
@@ -277,15 +334,19 @@ class AttachmentRepositoryImpl
                     )
             }
             val result = apiCall { api.deleteAttachment(page.collectiveId, pageId, serverId) }
-            if (result is ApiResult.Success) {
-                attachmentDao.delete(key)
-            }
+            if (result is ApiResult.Success && !writeUnder(generation) { attachmentDao.delete(key) }) return accountChanged()
             return result
         }
 
         override suspend fun retryUpload(
             pageId: Long,
             fileName: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> retryUploadBound(pageId, fileName, generation) }
+
+        private suspend fun retryUploadBound(
+            pageId: Long,
+            fileName: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val key = AttachmentEntity.key(pageId, fileName)
             val existing = attachmentDao.getById(key)
@@ -309,7 +370,7 @@ class AttachmentRepositoryImpl
             }
             // Issue #30: a fresh budget. The user asked for this attempt
             // explicitly, so it is not a continuation of the ones that failed.
-            attachmentDao.rearmForRetry(key)
+            if (!writeUnder(generation) { attachmentDao.rearmForRetry(key) }) return accountChanged()
             syncScheduler.flushAttachmentUploadsWhenOnline()
             return ApiResult.Success(Unit)
         }
@@ -317,14 +378,19 @@ class AttachmentRepositoryImpl
         override suspend fun resolveDeletion(
             pageId: Long,
             fileName: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> resolveDeletionBound(pageId, fileName, generation) }
+
+        private suspend fun resolveDeletionBound(
+            pageId: Long,
+            fileName: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val key = AttachmentEntity.key(pageId, fileName)
             val page = pageDao.getById(pageId)
             if (page == null) {
                 // The page went with its collective. Nothing reachable to
                 // delete, and the cascade already dropped the sibling rows.
-                dropTombstone(key)
-                return ApiResult.Success(Unit)
+                return if (dropTombstone(key, generation)) ApiResult.Success(Unit) else accountChanged()
             }
             val result = bodyService.deleteFile(
                 collectivePath = page.collectivePath,
@@ -334,22 +400,36 @@ class AttachmentRepositoryImpl
             // `deleteFile` counts 404 as success, so reaching here with a
             // Success means the object is gone whether or not it ever
             // existed. Anything else keeps the tombstone for another run.
-            if (result is ApiResult.Success) dropTombstone(key)
+            if (result is ApiResult.Success && !dropTombstone(key, generation)) return accountChanged()
             return result
         }
 
-        private suspend fun dropTombstone(key: String) {
-            attachmentDao.delete(key)
+        /** Drop the tombstone [key] while [generation] is current, and say whether it went. */
+        private suspend fun dropTombstone(
+            key: String,
+            generation: Long,
+        ): Boolean {
             // Issue #23: and the bytes behind it. Dropping only the row
             // orphaned the staging copy — invisible to the UI, still on disk,
             // and now that a FAILED row keeps its bytes on purpose this is
-            // the path that has to collect them.
-            deleteStagedFile(key)
+            // the path that has to collect them. In the same transaction, as
+            // in [enqueueUpload]: after a switch the name may be the next
+            // account's.
+            return writeUnder(generation) {
+                attachmentDao.delete(key)
+                deleteStagedFile(key)
+            }
         }
 
         override suspend fun renameForRemoteCollision(
             pageId: Long,
             fileName: String,
+        ): String? = accountGeneration.bound { generation -> renameForRemoteCollisionBound(pageId, fileName, generation) }
+
+        private suspend fun renameForRemoteCollisionBound(
+            pageId: Long,
+            fileName: String,
+            generation: Long,
         ): String? {
             val oldKey = AttachmentEntity.key(pageId, fileName)
             val row = attachmentDao.getById(oldKey) ?: return null
@@ -358,7 +438,7 @@ class AttachmentRepositoryImpl
             // handing back one it will refuse for the same reason. Offline,
             // or on a failure, the resolver still bumps past our own row and
             // the next 412 brings us back here.
-            refresh(pageId)
+            refreshBound(pageId, generation)
             val newName = resolveCollisionFreeName(pageId, fileName)
             val newKey = AttachmentEntity.key(pageId, newName)
             if (newKey == oldKey) return null
@@ -367,11 +447,13 @@ class AttachmentRepositoryImpl
             // row with no bytes behind it just fails again.
             val oldStaged = stagedFileFor(context, oldKey)
             val newStaged = stagedFileFor(context, newKey)
-            if (!oldStaged.exists() || !oldStaged.renameTo(newStaged)) {
-                Timber.w("Couldn't move the staged copy of %s aside", oldKey)
-                return null
-            }
-            database.withTransaction {
+            // The file and the row move together, under the generation, as
+            // in [enqueueUpload]: after a switch both names may be the next
+            // account's.
+            var moved = false
+            val recorded = writeUnder(generation) {
+                moved = oldStaged.exists() && oldStaged.renameTo(newStaged)
+                if (!moved) return@writeUnder
                 attachmentDao.delete(oldKey)
                 attachmentDao.upsert(
                     row.copy(
@@ -387,9 +469,20 @@ class AttachmentRepositoryImpl
                     ),
                 )
             }
+            if (!recorded) return null
+            if (!moved) {
+                Timber.w("Couldn't move the staged copy of %s aside", oldKey)
+                return null
+            }
             Timber.i("Attachment name %s was taken on the server; re-queued as %s", fileName, newName)
             return newName
         }
+
+        /** [NcCollectivesDatabase.writeUnder] on this repository's cache. */
+        private suspend fun writeUnder(
+            generation: Long,
+            writes: suspend () -> Unit,
+        ): Boolean = database.writeUnder(accountGeneration, generation, writes)
 
         private fun deleteStagedFile(attachmentId: String) {
             val staged = stagedFileFor(context, attachmentId)
@@ -440,6 +533,15 @@ class AttachmentRepositoryImpl
         override suspend fun downloadForViewing(
             pageId: Long,
             relativePath: String,
+        ): ApiResult<OpenableAttachment> =
+            accountGeneration.bound { generation ->
+                downloadForViewingBound(pageId, relativePath, generation)
+            }
+
+        private suspend fun downloadForViewingBound(
+            pageId: Long,
+            relativePath: String,
+            generation: Long,
         ): ApiResult<OpenableAttachment> {
             val page = pageDao.getById(pageId)
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
@@ -464,7 +566,7 @@ class AttachmentRepositoryImpl
             val refDir = segments.dropLast(1).joinToString("/")
             val filePath = if (refDir.isEmpty()) page.filePath else combinePath(page.filePath, refDir)
 
-            val target = viewCacheFileFor(context, pageId, fileName)
+            val target = viewCacheFileFor(context, generation, pageId, fileName)
             target.parentFile?.mkdirs()
             val result = bodyService.downloadTo(
                 collectivePath = page.collectivePath,
@@ -480,6 +582,13 @@ class AttachmentRepositoryImpl
                 target.delete()
                 @Suppress("UNCHECKED_CAST")
                 return result as ApiResult<OpenableAttachment>
+            }
+            // Not handed out once its account has gone: the file is the
+            // outgoing account's, and a viewer opened now would show it in
+            // the next account's session.
+            if (!accountGeneration.isCurrent(generation)) {
+                target.delete()
+                return accountChanged()
             }
             val uri = try {
                 FileProvider.getUriForFile(
@@ -608,15 +717,19 @@ class AttachmentRepositoryImpl
              * a same-named attachment can't serve each other's bytes, and
              * kept separate from `attachments-pending/` so the upload
              * worker's cleanup can never delete a file a viewer app is
-             * currently reading through our FileProvider grant.
+             * currently reading through our FileProvider grant. Namespaced
+             * by account [generation] too, so a download that a switch
+             * overtakes writes, and on failure deletes, only its own
+             * account's file, never the next account's of the same name.
              */
             fun viewCacheFileFor(
                 context: Context,
+                generation: Long,
                 pageId: Long,
                 fileName: String,
             ): File =
                 File(
-                    File(File(context.cacheDir, "attachments-view"), pageId.toString()),
+                    File(File(File(context.cacheDir, "attachments-view"), "g$generation"), pageId.toString()),
                     fileName.replace('/', '_'),
                 )
 

@@ -22,6 +22,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v9: `collectives.circleId` / `.level` / `.userShowMembers`
  *    added (B-83)
  *  - v10: `edit_queue.attempts` / `attachments.attempts` added (issue #30)
+ *  - v11: `collectives.userPageOrder` and `pages (serverTimestamp)` index
+ *  - v12: `pages.lastUserId` / `.bodyTimestamp`; `page_views` introduced
+ *  - v13: `collectives.userNotify`; `alerts` introduced
  *
  * Each [Migration] is verified by `MigrationTest` in `androidTest`, which
  * evolves a fresh DB through the chain and asserts the final schema
@@ -208,6 +211,67 @@ internal val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+/**
+ * What Home needs to answer "what changed, and have I seen it".
+ *
+ * `pages.lastUserId` is the server uid of the last editor, which the page
+ * list has always sent and the cache dropped. Pre-v12 rows take '' — no
+ * known editor — until the next `refresh()` fills it in.
+ *
+ * `pages.bodyTimestamp` is the server mtime of the cached body. Pre-v12 rows
+ * take NULL, unknown, so each body is fetched whole once more on its next
+ * open and the timestamp comes with it.
+ *
+ * `page_views` is new, local-only history: which pages this device has shown,
+ * when, and the newest version of each the user has seen.
+ */
+internal val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `pages` ADD COLUMN `lastUserId` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `pages` ADD COLUMN `bodyTimestamp` INTEGER")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `page_views` (" +
+                "`pageId` INTEGER NOT NULL, " +
+                "`lastViewedAt` INTEGER NOT NULL, " +
+                "`seenTimestamp` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`pageId`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_page_views_lastViewedAt` ON `page_views` (`lastViewedAt`)")
+    }
+}
+
+/**
+ * What the Alerts tab needs.
+ *
+ * `collectives.userNotify` is the user's per-collective notification level,
+ * which the collective list has sent and the cache dropped. Pre-v13 rows
+ * take NULL, not reported, until the next collective refresh fills it in.
+ *
+ * `alerts` is new: the last fetched notifications about collective pages,
+ * so the tab renders offline.
+ */
+internal val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `userNotify` INTEGER")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `alerts` (" +
+                "`id` INTEGER NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`pageId` INTEGER NOT NULL, " +
+                "`collectiveId` INTEGER, " +
+                "`actorName` TEXT, " +
+                "`pageTitle` TEXT, " +
+                "`collectiveName` TEXT, " +
+                "`subject` TEXT NOT NULL, " +
+                "`timestamp` INTEGER NOT NULL, " +
+                "`verified` INTEGER NOT NULL, " +
+                "`seen` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_alerts_timestamp` ON `alerts` (`timestamp`)")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -219,4 +283,6 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_8_9,
     MIGRATION_9_10,
     MIGRATION_10_11,
+    MIGRATION_11_12,
+    MIGRATION_12_13,
 )

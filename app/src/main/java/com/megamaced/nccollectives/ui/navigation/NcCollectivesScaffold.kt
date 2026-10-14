@@ -5,21 +5,35 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItem
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.navigationsuite.rememberNavigationSuiteScaffoldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -49,35 +63,32 @@ internal class AuthGateViewModel
         val sharePayload: StateFlow<SharePayload?> = sharePayloadHolder.payload
 
         /**
-         * Collective to open straight into on launch, or null to stay on the
-         * collective list.
+         * Where to land on launch: Home, the collective list, or a collective.
          *
-         * The stored default is validated against the Room cache rather than
-         * trusted blind — the collective may have been trashed or deleted
-         * server-side since the user picked it, and navigating to a dead id
-         * would drop them into an empty page tree with no explanation. The
-         * decision itself lives in [resolveStartupRoute]; this just does the
-         * two reads and acts on the verdict.
+         * The stored startup collective is validated against the Room cache
+         * rather than trusted blind — the collective may have been trashed or
+         * deleted server-side since the user picked it, and navigating to a
+         * dead id would drop them into an empty page tree with no explanation.
+         * The decision itself lives in [resolveStartupRoute]; this does the
+         * reads and acts on the verdict, so the result is never
+         * [StartupRoute.StaleDefault].
          *
          * `cachedCollectives()` is the one-shot snapshot read (R-30) — no
          * point starting a Flow subscription for a single launch decision.
          */
-        suspend fun resolveStartupCollective(): Long? {
-            val wanted = userPreferences.flow.first().defaultCollectiveId
+        suspend fun startupRoute(): StartupRoute {
+            val prefs = userPreferences.flow.first()
+            val wanted = prefs.defaultCollectiveId
             val cachedIds = if (wanted == null) emptyList() else collectiveRepository.cachedCollectives().map { it.id }
-            return when (val route = resolveStartupRoute(wanted, cachedIds)) {
-                is StartupRoute.OpenCollective -> {
-                    route.collectiveId
-                }
-
-                StartupRoute.CollectiveList -> {
-                    null
-                }
-
-                StartupRoute.StaleDefault -> {
+            return when (val route = resolveStartupRoute(prefs.startScreen, wanted, cachedIds)) {
+                is StartupRoute.StaleDefault -> {
                     Timber.i("Default collective %d no longer exists; clearing the setting", wanted)
                     userPreferences.setDefaultCollectiveId(null)
-                    null
+                    route.fallback
+                }
+
+                else -> {
+                    route
                 }
             }
         }
@@ -124,7 +135,7 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
         AuthState.Authenticated -> {
             AuthenticatedHost(
                 sharePayload = sharePayload,
-                resolveStartupCollective = viewModel::resolveStartupCollective,
+                startupRoute = viewModel::startupRoute,
             )
         }
     }
@@ -133,11 +144,19 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
 @Composable
 private fun AuthenticatedHost(
     sharePayload: SharePayload?,
-    resolveStartupCollective: suspend () -> Long?,
+    startupRoute: suspend () -> StartupRoute,
+    alertBadge: AlertBadgeViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
+    val unseenAlerts by alertBadge.unseenCount.collectAsStateWithLifecycle()
+    LifecycleStartEffect(alertBadge) {
+        alertBadge.refreshIfStale()
+        onStopOrDispose { }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
+    val destination = backStackEntry?.destination
+    val currentRoute = destination?.route
+    val currentTab = destination?.topLevelTab()
 
     // Keyed on the payload *identity*, not on `!= null` (B-80): a second
     // share arriving while the first is still unconsumed leaves presence
@@ -146,47 +165,110 @@ private fun AuthenticatedHost(
     // navigation is needed — `ShareCaptureViewModel` observes the holder
     // and swaps its own state.
     LaunchedEffect(sharePayload) {
-        if (sharePayload != null && currentRoute != Destination.ShareCapture.route) {
-            navController.navigate(Destination.ShareCapture.route) {
+        if (sharePayload != null && currentRoute != Destination.ShareCapture.ROUTE) {
+            navController.navigate(Destination.ShareCapture.ROUTE) {
                 launchSingleTop = true
             }
         }
     }
 
-    // "Open this collective on launch" (Settings → Startup). Fires at most
-    // once per launch.
+    // Settings → Startup. Fires at most once per launch.
     //
     // `rememberSaveable`, not `remember`: a configuration change recreates
     // the activity, and with a plain `remember` the user would be yanked back
-    // into their default collective every time they rotated the phone while
-    // on the collective list. Saved state is dropped on a genuine cold start,
-    // which is exactly when we *do* want to route again. (Same reasoning as
-    // B-37 on `PageViewScreen.pendingTrash`.)
+    // to their startup destination every time they rotated the phone. Saved
+    // state is dropped on a genuine cold start, which is exactly when we *do*
+    // want to route again. (Same reasoning as B-37 on
+    // `PageViewScreen.pendingTrash`.)
     var startupRouted by rememberSaveable { mutableStateOf(false) }
     // Presence, not identity: this must fire at most once per launch, so a
     // second share must not re-run it (it is `startupRouted`-guarded too).
     LaunchedEffect(sharePayload != null) {
         if (startupRouted) return@LaunchedEffect
         // A share intent is the whole reason the app was opened — it wins,
-        // and we mark startup handled so the default doesn't land on top of
-        // the capture screen once the payload is consumed.
+        // and we mark startup handled so the startup destination doesn't land
+        // on top of the capture screen once the payload is consumed.
         startupRouted = true
         if (sharePayload != null) return@LaunchedEffect
-        val collectiveId = resolveStartupCollective() ?: return@LaunchedEffect
+        val route = startupRoute()
         // Reading DataStore + Room takes a moment; if the user has already
-        // tapped a collective (or anything else) in that window, don't yank
-        // them somewhere they didn't ask for. `currentDestination` is read
-        // live rather than through the captured `currentRoute` snapshot.
-        if (navController.currentDestination?.route != Destination.Collectives.route) {
+        // tapped something in that window, don't yank them somewhere they
+        // didn't ask for. `currentDestination` is read live rather than
+        // through the captured `currentRoute` snapshot.
+        if (navController.currentDestination?.route != TopLevelTab.Home.rootRoute) {
             return@LaunchedEffect
         }
-        // Pushed on top of the list rather than replacing it, so Back still
-        // reaches the picker — otherwise setting a default would leave no way
-        // to switch collectives.
-        navController.navigate(Destination.PageTree.route(collectiveId))
+        when (route) {
+            StartupRoute.Home, is StartupRoute.StaleDefault -> {
+                Unit
+            }
+
+            StartupRoute.CollectiveList -> {
+                navController.navigateToTab(TopLevelTab.Collectives)
+            }
+
+            // Pushed on top of the collective list rather than replacing it,
+            // so Back still reaches the list — otherwise setting a startup
+            // collective would leave no way to switch collectives.
+            is StartupRoute.OpenCollective -> {
+                navController.navigateToTab(TopLevelTab.Collectives)
+                navController.navigate(Destination.PageTree.route(TopLevelTab.Collectives, route.collectiveId))
+            }
+        }
     }
 
-    Scaffold { innerPadding ->
-        NcCollectivesNavHost(navController = navController, innerPadding = innerPadding)
+    val navigationState = rememberNavigationSuiteScaffoldState()
+    val navigationScope = rememberCoroutineScope()
+    val navigationBar = remember(navigationState, navigationScope) {
+        NavigationBarController(navigationState, navigationScope)
+    }
+    // A screen may hide the bar while its content scrolls (the page view
+    // does); every new destination starts with it showing.
+    LaunchedEffect(backStackEntry?.id) { navigationBar.show() }
+
+    val adaptiveType = NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfo())
+    LaunchedEffect(adaptiveType) { navigationBar.hidesOnScroll = adaptiveType.isHorizontalBar() }
+    val navigationType =
+        if (destination == null || !destination.showsNavigationBar()) NavigationSuiteType.None else adaptiveType
+
+    NavigationSuiteScaffold(
+        navigationItems = {
+            TopLevelTab.entries.forEach { tab ->
+                val selected = tab == currentTab
+                NavigationSuiteItem(
+                    selected = selected,
+                    onClick = {
+                        if (selected) navController.reselectTab(tab) else navController.navigateToTab(tab)
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                            contentDescription = null,
+                        )
+                    },
+                    label = { Text(tab.label) },
+                    badge = if (tab == TopLevelTab.Alerts && unseenAlerts > 0) {
+                        {
+                            Badge(
+                                modifier = Modifier.semantics {
+                                    contentDescription = "$unseenAlerts new"
+                                },
+                            ) { Text(badgeText(unseenAlerts)) }
+                        }
+                    } else {
+                        null
+                    },
+                    navigationSuiteType = adaptiveType,
+                )
+            }
+        },
+        navigationSuiteType = navigationType,
+        state = navigationState,
+    ) {
+        CompositionLocalProvider(LocalNavigationBarController provides navigationBar) {
+            Scaffold { innerPadding ->
+                NcCollectivesNavHost(navController = navController, innerPadding = innerPadding)
+            }
+        }
     }
 }

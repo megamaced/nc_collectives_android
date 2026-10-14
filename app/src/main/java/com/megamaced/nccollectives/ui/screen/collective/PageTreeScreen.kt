@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,11 +26,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +47,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,7 @@ import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
+import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.pageEditedLine
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -79,8 +81,6 @@ internal fun PageTreeScreen(
     onBack: () -> Unit,
     onPageClick: (Long) -> Unit,
     onOpenTrash: (Long) -> Unit,
-    onOpenSearch: () -> Unit,
-    onOpenFavorites: () -> Unit,
     onOpenMembers: () -> Unit,
     viewModel: PageTreeViewModel = hiltViewModel(),
 ) {
@@ -88,9 +88,9 @@ internal fun PageTreeScreen(
     val nodes by viewModel.nodes.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // `null` means closed. A `Long` value means "show the new-page dialog with
-    // this fixed parent" (per-row subpage). `0L` for the top-bar action opens
-    // the dialog with a parent picker.
+    // `null` means closed. [NewPageMode.FixedParent] opens the new-page dialog
+    // under that parent (a row's subpage action); [NewPageMode.PickParent]
+    // opens it with a parent picker (the New page button).
     var newPageMode by remember { mutableStateOf<NewPageMode?>(null) }
 
     SnackbarStatusEffect(ui.statusMessage, snackbarHostState, viewModel::dismissStatus)
@@ -109,6 +109,9 @@ internal fun PageTreeScreen(
     }
 
     val isCompactWidth = LocalConfiguration.current.screenWidthDp < 600
+    val lazyListState = rememberLazyListState()
+    // Labelled at the top of the tree, icon-only once scrolled into it.
+    val fabExpanded by remember { derivedStateOf { lazyListState.firstVisibleItemIndex == 0 } }
 
     Scaffold(
         modifier = Modifier.padding(innerPadding),
@@ -127,21 +130,22 @@ internal fun PageTreeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Outlined.Search, contentDescription = "Search")
-                    }
-                    IconButton(onClick = onOpenFavorites) {
-                        Icon(Icons.Outlined.Bookmark, contentDescription = "Favorites")
-                    }
                     IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Trash")
-                    }
-                    IconButton(onClick = { newPageMode = NewPageMode.PickParent }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New page")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                text = { Text("New page") },
+                // The label slot is hidden from accessibility services, so the
+                // icon carries the button's name, expanded or not.
+                icon = { Icon(Icons.Filled.Add, contentDescription = "New page") },
+                onClick = { newPageMode = NewPageMode.PickParent },
+                expanded = fabExpanded,
             )
         },
         snackbarHost = {
@@ -169,6 +173,7 @@ internal fun PageTreeScreen(
                 },
             ) {
                 PageTreeList(
+                    lazyListState = lazyListState,
                     nodes = nodes,
                     expanded = ui.expanded,
                     landingPage = ui.landingPage,
@@ -215,18 +220,9 @@ private fun pageOrderLabel(order: PageOrder): String =
         PageOrder.OldestFirst -> "Oldest first"
     }
 
-private sealed interface NewPageMode {
-    /** Top-bar action — let the user pick a parent. */
-    object PickParent : NewPageMode
-
-    /** Per-row "+" action — parent is fixed. */
-    data class FixedParent(
-        val parentId: Long,
-    ) : NewPageMode
-}
-
 @Composable
 private fun PageTreeList(
+    lazyListState: LazyListState,
     nodes: List<PageNode>,
     expanded: Set<Long>,
     landingPage: com.megamaced.nccollectives.domain.model.Page?,
@@ -256,7 +252,6 @@ private fun PageTreeList(
     // only honest if they age while the screen is open.
     val nowMillis by rememberNowMillis()
 
-    val lazyListState = rememberLazyListState()
     val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
         // Library passes `LazyListItemInfo`s. Headers carry String keys
         // ("header-recent", …); tree rows carry the page id as Long. We
@@ -272,6 +267,7 @@ private fun PageTreeList(
     LazyColumn(
         state = lazyListState,
         modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
     ) {
         // Members first, then Recent pages, then the landing card: the web
         // client renders its members widget above recent pages, and keeping
@@ -444,142 +440,6 @@ private fun PageTreeItem(
                 contentDescription = "New subpage",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NewPageDialog(
-    mode: NewPageMode,
-    parentChoices: List<PageListItem>,
-    onCreate: (Long, String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var title by remember { mutableStateOf("") }
-    var pickedParentId by remember(mode) {
-        mutableStateOf(
-            when (mode) {
-                is NewPageMode.FixedParent -> mode.parentId
-
-                NewPageMode.PickParent -> parentChoices.firstOrNull { it.parentId == 0L }?.id
-                    ?: parentChoices.firstOrNull()?.id
-            },
-        )
-    }
-    var showParentSheet by remember { mutableStateOf(false) }
-
-    val pickedParent = parentChoices.firstOrNull { it.id == pickedParentId }
-    val canCreate = title.isNotBlank() && pickedParentId != null
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New page") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (mode is NewPageMode.PickParent) {
-                    Text("Where should this page go?", style = MaterialTheme.typography.bodyMedium)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(role = Role.Button) { showParentSheet = true }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = pickedParent?.emoji?.takeIf { it.isNotBlank() } ?: "📁",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = pickedParent?.title ?: "Pick a parent…",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (pickedParent != null) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    singleLine = true,
-                    label = { Text("Title") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        if (canCreate) onCreate(pickedParentId!!, title.trim())
-                    }),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = canCreate,
-                onClick = { onCreate(pickedParentId!!, title.trim()) },
-            ) { Text("Create") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-
-    if (showParentSheet) {
-        ParentPickerSheet(
-            choices = parentChoices,
-            onPick = {
-                pickedParentId = it.id
-                showParentSheet = false
-            },
-            onDismiss = { showParentSheet = false },
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ParentPickerSheet(
-    choices: List<PageListItem>,
-    onPick: (PageListItem) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("Pick a parent page", style = MaterialTheme.typography.titleMedium)
-            if (choices.isEmpty()) {
-                Text(
-                    text = "No folder pages available.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-                    items(choices, key = { it.id }) { page ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPick(page) }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                text = page.emoji?.takeIf { it.isNotBlank() } ?: "📁",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(text = page.title, style = MaterialTheme.typography.bodyLarge)
-                        }
-                    }
-                }
-            }
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel")
-            }
         }
     }
 }

@@ -2,8 +2,10 @@ package com.megamaced.nccollectives.domain.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.domain.model.TagCount
 import kotlinx.coroutines.flow.Flow
 
 interface PageRepository {
@@ -42,11 +44,55 @@ interface PageRepository {
 
     /**
      * Most-recently-edited non-trashed pages across every collective,
-     * landing pages excluded. Backs the "Recent pages" strip on the
-     * collective list. Reads the cache only, so it is as fresh as the last
-     * metadata sync or collective open.
+     * landing pages excluded. Backs Home's "Recently updated". Reads the
+     * cache only, so it is as fresh as the last metadata sync or collective
+     * open.
      */
     fun observeRecentPagesAcrossCollectives(limit: Int): Flow<List<PageListItem>>
+
+    /**
+     * Note that [pageId] is on screen now, showing the server version from
+     * [shownVersion] (seconds; null or 0 when unknown, including the user's
+     * own queued text). Local-only history for Home: the version only ever
+     * moves forward, so showing an older cached body offline never marks a
+     * newer one as read.
+     *
+     * [generation] is the `AccountGeneration` the screen was opened under.
+     * Nothing is written if the account has changed since, or if the page
+     * has left the cache.
+     */
+    suspend fun recordView(
+        pageId: Long,
+        shownVersion: Long?,
+        generation: Long,
+    )
+
+    /** Pages this device has shown, most recently viewed first. */
+    fun observeRecentlyViewed(limit: Int): Flow<List<PageListItem>>
+
+    /**
+     * Pages the user has been shown that someone other than [userId] has
+     * changed since, newest change first.
+     */
+    fun observeUpdatedSinceViewed(
+        userId: String,
+        limit: Int,
+    ): Flow<List<PageListItem>>
+
+    /** Pages whose last editor is [userId], newest first. */
+    fun observeLastEditedBy(
+        userId: String,
+        limit: Int,
+    ): Flow<List<PageListItem>>
+
+    /** Conflicts to resolve and edits not yet sent, on live pages in live collectives. */
+    fun observeAttention(): Flow<PageAttention>
+
+    /** Every tag on a live cached page, most used first, then by name. */
+    fun observeTagCounts(): Flow<List<TagCount>>
+
+    /** [observePagesWithTagInCollective] across every collective. */
+    fun observePagesWithTag(tagName: String): Flow<List<PageListItem>>
 
     /**
      * The direct children of [parentId] in [collectiveId], unordered — the

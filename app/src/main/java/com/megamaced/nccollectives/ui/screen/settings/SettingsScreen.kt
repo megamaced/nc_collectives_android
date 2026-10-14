@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.auth.AccountSummary
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.StartScreen
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
 import com.megamaced.nccollectives.data.prefs.TextScale
@@ -228,15 +229,17 @@ internal fun SettingsScreen(
 
             SectionHeader("Startup")
             Text(
-                "Open a collective straight away instead of the collective list. " +
-                    "Back from the collective still returns to the list.",
+                "Where the app opens. A collective opens in the Collectives tab, " +
+                    "so Back from it still reaches the collective list.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            DefaultCollectiveOptions(
+            StartupOptions(
                 collectives = ui.collectives,
-                selectedId = ui.defaultCollectiveId,
-                onSelect = viewModel::setDefaultCollective,
+                startScreen = ui.startScreen,
+                selectedCollectiveId = ui.defaultCollectiveId,
+                onSelectScreen = viewModel::setStartScreen,
+                onSelectCollective = viewModel::setDefaultCollective,
             )
 
             SectionBreak()
@@ -585,21 +588,28 @@ private fun EditorPreferenceOptions(
 }
 
 /**
- * Startup-destination picker: "Collective list" plus one row per cached
- * collective. Radio rows rather than a dropdown to match the rest of this
- * screen; the enclosing Column already scrolls, so a long list is fine.
+ * Startup-destination picker: Home, the collective list, then one row per
+ * cached collective. Radio rows rather than a dropdown to match the rest of
+ * this screen; the enclosing Column already scrolls, so a long list is fine.
  */
 @Composable
-private fun DefaultCollectiveOptions(
+private fun StartupOptions(
     collectives: List<Collective>,
-    selectedId: Long?,
-    onSelect: (Long?) -> Unit,
+    startScreen: StartScreen,
+    selectedCollectiveId: Long?,
+    onSelectScreen: (StartScreen) -> Unit,
+    onSelectCollective: (Long) -> Unit,
 ) {
     Column {
         RadioRow(
-            label = "Collective list (default)",
-            selected = selectedId == null,
-            onClick = { onSelect(null) },
+            label = "Home (default)",
+            selected = selectedCollectiveId == null && startScreen == StartScreen.Home,
+            onClick = { onSelectScreen(StartScreen.Home) },
+        )
+        RadioRow(
+            label = "Collective list",
+            selected = selectedCollectiveId == null && startScreen == StartScreen.CollectiveList,
+            onClick = { onSelectScreen(StartScreen.CollectiveList) },
         )
         collectives.forEach { collective ->
             RadioRow(
@@ -607,8 +617,8 @@ private fun DefaultCollectiveOptions(
                     collective.emoji?.takeIf { it.isNotBlank() },
                     collective.name,
                 ).joinToString(" "),
-                selected = selectedId == collective.id,
-                onClick = { onSelect(collective.id) },
+                selected = selectedCollectiveId == collective.id,
+                onClick = { onSelectCollective(collective.id) },
             )
         }
         if (collectives.isEmpty()) {

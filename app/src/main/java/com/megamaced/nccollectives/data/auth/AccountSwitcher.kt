@@ -6,7 +6,6 @@ import com.megamaced.nccollectives.sync.SyncScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -66,7 +65,8 @@ class AccountSwitcher
          *
          * No-ops when it is already active or names no stored account, so a
          * double tap or a switch racing a removal cannot strand the user in
-         * [AuthState.Switching].
+         * [AuthState.Switching]. Checked again when its turn comes, since a
+         * change ahead of it may have made it moot.
          */
         fun switchTo(accountId: String) {
             if (accountId == tokenStore.activeAccountId()) return
@@ -74,9 +74,14 @@ class AccountSwitcher
                 Timber.w("Ignoring a switch to an account that is no longer stored")
                 return
             }
-            beginSwitch()
-            scope.launch {
-                if (!wipeOrAbandon("switching account")) return@launch
+            sessionManager.launchChange(scope, begin = ::beginSwitch) {
+                if (accountId == tokenStore.activeAccountId() || tokenStore.accounts().none { it.id == accountId }) {
+                    // Nothing left to switch — but a change ahead of this one
+                    // left landing the session to it.
+                    finishSwitch()
+                    return@launchChange
+                }
+                if (!wipeOrAbandon("switching account")) return@launchChange
                 tokenStore.setActiveAccount(accountId)
                 finishSwitch()
             }
@@ -95,6 +100,10 @@ class AccountSwitcher
          *    the app password and keep the cache. A revoked app password is
          *    re-established without the user losing their offline copy.
          *  - anything else → a switch, with the wipe.
+         *
+         * Decided when its turn comes, in the queue of session changes: a
+         * sign-in arriving while a sign-out is still wiping waits for it, so
+         * the sign-out's credential clear can't take the new one with it.
          */
         fun signInTo(
             host: String,
@@ -102,20 +111,20 @@ class AccountSwitcher
             appPassword: String,
         ) {
             val incomingId = accountIdOf(host, loginName)
-            val activeId = tokenStore.activeAccountId()
-            if (activeId == null || activeId == incomingId) {
-                sessionManager.onLoginSuccess(host, loginName, appPassword)
-                // The periodic job is cancelled by every wipe and only
-                // scheduled from `Application.onCreate`, so without this a
-                // sign-in later in the same process leaves background sync
-                // switched off until the app is next cold-started.
-                syncScheduler.reschedulePeriodic()
-                syncScheduler.syncNow()
-                return
-            }
-            beginSwitch()
-            scope.launch {
-                if (!wipeOrAbandon("adding an account")) return@launch
+
+            fun isSwitch(): Boolean = tokenStore.activeAccountId().let { it != null && it != incomingId }
+            sessionManager.launchChange(scope, begin = { if (isSwitch()) beginSwitch() }) {
+                if (!isSwitch()) {
+                    if (!sessionManager.onLoginSuccess(host, loginName, appPassword)) return@launchChange
+                    // The periodic job is cancelled by every wipe and only
+                    // scheduled from `Application.onCreate`, so without this a
+                    // sign-in later in the same process leaves background sync
+                    // switched off until the app is next cold-started.
+                    syncScheduler.reschedulePeriodic()
+                    syncScheduler.syncNow()
+                    return@launchChange
+                }
+                if (!wipeOrAbandon("adding an account")) return@launchChange
                 tokenStore.upsertAndActivate(host, loginName, appPassword)
                 finishSwitch()
             }
@@ -160,14 +169,25 @@ class AccountSwitcher
             if (tokenStore.accounts().none { it.id == accountId }) return
             if (accountId != tokenStore.activeAccountId()) {
                 // None of this account's data is on the device, so there is
-                // nothing to wipe and no reason to disturb the live session.
-                tokenStore.removeAccount(accountId)
-                sessionManager.refreshState()
+                // nothing to wipe and no reason to disturb the live session —
+                // but it still waits its turn, so it can't pull an account
+                // out from under a switch to it.
+                sessionManager.launchChange(scope, begin = {}) {
+                    tokenStore.removeAccount(accountId)
+                    sessionManager.refreshAccounts()
+                    if (sessionManager.landIfDeferred()) syncIncoming()
+                }
                 return
             }
-            beginSwitch()
-            scope.launch {
-                if (!wipeOrAbandon(what)) return@launch
+            sessionManager.launchChange(scope, begin = ::beginSwitch) {
+                if (tokenStore.accounts().none { it.id == accountId } || accountId != tokenStore.activeAccountId()) {
+                    // Gone, or no longer the live account, by the time its turn
+                    // came: nothing of it is cached to wipe.
+                    tokenStore.removeAccount(accountId)
+                    finishSwitch()
+                    return@launchChange
+                }
+                if (!wipeOrAbandon(what)) return@launchChange
                 val nextActive = tokenStore.removeAccount(accountId)
                 if (nextActive == null) {
                     // That was the last account. `endAccountSwitch` re-derives
@@ -215,7 +235,12 @@ class AccountSwitcher
         }
 
         private fun finishSwitch() {
-            sessionManager.endAccountSwitch()
+            // Another change waiting behind this one lands the session, and
+            // syncs it, instead.
+            if (sessionManager.endAccountSwitch()) syncIncoming()
+        }
+
+        private fun syncIncoming() {
             if (tokenStore.activeAccountId() == null) return
             // Nothing is cached for the incoming account, so the app would
             // otherwise open on an empty collective list until the next

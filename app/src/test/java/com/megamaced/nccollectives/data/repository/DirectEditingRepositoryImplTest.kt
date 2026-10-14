@@ -95,6 +95,8 @@ class DirectEditingRepositoryImplTest {
             linkedPageIds = emptyList(),
             lastUserDisplayName = "",
             bodyMd = null,
+            bodyTimestamp = null,
+            bodyFromQueue = false,
             draftBodyMd = null,
         )
 }

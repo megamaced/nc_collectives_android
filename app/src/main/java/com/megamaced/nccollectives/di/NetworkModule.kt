@@ -7,8 +7,12 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.DirectEditingService
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import com.megamaced.nccollectives.data.api.HostInterceptor
+import com.megamaced.nccollectives.data.api.NotificationsApiService
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.ServerStatusService
+import com.megamaced.nccollectives.data.api.UserApiService
+import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -51,6 +55,7 @@ object NetworkModule {
     fun provideOkHttpClient(
         hostInterceptor: HostInterceptor,
         authInterceptor: AuthInterceptor,
+        accountBindingInterceptor: AccountBindingInterceptor,
     ): OkHttpClient =
         OkHttpClient
             .Builder()
@@ -74,6 +79,9 @@ object NetworkModule {
             // been established.
             .addInterceptor(hostInterceptor)
             .addInterceptor(authInterceptor)
+            // After both, so it judges the host and password they have just
+            // read: see `AccountBindingInterceptor`.
+            .addInterceptor(accountBindingInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(
@@ -89,14 +97,14 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(
-        client: OkHttpClient,
+        callFactory: AccountBoundCallFactory,
         json: Json,
     ): Retrofit {
         val contentType = "application/json".toMediaType()
         return Retrofit
             .Builder()
             .baseUrl(PLACEHOLDER_BASE_URL)
-            .client(client)
+            .callFactory(callFactory)
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
     }
@@ -130,6 +138,14 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideServerStatusService(retrofit: Retrofit): ServerStatusService = retrofit.create(ServerStatusService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideUserApi(retrofit: Retrofit): UserApiService = retrofit.create(UserApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideNotificationsApi(retrofit: Retrofit): NotificationsApiService = retrofit.create(NotificationsApiService::class.java)
 
     /**
      * Separate OkHttp / Retrofit pair for the GitHub Releases API used by

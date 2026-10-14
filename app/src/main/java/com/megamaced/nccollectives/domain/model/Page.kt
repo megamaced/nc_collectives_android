@@ -34,6 +34,18 @@ data class Page(
     val lastUserDisplayName: String,
     /** Cached markdown body once first fetched. Null until viewed. */
     val bodyMd: String?,
+    /**
+     * Server timestamp, in seconds, of the server version cached for this
+     * page — null when unknown. See `PageEntity.bodyTimestamp`. When
+     * [bodyFromQueue], [bodyMd] is the user's queued edit and this is *not*
+     * its version.
+     */
+    val bodyTimestamp: Long?,
+    /**
+     * Whether [bodyMd] is the user's own edit still queued for the server
+     * (issue #18's overlay) rather than the server's text.
+     */
+    val bodyFromQueue: Boolean,
     /** Local draft that lost an etag race; null when no draft exists. */
     val draftBodyMd: String?,
 )

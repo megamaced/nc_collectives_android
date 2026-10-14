@@ -4,6 +4,7 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.PageOrder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -41,6 +42,15 @@ interface CollectiveRepository {
     suspend fun setPageOrder(
         collectiveId: Long,
         order: PageOrder,
+    ): ApiResult<Unit>
+
+    /**
+     * Set how much [collectiveId] notifies the user. Stored server-side per
+     * user, like [setPageOrder], and applied to Room first in the same way.
+     */
+    suspend fun setNotifyLevel(
+        collectiveId: Long,
+        level: NotifyLevel,
     ): ApiResult<Unit>
 
     /**

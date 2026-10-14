@@ -30,6 +30,12 @@ interface CollectiveDao {
         pageOrder: Int,
     )
 
+    @Query("UPDATE collectives SET userNotify = :notify WHERE id = :id")
+    suspend fun updateNotify(
+        id: Long,
+        notify: Int?,
+    )
+
     @Query("UPDATE collectives SET emoji = :emoji WHERE id = :id")
     suspend fun updateEmoji(
         id: Long,

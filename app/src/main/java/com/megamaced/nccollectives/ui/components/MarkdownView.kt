@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import com.megamaced.nccollectives.util.AttachmentRef
 import com.megamaced.nccollectives.util.demoteNonImageEmbeds
@@ -49,7 +50,6 @@ import io.noties.markwon.syntax.SyntaxHighlightPlugin
 import io.noties.prism4j.Prism4j
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.IOException
 
@@ -111,12 +111,12 @@ fun MarkdownView(
     // has to be read through a latest-value holder or it would be pinned to
     // whatever it was when the theme last changed.
     val pageIdLatest by rememberUpdatedState(pageId)
-    val okHttpClient = remember {
+    val callFactory = remember {
         EntryPointAccessors
             .fromApplication(
                 context.applicationContext,
                 MarkdownViewEntryPoint::class.java,
-            ).okHttpClient()
+            ).callFactory()
     }
     val resolvedMarkdown = remember(markdown, imageBaseUrl) {
         // Batch 31 + footnotes: rewrite Nextcloud Text dialect
@@ -208,7 +208,7 @@ fun MarkdownView(
                 ImagesPlugin.create { plugin ->
                     plugin.addSchemeHandler(
                         PageDirectorySchemeHandler(
-                            delegate = OkHttpNetworkSchemeHandler.create(okHttpClient),
+                            delegate = OkHttpNetworkSchemeHandler.create(callFactory),
                             boundary = imageBoundary,
                         ),
                     )
@@ -522,5 +522,5 @@ private const val LINE_SPACING_MULTIPLIER = 1.2f
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface MarkdownViewEntryPoint {
-    fun okHttpClient(): OkHttpClient
+    fun callFactory(): AccountBoundCallFactory
 }

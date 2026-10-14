@@ -35,6 +35,8 @@ data class CollectiveEntity(
      * through the cache; `MIGRATION_10_11` back-fills 0, custom order.
      */
     val userPageOrder: Int,
+    /** The server's `userNotify`; null when it didn't send one. See `NotifyLevel`. */
+    val userNotify: Int?,
     val isPageShare: Boolean,
     val trashTimestamp: Long?,
     /** CSV of favorite-page ids; tiny lists, no need for a join table. */

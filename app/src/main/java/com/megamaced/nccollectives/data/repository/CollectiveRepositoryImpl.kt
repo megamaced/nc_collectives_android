@@ -8,11 +8,13 @@ import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.ifSuccess
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.dao.AttachmentDao
 import com.megamaced.nccollectives.data.db.dao.CollectiveDao
 import com.megamaced.nccollectives.data.db.dao.EditQueueDao
 import com.megamaced.nccollectives.data.db.dao.PageDao
+import com.megamaced.nccollectives.data.db.dao.PageViewDao
 import com.megamaced.nccollectives.data.mapper.toDomain
 import com.megamaced.nccollectives.data.mapper.toEntity
 import com.megamaced.nccollectives.data.toJsonLongArray
@@ -20,6 +22,7 @@ import com.megamaced.nccollectives.data.toLongCsvList
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +43,7 @@ class CollectiveRepositoryImpl
         private val pageDao: PageDao,
         private val attachmentDao: AttachmentDao,
         private val editQueueDao: EditQueueDao,
+        private val pageViewDao: PageViewDao,
         private val database: NcCollectivesDatabase,
         private val accountGeneration: AccountGeneration,
     ) : CollectiveRepository {
@@ -47,20 +51,20 @@ class CollectiveRepositoryImpl
 
         override suspend fun cachedCollectives(): List<Collective> = dao.list().map { it.toDomain() }
 
-        // Under [pageOrderLock]: see there for the race it closes.
+        // Under [userSettingsLock]: see there for the race it closes. Issue
+        // #20: the generation is captured before the request goes out and
+        // checked inside the transaction that writes its response, so a wipe
+        // landing in between abandons the write instead of resurrecting the
+        // outgoing account's collectives under the incoming one.
         override suspend fun refresh(): ApiResult<Unit> =
-            pageOrderLock.withLock {
-                refreshLocked()
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock {
+                    refreshLocked(generation)
+                }
             }
 
-        private suspend fun refreshLocked(): ApiResult<Unit> =
+        private suspend fun refreshLocked(generation: Long): ApiResult<Unit> =
             apiCall {
-                // Issue #20: captured before the request goes out, checked
-                // inside the transaction that writes its response, so a wipe
-                // landing in between abandons the write instead of
-                // resurrecting the outgoing account's collectives under the
-                // incoming one.
-                val generation = accountGeneration.current()
                 val now = System.currentTimeMillis()
                 val response = api.listCollectives()
                 val entities = response.ocs.data.collectives
@@ -96,10 +100,20 @@ class CollectiveRepositoryImpl
                 }
             }
 
+        // Bound from before the row is read, as everything here that reads
+        // the cache and then sends or writes what it read: see
+        // `AccountGeneration.bound`.
         override suspend fun toggleFavorite(
             collectiveId: Long,
             pageId: Long,
             favorite: Boolean,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> toggleFavoriteBound(collectiveId, pageId, favorite, generation) }
+
+        private suspend fun toggleFavoriteBound(
+            collectiveId: Long,
+            pageId: Long,
+            favorite: Boolean,
+            generation: Long,
         ): ApiResult<Unit> {
             val current = dao.getById(collectiveId) ?: return ApiResult.Unexpected(
                 IllegalStateException("Collective $collectiveId not cached"),
@@ -113,21 +127,25 @@ class CollectiveRepositoryImpl
             if (nextList == currentList) return ApiResult.Success(Unit)
 
             // Optimistic local update so the UI reflects the new state
-            // immediately. Roll back on failure.
-            dao.updateFavoritePagesCsv(collectiveId, nextList.joinToString(","))
+            // immediately. Roll back on failure, under the same generation:
+            // a request refused because the account changed must not then
+            // roll back a row that is now the next account's.
+            if (!writeUnder(generation) { dao.updateFavoritePagesCsv(collectiveId, nextList.joinToString(",")) }) return accountChanged()
             val result = apiCall {
                 api.setFavoritePages(collectiveId, nextList.toJsonLongArray())
             }
             if (result !is ApiResult.Success) {
-                dao.updateFavoritePagesCsv(collectiveId, current.userFavoritePagesCsv)
+                writeUnder(generation) { dao.updateFavoritePagesCsv(collectiveId, current.userFavoritePagesCsv) }
             }
             return result
         }
 
         /**
-         * Held by [setPageOrder] and by [refresh], each across its request
-         * *and* its cache write, so neither can land a stale `userPageOrder`
-         * over the other's.
+         * Held by the per-user setting setters ([setPageOrder],
+         * [setNotifyLevel]) and by [refresh], each across its request *and*
+         * its cache write, so none can land a stale `userPageOrder` or
+         * `userNotify` over another's. Page order is the worked example
+         * below; the notification level is the same in every respect.
          *
          * Between two setters: each takes the cached order as its rollback
          * point and restores it on failure, which is only right if no other
@@ -149,24 +167,46 @@ class CollectiveRepositoryImpl
          * emoji setters update their own columns only, and a create inserts
          * a collective no pick can be aimed at yet.
          */
-        private val pageOrderLock = Mutex()
+        private val userSettingsLock = Mutex()
 
         override suspend fun setPageOrder(
             collectiveId: Long,
             order: PageOrder,
         ): ApiResult<Unit> =
-            pageOrderLock.withLock {
-                val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
-                    IllegalStateException("Collective $collectiveId not cached"),
-                )
-                if (current.userPageOrder == order.wire) return@withLock ApiResult.Success(Unit)
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock {
+                    val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
+                        IllegalStateException("Collective $collectiveId not cached"),
+                    )
+                    if (current.userPageOrder == order.wire) return@withLock ApiResult.Success(Unit)
 
-                dao.updatePageOrder(collectiveId, order.wire)
-                val result = apiCall { api.setPageOrder(collectiveId, order.wire) }
-                if (result !is ApiResult.Success) {
-                    dao.updatePageOrder(collectiveId, current.userPageOrder)
+                    if (!writeUnder(generation) { dao.updatePageOrder(collectiveId, order.wire) }) return@withLock accountChanged()
+                    val result = apiCall { api.setPageOrder(collectiveId, order.wire) }
+                    if (result !is ApiResult.Success) {
+                        writeUnder(generation) { dao.updatePageOrder(collectiveId, current.userPageOrder) }
+                    }
+                    result
                 }
-                result
+            }
+
+        override suspend fun setNotifyLevel(
+            collectiveId: Long,
+            level: NotifyLevel,
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock {
+                    val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
+                        IllegalStateException("Collective $collectiveId not cached"),
+                    )
+                    if (current.userNotify == level.wire) return@withLock ApiResult.Success(Unit)
+
+                    if (!writeUnder(generation) { dao.updateNotify(collectiveId, level.wire) }) return@withLock accountChanged()
+                    val result = apiCall { api.setNotify(collectiveId, level.wire) }
+                    if (result !is ApiResult.Success) {
+                        writeUnder(generation) { dao.updateNotify(collectiveId, current.userNotify) }
+                    }
+                    result
+                }
             }
 
         override suspend fun createCollective(
@@ -178,18 +218,26 @@ class CollectiveRepositoryImpl
                 return ApiResult.Unexpected(IllegalArgumentException("Collective name must not be blank"))
             }
             val now = System.currentTimeMillis()
-            return apiCall {
-                api.createCollective(trimmedName, emoji?.takeIf { it.isNotBlank() })
-            }.mapSuccess { envelope ->
-                val dto = envelope.ocs.data.collective
-                dao.upsert(dto.toEntity(now))
-                dto.toEntity(now).toDomain()
+            return accountGeneration.bound { generation ->
+                apiCall {
+                    api.createCollective(trimmedName, emoji?.takeIf { it.isNotBlank() })
+                }.mapSuccess { envelope ->
+                    val dto = envelope.ocs.data.collective
+                    if (!writeUnder(generation) { dao.upsert(dto.toEntity(now)) }) return@bound accountChanged()
+                    dto.toEntity(now).toDomain()
+                }
             }
         }
 
         override suspend fun setCollectiveEmoji(
             collectiveId: Long,
             emoji: String,
+        ): ApiResult<Unit> = accountGeneration.bound { generation -> setCollectiveEmojiBound(collectiveId, emoji, generation) }
+
+        private suspend fun setCollectiveEmojiBound(
+            collectiveId: Long,
+            emoji: String,
+            generation: Long,
         ): ApiResult<Unit> {
             val current = dao.getById(collectiveId)
                 ?: return ApiResult.Unexpected(
@@ -201,15 +249,21 @@ class CollectiveRepositoryImpl
             val nextEmoji = emoji.takeIf { it.isNotBlank() }
             if (nextEmoji == previousEmoji) return ApiResult.Success(Unit)
 
-            dao.updateEmoji(collectiveId, nextEmoji)
+            if (!writeUnder(generation) { dao.updateEmoji(collectiveId, nextEmoji) }) return accountChanged()
             val result = apiCall { api.setCollectiveEmoji(collectiveId, emoji) }
             if (result !is ApiResult.Success) {
-                dao.updateEmoji(collectiveId, previousEmoji)
+                writeUnder(generation) { dao.updateEmoji(collectiveId, previousEmoji) }
             }
             return result.mapSuccess { }
         }
 
-        override suspend fun trashCollective(collectiveId: Long): ApiResult<Unit> {
+        override suspend fun trashCollective(collectiveId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation -> trashCollectiveBound(collectiveId, generation) }
+
+        private suspend fun trashCollectiveBound(
+            collectiveId: Long,
+            generation: Long,
+        ): ApiResult<Unit> {
             val result = apiCall { api.trashCollective(collectiveId) }
             if (result is ApiResult.Success) {
                 // Drop the row directly. The local cache only carries
@@ -227,43 +281,51 @@ class CollectiveRepositoryImpl
                 // trade: it could never have been written anyway, since its
                 // WebDAV path moved into the server-side trash with the
                 // collective.
-                database.withTransaction {
+                val recorded = writeUnder(generation) {
                     cascadeForCollectives(listOf(collectiveId))
                     dao.deleteById(collectiveId)
                 }
+                if (!recorded) return accountChanged()
             }
             return result.mapSuccess { }
         }
 
         override suspend fun listTrashedCollectives(): ApiResult<List<Collective>> {
             val now = System.currentTimeMillis()
-            return apiCall { api.listTrashedCollectives() }.mapSuccess { envelope ->
-                envelope.ocs.data.collectives
-                    .map { it.toEntity(now).toDomain() }
-            }
-        }
-
-        override suspend fun restoreTrashedCollective(collectiveId: Long): ApiResult<Unit> {
-            val result = apiCall { api.restoreTrashedCollective(collectiveId) }
-            return result
-                .ifSuccess {
-                    // Pick up the restored collective in the active-list cache.
-                    refresh()
-                }.mapSuccess { }
-        }
-
-        override suspend fun permanentlyDeleteCollective(collectiveId: Long): ApiResult<Unit> {
-            val result = apiCall {
-                api.permanentlyDeleteCollective(collectiveId, circle = true)
-            }
-            if (result is ApiResult.Success) {
-                database.withTransaction {
-                    cascadeForCollectives(listOf(collectiveId))
-                    dao.deleteById(collectiveId)
+            return accountGeneration.bound {
+                apiCall { api.listTrashedCollectives() }.mapSuccess { envelope ->
+                    envelope.ocs.data.collectives
+                        .map { it.toEntity(now).toDomain() }
                 }
             }
-            return result.mapSuccess { }
         }
+
+        override suspend fun restoreTrashedCollective(collectiveId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                val result = apiCall { api.restoreTrashedCollective(collectiveId) }
+                result
+                    .ifSuccess {
+                        // Pick up the restored collective in the active-list
+                        // cache: on this account, since `refresh` inherits it.
+                        refresh()
+                    }.mapSuccess { }
+                    .unlessAccountChanged(accountGeneration, generation)
+            }
+
+        override suspend fun permanentlyDeleteCollective(collectiveId: Long): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                val result = apiCall {
+                    api.permanentlyDeleteCollective(collectiveId, circle = true)
+                }
+                if (result is ApiResult.Success) {
+                    val recorded = writeUnder(generation) {
+                        cascadeForCollectives(listOf(collectiveId))
+                        dao.deleteById(collectiveId)
+                    }
+                    if (!recorded) return@bound accountChanged()
+                }
+                result.mapSuccess { }
+            }
 
         override suspend fun listMembers(
             circleId: String,
@@ -289,12 +351,20 @@ class CollectiveRepositoryImpl
             // here is both the normal answer for a non-member and a
             // `throttle()` against the user's own IP if hammered — so the
             // `HttpError` arm goes straight back to the caller.
-            return apiCall {
-                circlesApi.listMembers(circleId, effectiveLimit)
-            }.mapSuccess { envelope ->
-                envelope.ocs.data.map { it.toDomain() }
+            return accountGeneration.bound {
+                apiCall {
+                    circlesApi.listMembers(circleId, effectiveLimit)
+                }.mapSuccess { envelope ->
+                    envelope.ocs.data.map { it.toDomain() }
+                }
             }
         }
+
+        /** [NcCollectivesDatabase.writeUnder] on this repository's cache. */
+        private suspend fun writeUnder(
+            generation: Long,
+            writes: suspend () -> Unit,
+        ): Boolean = database.writeUnder(accountGeneration, generation, writes)
 
         /**
          * Delete every locally-cached row hanging off [collectiveIds] — their
@@ -320,6 +390,7 @@ class CollectiveRepositoryImpl
                 if (pageIds.isNotEmpty()) {
                     attachmentDao.deleteForPageIds(pageIds)
                     editQueueDao.deleteForPageIds(pageIds)
+                    pageViewDao.deleteForPageIds(pageIds)
                 }
                 pageDao.deleteForCollective(collectiveId)
             }

@@ -2,11 +2,13 @@ package com.megamaced.nccollectives.di
 
 import com.megamaced.nccollectives.data.auth.AccountSwitcher
 import com.megamaced.nccollectives.data.auth.ExpiredSessionHandler
+import com.megamaced.nccollectives.data.repository.AlertRepositoryImpl
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.CollectiveRepositoryImpl
 import com.megamaced.nccollectives.data.repository.DirectEditingRepositoryImpl
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
 import com.megamaced.nccollectives.data.repository.SearchRepositoryImpl
+import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
@@ -22,6 +24,9 @@ import dagger.hilt.components.SingletonComponent
 abstract class RepositoryModule {
     @Binds
     abstract fun bindCollectiveRepository(impl: CollectiveRepositoryImpl): CollectiveRepository
+
+    @Binds
+    abstract fun bindAlertRepository(impl: AlertRepositoryImpl): AlertRepository
 
     @Binds
     abstract fun bindPageRepository(impl: PageRepositoryImpl): PageRepository

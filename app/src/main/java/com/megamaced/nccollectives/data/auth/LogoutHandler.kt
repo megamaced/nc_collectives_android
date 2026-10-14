@@ -4,7 +4,6 @@ import com.megamaced.nccollectives.share.SharePayloadHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,14 +59,14 @@ class LogoutHandler
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun signOut() {
-            sessionManager.beginSignOut()
             // S-16: drop any pending share payload before the next session
             // starts. A share intent captured under user A would otherwise
             // still be sitting in the process-wide singleton when user B
             // signs in on the same install, and would pop the share UI
             // with user A's payload targeting user B's Nextcloud.
             sharePayloadHolder.discard()
-            scope.launch {
+            // One of the session changes `SessionManager` runs one at a time.
+            sessionManager.launchChange(scope, begin = sessionManager::beginSignOut) {
                 try {
                     localDataWiper.wipe(keepDevicePreferences = false)
                 } catch (e: Exception) {

@@ -11,10 +11,10 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.sync.SyncScheduler
 import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
-import okhttp3.OkHttpClient
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -24,7 +24,7 @@ class NcCollectivesApplication :
     SingletonImageLoader.Factory,
     Configuration.Provider {
     @Inject
-    lateinit var okHttpClient: Lazy<OkHttpClient>
+    lateinit var callFactory: Lazy<AccountBoundCallFactory>
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -65,6 +65,14 @@ class NcCollectivesApplication :
      * off-host image refs in a page body to plain links before Coil or
      * Markwon ever sees them (S-24). Removing either one turns this shared
      * client back into an authenticated fetcher aimed by page content.
+     *
+     * Through [AccountBoundCallFactory], like every other call: each image
+     * call is bound to the account current when Coil makes it, so one made
+     * before or during a switch is refused rather than sent with the next
+     * account's credentials. The binding starts with the call, not with the
+     * screen that asked for the image; Coil passes no request tags through
+     * to OkHttp, so a load the screen started before a switch, whose call
+     * Coil only makes after it, goes to the next account.
      */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader
@@ -72,7 +80,7 @@ class NcCollectivesApplication :
             .components {
                 add(
                     OkHttpNetworkFetcherFactory(
-                        callFactory = { okHttpClient.get() },
+                        callFactory = { callFactory.get() },
                     ),
                 )
             }.crossfade(true)

@@ -1,12 +1,13 @@
 package com.megamaced.nccollectives.data.api
 
 import com.megamaced.nccollectives.data.ServerStringValidation
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
+import com.megamaced.nccollectives.data.auth.AccountChangedException
 import com.megamaced.nccollectives.data.auth.TokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -14,10 +15,15 @@ import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** A page body along with the WebDAV ETag the server returned for it. */
+/**
+ * A page body along with the WebDAV ETag the server returned for it, and its
+ * `Last-Modified` in epoch seconds — the same file mtime the Collectives page
+ * list reports as the page's `timestamp`. Null if the server sent none.
+ */
 data class PageBody(
     val markdown: String,
     val etag: String?,
+    val lastModified: Long?,
 )
 
 /**
@@ -41,15 +47,15 @@ sealed interface ConditionalBody {
  * the user's Files area under `{collectivePath}/{filePath}/{fileName}` and
  * is accessed via `GET`/`PUT` on `/remote.php/dav/files/{loginName}/...`.
  *
- * Uses the shared authenticated [OkHttpClient] so the [AuthInterceptor]
- * attaches Basic auth; [HostInterceptor] rewrites the placeholder URL we
- * build to the real Nextcloud host at request time.
+ * Uses the shared authenticated client, through [AccountBoundCallFactory],
+ * so the [AuthInterceptor] attaches Basic auth; [HostInterceptor] rewrites
+ * the placeholder URL we build to the real Nextcloud host at request time.
  */
 @Singleton
 class PageBodyService
     @Inject
     constructor(
-        private val client: OkHttpClient,
+        private val callFactory: AccountBoundCallFactory,
         private val tokenStore: TokenStore,
     ) {
         suspend fun fetchBody(
@@ -67,6 +73,7 @@ class PageBodyService
                 PageBody(
                     markdown = response.body?.string().orEmpty(),
                     etag = normaliseEtag(response.header("ETag")),
+                    lastModified = lastModifiedSeconds(response),
                 )
             }
         }
@@ -103,6 +110,7 @@ class PageBodyService
                         PageBody(
                             markdown = response.body?.string().orEmpty(),
                             etag = normaliseEtag(response.header("ETag")),
+                            lastModified = lastModifiedSeconds(response),
                         ),
                     )
                 }
@@ -255,7 +263,8 @@ class PageBodyService
          * IO pool, maps response codes into [ApiResult] (200..299 + any
          * [extraSuccessCodes] → Success via [onSuccess]; 401 → Unauthorised;
          * 412 → Conflict; rest → HttpError) and routes IOException →
-         * NetworkError + anything else → Unexpected. Eliminates four
+         * NetworkError, except a refusal for a changed account, + anything
+         * else → Unexpected. Eliminates four
          * identical try/withContext/use blocks that previously diverged
          * subtly (e.g. ensureCollection accepted 405; only some sites
          * normalised the ETag).
@@ -267,7 +276,7 @@ class PageBodyService
         ): ApiResult<T> =
             withContext(Dispatchers.IO) {
                 try {
-                    client.newCall(request).execute().use { response ->
+                    callFactory.newCall(request).execute().use { response ->
                         when {
                             response.code in 200..299 || response.code in extraSuccessCodes -> {
                                 ApiResult.Success(onSuccess(response))
@@ -286,6 +295,9 @@ class PageBodyService
                             }
                         }
                     }
+                } catch (e: AccountChangedException) {
+                    // Abandoned, not offline, as in `apiCall`.
+                    ApiResult.Unexpected(e)
                 } catch (e: java.io.IOException) {
                     ApiResult.NetworkError(e)
                 } catch (e: Exception) {
@@ -428,3 +440,10 @@ class PageBodyService
             const val MARKDOWN = "text/markdown; charset=utf-8"
         }
     }
+
+/** `Last-Modified` as epoch seconds, or null if absent or unparseable. */
+private fun lastModifiedSeconds(response: okhttp3.Response): Long? =
+    response.headers
+        .getDate("Last-Modified")
+        ?.time
+        ?.div(1_000L)

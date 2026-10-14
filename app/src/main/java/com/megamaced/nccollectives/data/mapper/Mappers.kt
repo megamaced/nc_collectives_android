@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.CollectiveMemberType
+import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageOrder
@@ -42,6 +43,7 @@ internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
         level = level,
         userShowMembers = userShowMembers,
         userPageOrder = userPageOrder,
+        userNotify = userNotify,
         isPageShare = isPageShare,
         trashTimestamp = trashTimestamp,
         userFavoritePagesCsv = userFavoritePages.toLongCsv(),
@@ -60,6 +62,7 @@ internal fun CollectiveEntity.toDomain(): Collective =
         level = level,
         userShowMembers = userShowMembers,
         pageOrder = PageOrder.fromWire(userPageOrder),
+        notifyLevel = NotifyLevel.fromWire(userNotify),
         isPageShare = isPageShare,
         trashed = trashTimestamp != null,
         favoritePageIds = userFavoritePagesCsv.toLongCsvSet(),
@@ -101,6 +104,7 @@ internal fun PageDto.toEntity(
     existingBody: String?,
     existingEtag: String?,
     existingDraft: String?,
+    existingBodyTimestamp: Long?,
     existingTagsCsv: String? = null,
     tagNamesById: Map<Long, String>? = null,
 ): PageEntity =
@@ -138,9 +142,11 @@ internal fun PageDto.toEntity(
         filePath = filePath,
         collectivePath = collectivePath,
         linkedPageIdsCsv = linkedPageIds.toLongCsv(),
+        lastUserId = lastUserId,
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = existingBody,
         bodyEtag = existingEtag,
+        bodyTimestamp = existingBodyTimestamp,
         draftBodyMd = existingDraft,
         lastSyncedAt = now,
     )
@@ -203,5 +209,7 @@ internal fun PageEntity.toDomain(pendingBodyMd: String? = null): Page =
         linkedPageIds = linkedPageIdsCsv.toLongCsvList(),
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = pendingBodyMd ?: bodyMd,
+        bodyTimestamp = bodyTimestamp,
+        bodyFromQueue = pendingBodyMd != null,
         draftBodyMd = draftBodyMd,
     )

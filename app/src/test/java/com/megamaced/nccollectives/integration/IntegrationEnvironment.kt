@@ -9,15 +9,20 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.megamaced.nccollectives.data.api.AuthInterceptor
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.HostInterceptor
+import com.megamaced.nccollectives.data.api.NotificationsApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
+import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.auth.StoredCredentials
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.db.NcCollectivesDatabase
 import com.megamaced.nccollectives.data.db.entity.AttachmentEntity
+import com.megamaced.nccollectives.data.db.entity.CollectiveEntity
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import com.megamaced.nccollectives.data.prefs.UserPreferences
+import com.megamaced.nccollectives.data.repository.AlertRepositoryImpl
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
 import com.megamaced.nccollectives.di.NetworkModule
@@ -77,6 +82,8 @@ internal class IntegrationEnvironment private constructor(
     val bodyService: PageBodyService,
     val accountGeneration: AccountGeneration,
     val syncScheduler: SyncScheduler,
+    val notificationsApi: NotificationsApiService,
+    val userPreferences: UserPreferences,
 ) : AutoCloseable {
     val attachmentRepository: AttachmentRepositoryImpl =
         AttachmentRepositoryImpl(
@@ -87,6 +94,7 @@ internal class IntegrationEnvironment private constructor(
             bodyService = bodyService,
             syncScheduler = syncScheduler,
             database = db,
+            accountGeneration = accountGeneration,
         )
 
     val pageRepository: PageRepositoryImpl =
@@ -96,14 +104,51 @@ internal class IntegrationEnvironment private constructor(
             pageDao = db.pageDao(),
             editQueueDao = db.editQueueDao(),
             attachmentDao = db.attachmentDao(),
+            pageViewDao = db.pageViewDao(),
             syncScheduler = syncScheduler,
             database = db,
             accountGeneration = accountGeneration,
             attachmentRepository = { attachmentRepository as AttachmentRepository },
         )
 
+    val alertRepository: AlertRepositoryImpl =
+        AlertRepositoryImpl(
+            api = notificationsApi,
+            alertDao = db.alertDao(),
+            database = db,
+            accountGeneration = accountGeneration,
+            userPreferences = userPreferences,
+            json = NetworkModule.provideJson(),
+        )
+
     /** The `https://host:port` the mocked credential names. */
     val host: String get() = server.url("/").toString().trimEnd('/')
+
+    /** Insert a live collective row, which the cross-collective page lists require. */
+    suspend fun seedCollective(
+        id: Long = COLLECTIVE_ID,
+        userNotify: Int? = null,
+    ) {
+        db.collectiveDao().upsert(
+            CollectiveEntity(
+                id = id,
+                name = "Collective $id",
+                slug = null,
+                emoji = null,
+                circleId = null,
+                canEdit = true,
+                canShare = true,
+                level = 0,
+                userShowMembers = true,
+                userPageOrder = 0,
+                userNotify = userNotify,
+                isPageShare = false,
+                trashTimestamp = null,
+                userFavoritePagesCsv = "",
+                lastSyncedAt = 0,
+            ),
+        )
+    }
 
     /**
      * Insert a page row directly, bypassing the network. [bodyMd] is the
@@ -120,7 +165,11 @@ internal class IntegrationEnvironment private constructor(
         collectivePath: String = COLLECTIVE_PATH,
         bodyMd: String? = null,
         bodyEtag: String? = null,
+        bodyTimestamp: Long? = null,
         draftBodyMd: String? = null,
+        serverTimestamp: Long = 0,
+        lastUserId: String = "",
+        tagsCsv: String = "",
     ): PageEntity {
         val entity = PageEntity(
             id = id,
@@ -128,19 +177,21 @@ internal class IntegrationEnvironment private constructor(
             parentId = parentId,
             title = title,
             emoji = null,
-            tagsCsv = "",
+            tagsCsv = tagsCsv,
             subpageOrderCsv = "",
             isFullWidth = false,
             trashTimestamp = null,
-            serverTimestamp = 0,
+            serverTimestamp = serverTimestamp,
             size = 0,
             fileName = fileName,
             filePath = filePath,
             collectivePath = collectivePath,
             linkedPageIdsCsv = "",
+            lastUserId = lastUserId,
             lastUserDisplayName = "",
             bodyMd = bodyMd,
             bodyEtag = bodyEtag,
+            bodyTimestamp = bodyTimestamp,
             draftBodyMd = draftBodyMd,
             lastSyncedAt = 0,
         )
@@ -239,11 +290,13 @@ internal class IntegrationEnvironment private constructor(
                     appPassword = "app-password",
                 )
             val sessionManager = mockk<SessionManager>(relaxed = true)
+            val accountGeneration = AccountGeneration()
 
             val client = NetworkModule
                 .provideOkHttpClient(
                     hostInterceptor = HostInterceptor(tokenStore),
                     authInterceptor = AuthInterceptor(tokenStore, sessionManager),
+                    accountBindingInterceptor = AccountBindingInterceptor(accountGeneration),
                 ).newBuilder()
                 .sslSocketFactory(
                     clientCertificates.sslSocketFactory(),
@@ -251,7 +304,10 @@ internal class IntegrationEnvironment private constructor(
                 ).build()
 
             val json = NetworkModule.provideJson()
-            val api = NetworkModule.provideCollectivesApi(NetworkModule.provideRetrofit(client, json))
+            val callFactory = AccountBoundCallFactory(client, accountGeneration)
+            val retrofit = NetworkModule.provideRetrofit(callFactory, json)
+            val api = NetworkModule.provideCollectivesApi(retrofit)
+            val userPreferences = UserPreferences(context)
             val db = Room
                 .inMemoryDatabaseBuilder(context, NcCollectivesDatabase::class.java)
                 .build()
@@ -264,9 +320,11 @@ internal class IntegrationEnvironment private constructor(
                 sessionManager = sessionManager,
                 client = client,
                 api = api,
-                bodyService = PageBodyService(client, tokenStore),
-                accountGeneration = AccountGeneration(),
-                syncScheduler = SyncScheduler(context, UserPreferences(context)),
+                bodyService = PageBodyService(callFactory, tokenStore),
+                accountGeneration = accountGeneration,
+                syncScheduler = SyncScheduler(context, userPreferences),
+                notificationsApi = NetworkModule.provideNotificationsApi(retrofit),
+                userPreferences = userPreferences,
             )
         }
 

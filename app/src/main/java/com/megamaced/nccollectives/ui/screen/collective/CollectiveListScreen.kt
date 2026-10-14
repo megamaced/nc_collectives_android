@@ -12,17 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +36,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +55,8 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
+import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
+import com.megamaced.nccollectives.ui.screen.alerts.NotifyLevelChooser
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,15 +64,10 @@ import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 internal fun CollectiveListScreen(
     innerPadding: PaddingValues,
     onCollectiveClick: (Long) -> Unit,
-    onOpenPage: (Long) -> Unit,
-    onOpenSearch: () -> Unit,
-    onOpenFavorites: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenTrash: () -> Unit,
     viewModel: CollectiveListViewModel = hiltViewModel(),
 ) {
     val collectives by viewModel.collectives.collectAsStateWithLifecycle()
-    val recentPages by viewModel.recentPages.collectAsStateWithLifecycle()
     val collectiveSort by viewModel.collectiveSort.collectAsStateWithLifecycle()
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -78,6 +75,13 @@ internal fun CollectiveListScreen(
     var showCreateSheet by remember { mutableStateOf(false) }
     var emojiTarget by remember { mutableStateOf<Collective?>(null) }
     var pendingTrash by remember { mutableStateOf<Collective?>(null) }
+    // An id, not the row: the dialog follows the live row, so a level just
+    // chosen shows as chosen.
+    var notifyTarget by remember { mutableStateOf<Long?>(null) }
+    val listState = rememberLazyListState()
+    // The FAB keeps its label at the top of the list and shrinks to its icon
+    // once the user scrolls into it.
+    val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
 
     // A channel rather than a state field: the create-and-navigate path
     // disposes this composition while the snackbar is still up, so a message
@@ -115,24 +119,22 @@ internal fun CollectiveListScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Outlined.Search, contentDescription = "Search")
-                    }
-                    IconButton(onClick = onOpenFavorites) {
-                        Icon(Icons.Outlined.Bookmark, contentDescription = "Favorites")
-                    }
                     IconButton(onClick = onOpenTrash) {
                         Icon(Icons.Filled.Delete, contentDescription = "Trash")
-                    }
-                    IconButton(onClick = { showCreateSheet = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "New collective")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                text = { Text("New collective") },
+                // The label slot is hidden from accessibility services, so the
+                // icon carries the button's name, expanded or not.
+                icon = { Icon(Icons.Filled.Add, contentDescription = "New collective") },
+                onClick = { showCreateSheet = true },
+                expanded = fabExpanded,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) { Snackbar(snackbarData = it) } },
@@ -150,29 +152,15 @@ internal fun CollectiveListScreen(
                 empty = {
                     EmptyState(
                         title = "No collectives",
-                        message = "Tap the + button to create one.",
+                        message = "Tap New collective to create one.",
                     )
                 },
             ) {
-                // Which collective each recent page is in, for the card
-                // captions. Keyed on the list so it's built once per change,
-                // not per recomposition.
-                val collectiveLabels = remember(collectives) {
-                    collectives.associate { collective ->
-                        val emoji = collective.emoji?.takeIf { it.isNotBlank() }
-                        collective.id to if (emoji != null) "$emoji ${collective.name}" else collective.name
-                    }
-                }
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (recentPages.isNotEmpty()) {
-                        item(key = "header-recent") {
-                            RecentPagesStrip(
-                                pages = recentPages,
-                                onPageClick = onOpenPage,
-                                caption = { page -> collectiveLabels[page.collectiveId] },
-                            )
-                        }
-                    }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
+                ) {
                     item(key = "header-sort") {
                         SortHeader(
                             title = "Collectives",
@@ -188,6 +176,7 @@ internal fun CollectiveListScreen(
                             onClick = { onCollectiveClick(collective.id) },
                             onSetEmoji = { emojiTarget = collective },
                             onTrash = { pendingTrash = collective },
+                            onNotifications = { notifyTarget = collective.id }.takeIf { collective.notifyLevel != null },
                         )
                     }
                 }
@@ -210,6 +199,21 @@ internal fun CollectiveListScreen(
                 emojiTarget = null
             },
             onDismiss = { emojiTarget = null },
+        )
+    }
+
+    collectives.firstOrNull { it.id == notifyTarget }?.let { target ->
+        AlertDialog(
+            onDismissRequest = { notifyTarget = null },
+            title = { Text("Notifications") },
+            text = {
+                NotifyLevelChooser(
+                    title = target.label,
+                    level = target.notifyLevel,
+                    onSelect = { viewModel.setNotifyLevel(target.id, it) },
+                )
+            },
+            confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text("Done") } },
         )
     }
 
@@ -251,6 +255,7 @@ private fun CollectiveRow(
     onClick: () -> Unit,
     onSetEmoji: () -> Unit,
     onTrash: () -> Unit,
+    onNotifications: (() -> Unit)?,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -290,6 +295,15 @@ private fun CollectiveRow(
                         onSetEmoji()
                     },
                 )
+                if (onNotifications != null) {
+                    DropdownMenuItem(
+                        text = { Text("Notifications…") },
+                        onClick = {
+                            menuExpanded = false
+                            onNotifications()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Move to trash") },
                     onClick = {
