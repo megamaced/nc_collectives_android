@@ -14,6 +14,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
 import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
@@ -102,6 +103,7 @@ fun MarkdownView(
     outline: MarkdownOutline? = null,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val colorScheme = MaterialTheme.colorScheme
     val contentColor = LocalContentColor.current
     val onWikiLinkLatest by rememberUpdatedState(onWikiLink)
@@ -179,7 +181,7 @@ fun MarkdownView(
     // `imageBaseUrl` changes once per page open, not per recomposition, so
     // R-25's point about not rebuilding Markwon needlessly still holds.
     val imageBoundary = remember(imageBaseUrl) { pageImageBoundary(imageBaseUrl) }
-    val markwon = remember(colorScheme, imageBoundary) {
+    val markwon = remember(colorScheme, imageBoundary, resources) {
         val prism4j = Prism4j(
             com.megamaced.nccollectives.util
                 .CollectivesGrammarLocator(),
@@ -206,6 +208,8 @@ fun MarkdownView(
             .usePlugin(HtmlPlugin.create())
             .usePlugin(
                 ImagesPlugin.create { plugin ->
+                    // Issue #64: photos the right way up.
+                    plugin.defaultMediaDecoder(OrientedMediaDecoder(resources))
                     plugin.addSchemeHandler(
                         PageDirectorySchemeHandler(
                             delegate = OkHttpNetworkSchemeHandler.create(callFactory),
