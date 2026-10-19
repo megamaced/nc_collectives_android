@@ -18,6 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.NotifyLevel
@@ -41,11 +42,7 @@ internal fun NotificationSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = "Mentions notify you only when someone mentions you; all changes notify you whenever a page changes.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            NotifyLevelsExplained()
             LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                 items(collectives, key = { it.id }) { collective ->
                     NotifyLevelChooser(
@@ -61,7 +58,24 @@ internal fun NotificationSettingsSheet(
     }
 }
 
-/** One collective's level as three segments: Off, Mentions, All changes. */
+/** What the levels mean, above a [NotifyLevelChooser]. */
+@Composable
+internal fun NotifyLevelsExplained(modifier: Modifier = Modifier) {
+    Text(
+        text = "Mentions: only when someone mentions you. All: whenever a page changes.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
+}
+
+/**
+ * One collective's level as three segments: Off, Mentions, All.
+ *
+ * Each label stays on one line. The segments share the width equally, and
+ * a label that wrapped — in a dialog on a narrow phone, or at a larger font
+ * size — made its segment taller than the others.
+ */
 @Composable
 internal fun NotifyLevelChooser(
     title: String,
@@ -77,7 +91,7 @@ internal fun NotifyLevelChooser(
                     selected = option == level,
                     onClick = { if (option != level) onSelect(option) },
                     shape = SegmentedButtonDefaults.itemShape(index, NotifyLevel.entries.size),
-                ) { Text(option.label()) }
+                ) { Text(option.label(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
@@ -87,5 +101,5 @@ internal fun NotifyLevel.label(): String =
     when (this) {
         NotifyLevel.Off -> "Off"
         NotifyLevel.Mentions -> "Mentions"
-        NotifyLevel.All -> "All changes"
+        NotifyLevel.All -> "All"
     }

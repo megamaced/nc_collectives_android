@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.collective
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -59,6 +60,7 @@ import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.ui.screen.alerts.NotifyLevelChooser
+import com.megamaced.nccollectives.ui.screen.alerts.NotifyLevelsExplained
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -213,11 +215,14 @@ internal fun CollectiveListScreen(
             onDismissRequest = { notifyTarget = null },
             title = { Text("Notifications") },
             text = {
-                NotifyLevelChooser(
-                    title = target.label,
-                    level = target.notifyLevel,
-                    onSelect = { viewModel.setNotifyLevel(target.id, it) },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    NotifyLevelsExplained()
+                    NotifyLevelChooser(
+                        title = target.label,
+                        level = target.notifyLevel,
+                        onSelect = { viewModel.setNotifyLevel(target.id, it) },
+                    )
+                }
             },
             confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text("Done") } },
         )
