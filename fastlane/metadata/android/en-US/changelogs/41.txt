@@ -1,0 +1,7 @@
+3.0.0 beta 1: a Material 3 redesign.
+
+Five tabs: Home, Collectives, Search, Favorites and Alerts. Home gathers edits waiting to sync, new alerts, and recent pages. Alerts shows mentions and changes, in the app only. On a page, Edit is a floating button.
+
+Fixed: photos shown sideways, attachments with spaces in their names, saves that could overwrite a newer edit, and cancelled uploads that still went up or removed another device's file.
+
+Every 2.x action is still there, some in new places.
