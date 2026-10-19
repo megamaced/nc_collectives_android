@@ -7,7 +7,9 @@ import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
+import com.megamaced.nccollectives.domain.model.TagCount
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
+import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,6 +45,7 @@ class SearchViewModel
     constructor(
         private val repository: SearchRepository,
         private val collectiveRepository: CollectiveRepository,
+        pageRepository: PageRepository,
         private val userPreferences: UserPreferences,
     ) : ViewModel() {
         val collectives: StateFlow<List<Collective>> = collectiveRepository
@@ -58,6 +61,11 @@ class SearchViewModel
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
                 initialValue = emptyList(),
             )
+
+        /** Every tag on a cached page, most used first: offered before anything is typed. */
+        val tags: StateFlow<List<TagCount>> = pageRepository
+            .observeTagCounts()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
         private var inFlight: Job? = null
 

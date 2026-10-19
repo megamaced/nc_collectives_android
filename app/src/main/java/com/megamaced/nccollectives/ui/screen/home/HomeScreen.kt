@@ -47,9 +47,13 @@ import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
+import com.megamaced.nccollectives.ui.navigation.OnReselected
+import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.ui.screen.collective.RecentPagesStrip
 import com.megamaced.nccollectives.util.pageEditedLine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,6 +65,7 @@ internal fun HomeScreen(
     onSeeAll: (HomeSection, collectiveFilter: Long?) -> Unit,
     onBrowseTag: (String) -> Unit,
     onOpenAlerts: () -> Unit,
+    reselected: Flow<Unit> = emptyFlow(),
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val feed by viewModel.feed.collectAsStateWithLifecycle()
@@ -74,6 +79,7 @@ internal fun HomeScreen(
     val listState = rememberLazyListState()
     // Labelled at the top of the feed, icon-only once scrolled into it.
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
+    OnReselected(reselected) { listState.scrollToTop() }
     val editable = remember(collectives) { collectives.filter { it.canEdit } }
     var showNewPage by rememberSaveable { mutableStateOf(false) }
 

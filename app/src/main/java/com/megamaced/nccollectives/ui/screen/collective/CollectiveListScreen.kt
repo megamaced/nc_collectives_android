@@ -55,9 +55,13 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.SortHeader
+import com.megamaced.nccollectives.ui.navigation.OnReselected
+import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.ui.screen.alerts.NotifyLevelChooser
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +69,7 @@ internal fun CollectiveListScreen(
     innerPadding: PaddingValues,
     onCollectiveClick: (Long) -> Unit,
     onOpenTrash: () -> Unit,
+    reselected: Flow<Unit> = emptyFlow(),
     viewModel: CollectiveListViewModel = hiltViewModel(),
 ) {
     val collectives by viewModel.collectives.collectAsStateWithLifecycle()
@@ -82,6 +87,7 @@ internal fun CollectiveListScreen(
     // The FAB keeps its label at the top of the list and shrinks to its icon
     // once the user scrolls into it.
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
+    OnReselected(reselected) { listState.scrollToTop() }
 
     // A channel rather than a state field: the create-and-navigate path
     // disposes this composition while the snackbar is still up, so a message

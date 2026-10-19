@@ -2,12 +2,15 @@ An unofficial native Android client for the Nextcloud Collectives app — wiki-s
 
 Features:
 
+* Five tabs: Home, Collectives, Search, Favorites and Alerts, each keeping its place.
+* Home, offline: edits waiting to sync, new alerts, recent and updated pages, your edits, tags.
+* Alerts: mentions, and changes in collectives set to notify you. Dismissing clears them on the server. In-app only.
 * Browse collectives and nested page trees.
 * Render markdown pages, including images, links, task lists, tables, syntax-highlighted fenced code blocks (Prism4j, themed against the app's Material 3 colour scheme), Nextcloud Text callouts (INFO / WARN / ERROR / SUCCESS), and ==highlight== marks.
-* View-first by default with a per-page edit toggle. Two editors ship side-by-side: a native markdown editor with formatting toolbar + live preview swap that works offline (default), and a collaborative WebView editor backed by Nextcloud Text (beta — multi-user real-time editing, callouts, multi-line tables, math) used when the server supports it and you're online. Choose the default under Settings → Editor.
+* View-first, with a floating Edit button; the bars slide away as you scroll. Two editors ship side-by-side: a native markdown editor with formatting toolbar + live preview swap that works offline (default), and a collaborative WebView editor backed by Nextcloud Text (beta — multi-user real-time editing, callouts, multi-line tables, math) used when the server supports it and you're online. Choose the default under Settings → Editor.
 * Offline read cache and offline edit queue. Last-write-wins on conflict; local edits are preserved as drafts attached to the page.
 * Full-text search via the Nextcloud unified-search provider.
-* Favourites and recent searches, persisted across sessions.
+* Favorites grouped by collective, and recent searches.
 * Per-page tags, emoji, rename, and move (folder pages supported). Browse all pages carrying a given tag.
 * Long-press to drag pages and reorder them within their parent — same subpageOrder the web Collectives UI uses.
 * Duplicate page action.

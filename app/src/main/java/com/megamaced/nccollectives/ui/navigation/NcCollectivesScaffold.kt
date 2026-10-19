@@ -226,6 +226,8 @@ private fun AuthenticatedHost(
     // does); every new destination starts with it showing.
     LaunchedEffect(backStackEntry?.id) { navigationBar.show() }
 
+    val reselections = remember { TabReselections() }
+
     val adaptiveType = NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfo())
     LaunchedEffect(adaptiveType) { navigationBar.hidesOnScroll = adaptiveType.isHorizontalBar() }
     val navigationType =
@@ -238,7 +240,7 @@ private fun AuthenticatedHost(
                 NavigationSuiteItem(
                     selected = selected,
                     onClick = {
-                        if (selected) navController.reselectTab(tab) else navController.navigateToTab(tab)
+                        navController.onTabClicked(tab, selected, reselections)
                     },
                     icon = {
                         Icon(
@@ -267,7 +269,7 @@ private fun AuthenticatedHost(
     ) {
         CompositionLocalProvider(LocalNavigationBarController provides navigationBar) {
             Scaffold { innerPadding ->
-                NcCollectivesNavHost(navController = navController, innerPadding = innerPadding)
+                NcCollectivesNavHost(navController = navController, innerPadding = innerPadding, reselections = reselections)
             }
         }
     }

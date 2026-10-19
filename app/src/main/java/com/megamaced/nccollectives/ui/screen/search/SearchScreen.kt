@@ -6,13 +6,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AssistChip
@@ -30,10 +34,16 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -44,18 +54,40 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
+import com.megamaced.nccollectives.domain.model.TagCount
 import com.megamaced.nccollectives.ui.components.EmptyState
+import com.megamaced.nccollectives.ui.navigation.OnReselected
+import com.megamaced.nccollectives.ui.navigation.scrollToTop
+import com.megamaced.nccollectives.ui.screen.home.HOME_PREVIEW_TAGS
+import com.megamaced.nccollectives.ui.screen.home.TagChips
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SearchScreen(
     innerPadding: PaddingValues,
     onOpenPage: (Long) -> Unit,
+    onBrowseTag: (String) -> Unit,
+    reselected: Flow<Unit> = emptyFlow(),
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val recents by viewModel.recents.collectAsStateWithLifecycle()
     val collectives by viewModel.collectives.collectAsStateWithLifecycle()
+    val tags by viewModel.tags.collectAsStateWithLifecycle()
+    var showAllTags by rememberSaveable { mutableStateOf(false) }
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val resultsState = rememberLazyListState()
+    val idleScroll = rememberScrollState()
+    OnReselected(reselected) {
+        // The field first: a second tap on Search is for searching again.
+        fieldFocus.requestFocus()
+        keyboard?.show()
+        resultsState.scrollToTop()
+        idleScroll.animateScrollTo(0)
+    }
 
     val filteredResults = remember(ui.results, ui.selectedCollectiveIds) {
         if (ui.selectedCollectiveIds.isEmpty()) {
@@ -93,15 +125,31 @@ internal fun SearchScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .focusRequester(fieldFocus),
             )
 
-            if (ui.query.isBlank() && recents.isNotEmpty()) {
-                RecentsSection(
-                    recents = recents,
-                    onRecentClick = viewModel::runRecent,
-                    onClear = viewModel::clearRecents,
-                )
+            if (ui.query.isBlank()) {
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(idleScroll),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (recents.isNotEmpty()) {
+                        RecentsSection(
+                            recents = recents,
+                            onRecentClick = viewModel::runRecent,
+                            onClear = viewModel::clearRecents,
+                        )
+                    }
+                    if (tags.isNotEmpty()) {
+                        TagsSection(
+                            tags = tags,
+                            showAll = showAllTags,
+                            onToggleShowAll = { showAllTags = !showAllTags },
+                            onTag = onBrowseTag,
+                        )
+                    }
+                }
             }
 
             if (ui.query.isNotBlank() && collectives.size > 1) {
@@ -141,7 +189,7 @@ internal fun SearchScreen(
                 }
 
                 filteredResults.isNotEmpty() -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(state = resultsState, modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(
                             filteredResults,
                             key = ::searchHitKey,
@@ -185,7 +233,7 @@ private fun RecentsSection(
     onClear: () -> Unit,
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-        androidx.compose.foundation.layout.Row(
+        Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
@@ -206,6 +254,37 @@ private fun RecentsSection(
                 )
             }
         }
+    }
+}
+
+/** Tags across every collective, most used first; one opens every page with it. */
+@Composable
+private fun TagsSection(
+    tags: List<TagCount>,
+    showAll: Boolean,
+    onToggleShowAll: () -> Unit,
+    onTag: (String) -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Tags",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { heading() },
+            )
+            if (tags.size > HOME_PREVIEW_TAGS) {
+                TextButton(onClick = onToggleShowAll) { Text(if (showAll) "Show fewer" else "Show all") }
+            }
+        }
+        TagChips(
+            tags = if (showAll) tags else tags.take(HOME_PREVIEW_TAGS),
+            onTag = onTag,
+        )
     }
 }
 

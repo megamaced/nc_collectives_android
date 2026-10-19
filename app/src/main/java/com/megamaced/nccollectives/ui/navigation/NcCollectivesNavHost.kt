@@ -36,6 +36,7 @@ import com.megamaced.nccollectives.ui.screen.trash.TrashScreen
 internal fun NcCollectivesNavHost(
     navController: NavHostController,
     innerPadding: PaddingValues,
+    reselections: TabReselections,
 ) {
     NavHost(
         navController = navController,
@@ -45,6 +46,7 @@ internal fun NcCollectivesNavHost(
             composable(TopLevelTab.Home.rootRoute) { entry ->
                 HomeScreen(
                     innerPadding = innerPadding,
+                    reselected = reselections.of(TopLevelTab.Home),
                     onOpenPage = { pageId ->
                         navController.navigateFrom(entry, Destination.PageView.route(TopLevelTab.Home, pageId))
                     },
@@ -103,6 +105,7 @@ internal fun NcCollectivesNavHost(
                 ReturnHomeOnBack(navController)
                 CollectiveListScreen(
                     innerPadding = innerPadding,
+                    reselected = reselections.of(tab),
                     onCollectiveClick = { id -> navController.navigateFrom(entry, Destination.PageTree.route(tab, id)) },
                     onOpenTrash = {
                         navController.navigateFrom(entry, Destination.CollectiveTrash.route(tab)) { launchSingleTop = true }
@@ -115,10 +118,17 @@ internal fun NcCollectivesNavHost(
                 ReturnHomeOnBack(navController)
                 SearchScreen(
                     innerPadding = innerPadding,
+                    reselected = reselections.of(TopLevelTab.Search),
                     // Pushed on top of the results, so Back returns to them
                     // with the query intact.
                     onOpenPage = { pageId ->
                         navController.navigateFrom(entry, Destination.PageView.route(TopLevelTab.Search, pageId))
+                    },
+                    onBrowseTag = { tagName ->
+                        navController.navigateFrom(
+                            entry,
+                            Destination.TagBrowse.route(TopLevelTab.Search, Destination.TagBrowse.ALL_COLLECTIVES, tagName),
+                        )
                     },
                 )
             }
@@ -128,6 +138,7 @@ internal fun NcCollectivesNavHost(
                 ReturnHomeOnBack(navController)
                 FavoritesScreen(
                     innerPadding = innerPadding,
+                    reselected = reselections.of(TopLevelTab.Favorites),
                     onOpenPage = { pageId ->
                         navController.navigateFrom(entry, Destination.PageView.route(TopLevelTab.Favorites, pageId))
                     },
@@ -140,6 +151,7 @@ internal fun NcCollectivesNavHost(
                 ReturnHomeOnBack(navController)
                 AlertsScreen(
                     innerPadding = innerPadding,
+                    reselected = reselections.of(tab),
                     onOpenPage = { pageId -> navController.navigateFrom(entry, Destination.PageView.route(tab, pageId)) },
                     onOpenCollective = { id -> navController.navigateFrom(entry, Destination.PageTree.route(tab, id)) },
                 )

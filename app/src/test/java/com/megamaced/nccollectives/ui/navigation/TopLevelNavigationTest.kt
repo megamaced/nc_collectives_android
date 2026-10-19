@@ -11,6 +11,11 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -35,8 +40,13 @@ class TopLevelNavigationTest {
 
     private lateinit var nav: NavHostController
 
+    private val reselections = TabReselections()
+    private val reselected = mutableListOf<TopLevelTab>()
+    private val listening = CoroutineScope(Dispatchers.Unconfined)
+
     @Before
     fun setUp() {
+        TopLevelTab.entries.forEach { tab -> listening.launch { reselections.of(tab).collect { reselected += tab } } }
         compose.setContent {
             nav = rememberNavController()
             NavHost(navController = nav, startDestination = TopLevelTab.Home.graphRoute) {
@@ -70,6 +80,11 @@ class TopLevelNavigationTest {
             }
         }
         compose.waitForIdle()
+    }
+
+    @After
+    fun tearDown() {
+        listening.cancel()
     }
 
     private fun onNav(block: NavHostController.() -> Unit) {
@@ -288,6 +303,43 @@ class TopLevelNavigationTest {
         compose.runOnIdle {
             assertFalse(popped)
             assertEquals(TopLevelTab.Search.rootRoute, route)
+        }
+    }
+
+    @Test
+    fun aTapOnTheTabShowingItsRootAsksThatScreenToGoBackToItsTop() {
+        onNav { navigateToTab(TopLevelTab.Collectives) }
+
+        onNav { onTabClicked(TopLevelTab.Collectives, selected = true, reselections) }
+
+        compose.runOnIdle {
+            assertEquals(listOf(TopLevelTab.Collectives), reselected)
+            assertEquals(TopLevelTab.Collectives.rootRoute, route)
+        }
+    }
+
+    @Test
+    fun aTapOnTheTabShowingADetailOnlyReturnsToItsRoot() {
+        onNav {
+            navigateToTab(TopLevelTab.Collectives)
+            navigate(Destination.PageTree.route(TopLevelTab.Collectives, 3L))
+        }
+
+        onNav { onTabClicked(TopLevelTab.Collectives, selected = true, reselections) }
+
+        compose.runOnIdle {
+            assertEquals(TopLevelTab.Collectives.rootRoute, route)
+            assertTrue(reselected.isEmpty())
+        }
+    }
+
+    @Test
+    fun aTapOnAnotherTabOnlySwitchesToIt() {
+        onNav { onTabClicked(TopLevelTab.Search, selected = false, reselections) }
+
+        compose.runOnIdle {
+            assertEquals(TopLevelTab.Search.rootRoute, route)
+            assertTrue(reselected.isEmpty())
         }
     }
 

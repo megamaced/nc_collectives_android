@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AlternateEmail
@@ -71,7 +73,11 @@ import com.megamaced.nccollectives.domain.model.AlertKind
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
+import com.megamaced.nccollectives.ui.navigation.OnReselected
+import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.util.relativeTimeAgo
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +85,7 @@ internal fun AlertsScreen(
     innerPadding: PaddingValues,
     onOpenPage: (Long) -> Unit,
     onOpenCollective: (Long) -> Unit,
+    reselected: Flow<Unit> = emptyFlow(),
     viewModel: AlertsViewModel = hiltViewModel(),
 ) {
     val alerts by viewModel.alerts.collectAsStateWithLifecycle()
@@ -92,6 +99,8 @@ internal fun AlertsScreen(
     var showMenu by remember { mutableStateOf(false) }
     var confirmDismissAll by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    OnReselected(reselected) { listState.scrollToTop() }
 
     SnackbarMessageEffect(viewModel.messages, snackbarHostState)
     // As on Home: a target fetched for an earlier visit, which the user has
@@ -167,6 +176,7 @@ internal fun AlertsScreen(
                 nowMillis = nowMillis,
                 onOpen = { alert -> viewModel.open(alert, visit) },
                 onDismiss = viewModel::dismiss,
+                listState = listState,
             )
             // Fetching an alert's page before it can open.
             if (opening != null) {
@@ -220,6 +230,7 @@ internal fun AlertsContent(
     nowMillis: Long,
     onOpen: (Alert) -> Unit,
     onDismiss: (Long) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     when {
         supported == false -> {
@@ -241,7 +252,7 @@ internal fun AlertsContent(
         }
 
         else -> {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(alerts, key = { it.id }) { alert ->
                     DismissibleAlertRow(
                         alert = alert,

@@ -102,12 +102,17 @@ class CollectiveRepositoryImpl
 
         // Bound from before the row is read, as everything here that reads
         // the cache and then sends or writes what it read: see
-        // `AccountGeneration.bound`.
+        // `AccountGeneration.bound`. The account is captured before the
+        // lock, so a toggle waiting on it still belongs to the account it
+        // was asked on. Under [userSettingsLock]: see there.
         override suspend fun toggleFavorite(
             collectiveId: Long,
             pageId: Long,
             favorite: Boolean,
-        ): ApiResult<Unit> = accountGeneration.bound { generation -> toggleFavoriteBound(collectiveId, pageId, favorite, generation) }
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock { toggleFavoriteBound(collectiveId, pageId, favorite, generation) }
+            }
 
         private suspend fun toggleFavoriteBound(
             collectiveId: Long,
@@ -141,11 +146,15 @@ class CollectiveRepositoryImpl
         }
 
         /**
-         * Held by the per-user setting setters ([setPageOrder],
-         * [setNotifyLevel]) and by [refresh], each across its request *and*
-         * its cache write, so none can land a stale `userPageOrder` or
-         * `userNotify` over another's. Page order is the worked example
-         * below; the notification level is the same in every respect.
+         * Held by every setter of a collective field the list response also
+         * carries — [setPageOrder], [setNotifyLevel], [toggleFavorite] and
+         * [setCollectiveEmoji] — and by [refresh], each across its request
+         * *and* its cache write, so none can land a stale value over
+         * another's. Page order is the worked example below; the
+         * notification level, the favorites list and the emoji are the same
+         * in every respect. Favorites most of all: each toggle sends and
+         * rolls back the *whole* list, so two toggles on different pages
+         * still overlap.
          *
          * Between two setters: each takes the cached order as its rollback
          * point and restores it on failure, which is only right if no other
@@ -163,9 +172,8 @@ class CollectiveRepositoryImpl
          * refresh that started first finishes before the pick is written,
          * and one that starts during a pick reads the server after it.
          *
-         * The other writes to this table don't need it: the favourite and
-         * emoji setters update their own columns only, and a create inserts
-         * a collective no pick can be aimed at yet.
+         * A create doesn't need it: it inserts a collective no setter can
+         * be aimed at yet.
          */
         private val userSettingsLock = Mutex()
 
@@ -232,7 +240,10 @@ class CollectiveRepositoryImpl
         override suspend fun setCollectiveEmoji(
             collectiveId: Long,
             emoji: String,
-        ): ApiResult<Unit> = accountGeneration.bound { generation -> setCollectiveEmojiBound(collectiveId, emoji, generation) }
+        ): ApiResult<Unit> =
+            accountGeneration.bound { generation ->
+                userSettingsLock.withLock { setCollectiveEmojiBound(collectiveId, emoji, generation) }
+            }
 
         private suspend fun setCollectiveEmojiBound(
             collectiveId: Long,

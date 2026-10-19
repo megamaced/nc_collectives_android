@@ -58,6 +58,22 @@ internal fun NavController.reselectTab(tab: TopLevelTab): Boolean {
 }
 
 /**
+ * A tap on [tab] in the navigation bar or rail. Another tab is switched to.
+ * The current one returns to its root, and when its root is already
+ * showing, that screen goes back to its top.
+ */
+internal fun NavController.onTabClicked(
+    tab: TopLevelTab,
+    selected: Boolean,
+    reselections: TabReselections,
+) {
+    when {
+        !selected -> navigateToTab(tab)
+        !reselectTab(tab) -> reselections.tapped(tab)
+    }
+}
+
+/**
  * Destinations that take the whole screen, without the navigation bar.
  *
  * The editors: the native editor keeps its formatting toolbar above the
