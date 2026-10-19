@@ -8,46 +8,36 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 ## Screenshots
 
+The app's own screens, rendered with sample data.
+
 <p align="center">
-  <img src="docs/screenshots/01-collective-list.png" alt="Collectives list with search, favourites, trash, new-collective and settings actions" width="260" />
-  <img src="docs/screenshots/02-field-guide-tree.png" alt="Page tree inside a collective with recent-pages cards, the landing-page card, favourite + new-subpage actions per row, and the long-press drag affordance" width="260" />
-  <img src="docs/screenshots/03-seasonal-calendar.png" alt="Page view rendering a markdown table with seasonal-guide tag chip" width="260" />
+  <img src="docs/screenshots/01-home.png" alt="Home: new alerts, then cards for pages to jump back into, pages updated since you read them, and recently updated pages filtered by collective" width="260" />
+  <img src="docs/screenshots/02-collective.png" alt="Inside a collective: its members, landing page and nested page tree" width="260" />
+  <img src="docs/screenshots/03-page-view.png" alt="A rendered page with a task list, a table and a callout, and the floating Edit button" width="260" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/04-collaborative-edit.png" alt="Collaborative WebView editor backed by Nextcloud Text, with the upstream formatting toolbar pinned to the bottom" width="260" />
-  <img src="docs/screenshots/05-edit-mode.png" alt="Native markdown editor with formatting toolbar over a task-list page" width="260" />
-  <img src="docs/screenshots/06-grid-references.png" alt="Page view with the per-page actions overflow menu open (Attachments, Set emoji, Tags, Rename, Move, Duplicate, Move to trash)" width="260" />
+  <img src="docs/screenshots/04-page-edit.png" alt="The native markdown editor with its formatting toolbar" width="260" />
+  <img src="docs/screenshots/05-alerts.png" alt="Alerts: mentions, changed pages and deleted pages" width="260" />
+  <img src="docs/screenshots/06-favorites.png" alt="Favorites grouped by collective" width="260" />
 </p>
 
 ## Features
 
-- Multiple Nextcloud accounts, switched from **Settings → Accounts** without signing out. One account's pages are cached at a time — switching clears the previous account's local copy and downloads the new one's, and warns first if any edits haven't reached the server yet
-- Five tabs — **Home**, **Collectives**, **Search**, **Favorites** and **Alerts** — each keeping its own place, so leaving a tab and coming back finds you where you were. Tapping the tab you're on goes back to its first screen, then to the top (in Search, into the search field). Phones get a bottom navigation bar; wide screens get a navigation rail
-- **Home** gathers what's worth a look, from the local cache so it works offline: edits waiting to sync or in conflict, new alerts, pages you opened recently, pages changed since you last read them, recently updated pages across every collective (filterable by collective), your own recent edits, and the tags across every collective. Its **New page** button picks a collective and a parent page. Settings is the cog in Home's top bar
+- Five tabs — **Home**, **Collectives**, **Search**, **Favorites** and **Alerts** — each keeping its place, so leaving a tab and coming back finds you where you were. Tapping the tab you're on goes back to its first screen, then to the top (in Search, into the search field). Phones get a bottom navigation bar; wide screens get a navigation rail
+- **Home**, from the local cache so it works offline: edits waiting to sync or in conflict and new alerts, then cards for the pages you opened recently, pages changed since you last read them, recently updated pages (filterable by collective) and your own recent edits, each with **See all** for the full list; and the tags across every collective. Its **New page** button picks a collective and a parent page. Settings is the cog in Home's top bar
 - **Alerts**: mentions of you in collective pages, and changes to pages in collectives set to notify you, from the server's Notifications app. Open one to go to its page, or to its collective when the page was deleted; swipe it away, or dismiss them all, to clear them on the server too. Each collective's notification level (Off, Mentions or All) is set from the Alerts tab or the collective's menu. Alerts are in-app only: the tab's badge counts the new ones, and the app posts no system notifications
-- Browse collectives and nested page trees. The collective list sorts A–Z or Z–A, or newest or oldest first by when something in it was last edited; **New collective** and, in a collective, **New page** are floating buttons
-- Page order shared with the web app: custom order, A–Z or Z–A by title, or newest or oldest first by last change, chosen per collective and applied at every level of the tree
-- Render markdown pages, including images, links, task lists, tables, syntax-highlighted fenced code blocks (Prism4j, themed against the app's M3 colour scheme), Nextcloud Text callouts (`> [!INFO]` / `[!WARN]` / `[!ERROR]` / `[!SUCCESS]`), and `==text==` highlights
-- View-first: a page's **Edit** button floats bottom-right, and the top bar and navigation bar slide away as you scroll down the page and come back as you scroll up. Two editors ship side-by-side: a **native markdown editor** with a formatting toolbar that sits above the keyboard + live preview swap that works offline (default), and a **collaborative WebView editor** backed by [Nextcloud Text](https://github.com/nextcloud/text) (beta — multi-user real-time editing, callouts, multi-line tables, math, etc.) used when the server supports it and you're online. Choose the default under **Settings → Editor** (Prefer plain markdown / Prefer collaborative).
-- Offline read cache and offline edit queue. A queued edit is sent with the ETag it was written against, so a page someone else changed meanwhile surfaces as a conflict rather than overwriting them — your text is kept as a draft on the page, beside theirs, and you choose which wins
-- Full-text search via the Nextcloud unified-search provider, with results filterable by collective. Before you type, Search offers your recent searches and the tags across every collective
-- **Favorites**: your favourite pages, grouped by collective, each unstarred in place with an Undo
-- Per-page tags, emoji, rename, and move (folder pages supported)
-- Long-press to drag pages and reorder them within their parent — same `subpageOrder` the web Collectives UI uses. Like the web app, dragging is available under the custom order only
-- Attachments: view inline images, upload from camera or gallery
-- Trash + restore, with pre-commit undo on a snackbar
-- Share-intent quick capture from any app (text, URLs, single or multiple images)
-- Page index: a heading list in the page toolbar, indented by level, that scrolls straight to the section you tap
-- Subpages: collapsible row at the top of every page listing its child pages, so they're reachable however the page was opened
-- Backlinks: collapsible "linked from" row under every page that shows which other pages reference it
-- Wikilink support: `[[Page Name]]` and relative `.md` links resolve in-app
-- Light, Dark, or System theme; Material 3 styling
-- Page text size (Small / Default / Large / Larger) under **Settings → Appearance**, applied to rendered pages, the native editor, and the collaborative editor from one setting. It multiplies your device's font-size setting rather than replacing it, so the two stack
-- Configurable background sync cadence (Off, 1h, 6h, 12h, daily), plus pull-to-refresh on the collective list (which pulls every collective's page list too), page tree, page view, and attachments, and a "Sync now" button in Settings that reports when sync last succeeded or why it failed
-- Pages revalidate their content against the server on open (`If-None-Match`, so an unchanged page costs a 304), which is what keeps edits made elsewhere from staying invisible
-- Adaptive launcher icon with a monochrome layer for Android 13+ themed icons
-- Splash screen via `androidx.core:core-splashscreen`
-- Manual update check under **Settings → About → Check for updates**: queries the GitHub Releases API only when you tap it, and opens the release page in your browser if a newer version is out. Nothing is checked at launch or in the background, and the result is shown in the app rather than as a notification.
+- Collectives and their nested page trees, each sorted A–Z, Z–A, or newest or oldest first by last change. Pages can also follow the custom order shared with the web app, chosen per collective; under it, long-press a page to drag it within its parent. **New collective** and, in a collective, **New page** are floating buttons
+- Markdown rendering with images, links, task lists, tables, syntax-highlighted code blocks and Nextcloud Text callouts (`> [!INFO]` / `[!WARN]` / `[!ERROR]` / `[!SUCCESS]`). `[[Page Name]]` wikilinks and relative `.md` links open in the app. Each page lists its subpages, the pages that link to it, and its headings, which jump to their section
+- View-first: a page's **Edit** button floats bottom-right, and the top and navigation bars slide away as you scroll down and come back as you scroll up. Two editors: a **native markdown editor** with a formatting toolbar and a preview, which works offline (the default), and a **collaborative editor** backed by [Nextcloud Text](https://github.com/nextcloud/text) (beta — real-time editing with others, plus everything Text supports) when the server offers it and you're online. Choose under **Settings → Editor**
+- Offline reading and editing. Pages are cached, and edits made offline are queued. Each edit is sent against the version it was written from, and when the server reports that someone else changed the page meanwhile, your text is kept as a draft beside theirs and you choose which wins. Opening a page checks the server for a newer version
+- Search across every collective through Nextcloud's unified search, filterable by collective, with recent searches and tags offered before you type
+- **Favorites**, grouped by collective, each unstarred in place with an Undo
+- Page tags, emoji, rename, move (folder pages included) and duplicate; trash and restore, with Undo. Create collectives, change their emoji, and trash, restore or delete them
+- Attachments: inline images, and uploads from the camera or gallery
+- Quick capture from any app's Share menu: text, links, or one or more images
+- Several Nextcloud accounts, switched from **Settings → Accounts** without signing out. One account's pages are cached at a time: switching clears the previous account's copy and downloads the new one's, and warns first if any edits haven't reached the server yet
+- Light, Dark or System theme, and a page text size (**Settings → Appearance**) that scales rendered pages and both editors on top of your device's font size
+- Background sync every 1, 6 or 12 hours, daily, or never; pull to refresh; and **Sync now** in Settings, which says when sync last succeeded or why it failed
 
 ## Requirements
 
@@ -60,55 +50,47 @@ An unofficial native Android client for the [Nextcloud Collectives](https://gith
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80" />](https://f-droid.org/packages/com.megamaced.nccollectives/)
 
-The app is published on F-Droid as `com.megamaced.nccollectives`. This is the route most people want: the F-Droid client notices new releases and updates the app for you, so you never have to come back here to find out a version shipped. Install the [F-Droid client](https://f-droid.org), search for **NC Collectives**, and install from there.
+Install the [F-Droid client](https://f-droid.org), search for **NC Collectives** (`com.megamaced.nccollectives`), and install it from there. F-Droid then keeps the app up to date.
 
-The listing is a **reproducible build**. F-Droid rebuilds the app from this repository at the release tag, verifies that the result matches the APK signed with the developer's key, and then distributes that same signed APK. Both channels therefore carry the same signature, which means you can move between the F-Droid build and a GitHub-release APK in either direction **without uninstalling** — either way it's an in-place upgrade that keeps your account and cached pages.
+The listing is a **reproducible build**: F-Droid rebuilds the app from this repository at the release tag, checks that the result matches the APK signed with the developer's key, and distributes that signed APK. The F-Droid build and the GitHub release APK therefore carry the same signature, so a newer version from either installs over the other without uninstalling.
 
 ### APK from GitHub Releases
 
-Still a supported route, and it's the exact build F-Droid reproduces. Use it if you'd rather not run the F-Droid client, or to get a release before F-Droid's scanner has picked it up — the trade-off is that nothing updates the app for you afterwards.
+The same build F-Droid reproduces, for when you'd rather not run the F-Droid client or want a release before F-Droid has built it. Nothing updates it for you.
 
-1. Download the latest `app-release.apk` from the [Releases](https://github.com/megamaced/nc_collectives_android/releases) page.
-2. On the phone, allow the browser (or the file manager you opened the APK with) to install apps. Android usually prompts the first time; the toggle also lives under **Settings → Apps → Special app access → Install unknown apps**.
-3. Tap the downloaded APK to install. Android will surface the Play Protect scanning prompt — it can flag unrecognised installers but the install itself is safe to proceed with.
-
-### First run
-
-Whichever route you used: open the app, paste your Nextcloud server URL (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. The device-scoped app password is stored in encrypted shared preferences; your real account password is never seen by the app.
+1. Download `app-release.apk` from the latest [release](https://github.com/megamaced/nc_collectives_android/releases).
+2. Allow the browser or file manager you open it with to install apps (**Settings → Apps → Special app access → Install unknown apps**); Android usually asks the first time.
+3. Open the APK to install it. A new version installs over the old one in place.
 
 ### Updates
 
-If you installed from F-Droid, updates come through F-Droid — there's nothing to do in the app.
+F-Droid installs are updated by F-Droid. For a GitHub install, **Settings → About → Check for updates** asks GitHub for the latest release when you tap it, and opens its page if it's newer than yours. Nothing is checked at launch or in the background.
 
-For sideloaded installs, update checks are user-initiated only. **Settings → About → Check for updates** queries `api.github.com/repos/megamaced/nc_collectives_android/releases/latest` at the moment you tap it, then either opens the release page in a browser tab (newer non-pre-release tag available) or reports via a snackbar that you're on the latest version or that GitHub couldn't be reached. Download the new APK from the page it opens and install it over the existing app — same signing key from `v1.0.0` onwards, so it's an in-place upgrade.
+## Signing in
 
-The app makes no launch-time or background request to GitHub, and it posts no notifications: results appear in the Settings screen, so no `POST_NOTIFICATIONS` permission is declared or needed.
-
-## Authentication
-
-Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2). You provide your server URL and authorise the app from your browser. The app stores only the device-scoped app password returned by your server — your account password is never seen, transmitted, or stored. You can revoke the device at any time from your Nextcloud security settings.
+Open the app, enter your Nextcloud server's address (e.g. `https://cloud.example.com`), and approve the device in the browser tab that opens. This is Nextcloud's [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2): the app only ever holds the device-scoped app password your server issues — never your account password — and you can revoke it at any time from your Nextcloud security settings.
 
 ## Privacy & security
 
-- The app talks **only** to the Nextcloud server you configure. The single third-party request — `api.github.com`, for the update check — is made when you tap **Check for updates** in Settings and at no other time; there is no launch-time or background call to GitHub. That call uses a separate OkHttp client so it never carries your Nextcloud credentials. There are no analytics endpoints, no telemetry, no crash reporters, no third-party SDKs that phone home. The release APK has been confirmed clean of any `com.google.android.gms` or `com.google.firebase` classes.
-- No Google Play Services dependencies; no Firebase; no advertising IDs.
-- Plaintext (`http://`) Nextcloud server URLs are refused at login; the app ships with `cleartextTrafficPermitted="false"` in the network-security config.
-- The device-scoped app password is stored in `EncryptedSharedPreferences` (Tink-backed). Sign-out wipes the keystore entry along with every Room table and DataStore value.
-- Network requests trust the system certificate store. There is no certificate pinning yet — if your Nextcloud server uses a self-signed CA you'll need to install that CA on your device.
+- The app talks **only** to the Nextcloud server you configure. The one exception is the update check, which calls `api.github.com` when you tap **Check for updates**, on a separate HTTP client that never carries your Nextcloud credentials.
+- No analytics, telemetry or crash reporting; no Google Play Services, Firebase or advertising IDs. The release APK contains no `com.google.android.gms` or `com.google.firebase` classes.
+- It posts no system notifications, so it doesn't ask for the notification permission.
+- Plain `http://` server addresses are refused, and cleartext traffic is disabled.
+- The app password is stored in `EncryptedSharedPreferences` (Tink-backed). Signing out deletes it, along with every cached page and setting.
+- Connections trust only the system certificate store, with no certificate pinning. A server whose certificate comes from a private or self-signed CA works only if that CA is in the system store; a CA installed as a user certificate is not trusted.
 
 ## Tech stack
 
-- Kotlin 2.x + Jetpack Compose + Material 3 (single-Activity, type-safe Compose Navigation)
+- Kotlin + Jetpack Compose + Material 3 (single Activity, Compose Navigation)
 - Hilt for dependency injection
-- Retrofit 3 + OkHttp 5 + kotlinx.serialization (OCS REST + WebDAV against one shared authenticated OkHttp client)
-- Room 2.8 for the offline cache, edit queue, and attachment upload queue
-- WorkManager for background sync and queued-edit / attachment-upload flush
-- Coil 3 for image loading (reuses the authenticated OkHttp client via a `SingletonImageLoader.Factory`)
-- Markwon for markdown rendering (with Prism4j for syntax-highlighted code blocks) — themed directly against the M3 colour scheme via `AndroidView`
-- System `WebView` + `androidx.webkit` (`WebSettingsCompat`) for the beta collaborative editor against the Nextcloud Text `directEditing` OCS endpoint
+- Retrofit + OkHttp + kotlinx.serialization (OCS REST and WebDAV over one authenticated OkHttp client)
+- Room for the offline cache, edit queue and attachment upload queue
+- WorkManager for background sync and for sending queued edits and uploads
+- Coil for images, on the same authenticated OkHttp client
+- Markwon for markdown rendering, with Prism4j for code highlighting, themed against the Material 3 colour scheme
+- System `WebView` + `androidx.webkit` for the collaborative editor, through Nextcloud Text's `directEditing` endpoint
 - Tink (`androidx.security:security-crypto`) for the encrypted credential store
-- `androidx.core:core-splashscreen` for the launcher splash
-- The system camera intent (via a scoped FileProvider) for in-app photo capture — no CAMERA permission
+- The system camera app, through a scoped FileProvider, for photos — no CAMERA permission
 
 ## Building
 
@@ -116,17 +98,11 @@ Login uses the standard Nextcloud [Login Flow v2](https://docs.nextcloud.com/ser
 ./gradlew assembleDebug
 ```
 
-Debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
 
-For a release build:
+`./gradlew assembleRelease` builds the release APK. Without the signing environment variables it is unsigned, at `app/build/outputs/apk/release/app-release-unsigned.apk`; [`docs/SIGNING.md`](docs/SIGNING.md) covers the keystore, the GitHub Actions secrets and the local variables.
 
-```bash
-./gradlew assembleRelease
-```
-
-Without signing env vars set, this produces an *unsigned* APK at `app/build/outputs/apk/release/app-release-unsigned.apk`. The signing setup (keystore generation, GitHub Actions secret names, local env vars) is documented in [`docs/SIGNING.md`](docs/SIGNING.md).
-
-R8 minification is on for release builds and the output is deterministic — two consecutive `assembleRelease` runs at the same commit produce byte-identical APKs (matching SHA-256). That determinism is what lets F-Droid match its own rebuild against the signed release APK; a mirror of the recipe it builds from lives at [`docs/fdroid/com.megamaced.nccollectives.yml`](docs/fdroid/com.megamaced.nccollectives.yml). Release builds are around 4.9 MB; debug builds, which include the full debug tooling, are around 73 MB.
+Release builds are minified with R8 and reproducible: the same commit, built with the same toolchain and inputs, gives a byte-identical APK. That is what lets F-Droid match its rebuild to the signed release. A mirror of F-Droid's recipe is at [`docs/fdroid/com.megamaced.nccollectives.yml`](docs/fdroid/com.megamaced.nccollectives.yml).
 
 ## Contributing
 

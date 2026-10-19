@@ -2,41 +2,35 @@ An unofficial native Android client for the Nextcloud Collectives app — wiki-s
 
 Features:
 
-* Five tabs: Home, Collectives, Search, Favorites and Alerts, each keeping its place.
-* Home, offline: edits waiting to sync, new alerts, recent and updated pages, your edits, tags.
-* Alerts: mentions, and changes in collectives set to notify you. Dismissing clears them on the server. In-app only.
-* Browse collectives and nested page trees.
-* Render markdown pages, including images, links, task lists, tables, syntax-highlighted fenced code blocks (Prism4j, themed against the app's Material 3 colour scheme), Nextcloud Text callouts (INFO / WARN / ERROR / SUCCESS), and ==highlight== marks.
-* View-first, with a floating Edit button; the bars slide away as you scroll. Two editors ship side-by-side: a native markdown editor with formatting toolbar + live preview swap that works offline (default), and a collaborative WebView editor backed by Nextcloud Text (beta — multi-user real-time editing, callouts, multi-line tables, math) used when the server supports it and you're online. Choose the default under Settings → Editor.
-* Offline read cache and offline edit queue. Last-write-wins on conflict; local edits are preserved as drafts attached to the page.
-* Full-text search via the Nextcloud unified-search provider.
-* Favorites grouped by collective, and recent searches.
-* Per-page tags, emoji, rename, and move (folder pages supported). Browse all pages carrying a given tag.
-* Long-press to drag pages and reorder them within their parent — same subpageOrder the web Collectives UI uses.
-* Duplicate page action.
-* Attachments: view inline images, upload from camera or gallery.
-* Trash + restore (per-page and per-collective), with pre-commit undo on a snackbar for page trash.
-* Create new collectives, change a collective's emoji, soft-delete + restore + permanently delete collectives.
-* Share-intent quick capture from any app (text, URLs, single or multiple images).
-* Backlinks: collapsible "linked from" row under every page that shows which other pages reference it.
-* Wikilink support: [[Page Name]] and relative .md links resolve in-app.
-* Light, Dark, or System theme; Material 3 styling.
-* Configurable background sync cadence (Off, 1h, 6h, 12h, daily).
-* Adaptive launcher icon with a monochrome layer for Android 13+ themed icons.
-* Splash screen.
-* Manual update check: a button in Settings under About asks the GitHub Releases API whether a newer version has been published, and opens the release page in a browser tab if so. Nothing is checked at launch and nothing runs in the background; the app never downloads or installs anything itself. F-Droid users can ignore it entirely — updates come through F-Droid as normal.
+* Five tabs: Home, Collectives, Search, Favorites and Alerts, each keeping its place. Phones get a bottom navigation bar; wide screens get a navigation rail.
+* Home, from the local cache so it works offline: edits waiting to sync or in conflict, new alerts, and cards for the pages you opened recently, pages changed since you read them, recently updated pages and your own edits, each with See all for the full list. Plus the tags across every collective.
+* Alerts: mentions of you, and changes to pages in collectives set to notify you. Dismissing one clears it on the server too. In-app only: no system notifications.
+* Collectives and nested page trees, sorted A–Z, Z–A, newest or oldest first. Pages can also follow the custom order shared with the web app, and be dragged within their parent.
+* Markdown rendering with images, links, task lists, tables, syntax-highlighted code blocks and Nextcloud Text callouts (INFO / WARN / ERROR / SUCCESS). [[Page Name]] wikilinks and relative .md links open in the app.
+* Each page lists its subpages, the pages that link to it, and its headings.
+* View-first, with a floating Edit button; the bars slide away as you scroll. Two editors: a native markdown editor with a formatting toolbar and a preview, which works offline (the default), and a collaborative editor backed by Nextcloud Text (beta — real-time editing with others) when the server offers it and you're online.
+* Offline reading and editing. Edits made offline are queued, and each is sent against the version it was written from: when the server reports that someone else changed the page meanwhile, your text is kept as a draft beside theirs and you choose which wins.
+* Search across every collective through Nextcloud's unified search, with recent searches and tags offered before you type.
+* Favorites, grouped by collective.
+* Page tags, emoji, rename, move and duplicate; trash and restore, with Undo. Create collectives, change their emoji, and trash, restore or delete them.
+* Attachments: inline images, and uploads from the camera or gallery.
+* Quick capture from any app's Share menu: text, links, or images.
+* Several Nextcloud accounts, switched without signing out.
+* Light, Dark or System theme, and a page text size for pages and both editors.
+* Background sync every 1, 6 or 12 hours, daily, or never; pull to refresh; and Sync now.
+* Manual update check for installs from GitHub: Settings → About asks GitHub for the latest release only when you tap it. F-Droid users can ignore it — F-Droid updates the app as normal.
 
 Requirements:
 
 * Android 10 (API 29) or newer.
-* A Nextcloud instance with the Collectives app installed, served over HTTPS. Plaintext (http://) server URLs are refused at login.
+* A Nextcloud instance with the Collectives app installed, served over HTTPS. Plain http:// server addresses are refused.
 
-Authentication uses Nextcloud Login Flow v2 — you authorise the app from your browser and the server returns a device-scoped app password. Your account password is never seen, transmitted, or stored by the app. Revoke the device at any time from your Nextcloud security settings.
+Signing in uses Nextcloud Login Flow v2: you approve the app in your browser, and your server gives it a device-scoped app password. The app never sees your account password, and you can revoke the device at any time from your Nextcloud security settings.
 
 Privacy:
 
-* The app talks only to the Nextcloud server you configure. The one exception is the manual update check in Settings, which contacts api.github.com only when you press the button, on a separate HTTP client that never carries your Nextcloud credentials.
+* The app talks only to the Nextcloud server you configure. The one exception is the update check, which contacts api.github.com only when you tap it, on a separate HTTP client that never carries your Nextcloud credentials.
 * No Google Play Services. No Firebase. No analytics. No telemetry. No crash reporters. No advertising IDs.
-* The device-scoped app password is stored in EncryptedSharedPreferences (Tink-backed). Signing out wipes the keystore entry along with every cached row and preference.
+* The app password is stored in EncryptedSharedPreferences (Tink-backed). Signing out deletes it, along with every cached page and setting.
 
 This project is not affiliated with, endorsed by, or supported by Nextcloud GmbH or the Nextcloud Collectives team. "Nextcloud" and "Collectives" are trademarks of their respective owners.
