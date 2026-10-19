@@ -49,8 +49,8 @@ android {
         applicationId = "com.megamaced.nccollectives"
         minSdk = 29
         targetSdk = 37
-        versionCode = 41
-        versionName = "3.0.0-beta.1"
+        versionCode = 42
+        versionName = "3.0.0-beta.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

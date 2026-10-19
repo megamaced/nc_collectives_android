@@ -1,0 +1,7 @@
+3.0.0 beta 2.
+
+Home shows pages as cards, several to a row: Jump back in, Updated since you read it, Recently updated and Your recent edits. See all opens the full list.
+
+The Recent pages strip inside a collective is gone. Home has the same pages, across every collective or filtered to one.
+
+Fixed: in a collective's notification setting, the three levels were different heights.
