@@ -81,6 +81,45 @@ fun parseAttachmentRef(
     return null
 }
 
+/**
+ * The markdown the app writes to reference the attachment [fileName]: an
+ * embed for an image, a link otherwise (see [demoteNonImageEmbeds]).
+ *
+ * Issue #61: the destination is percent-encoded, so a name with spaces,
+ * parentheses or brackets stays one destination — a bare `my holiday.jpg`
+ * is not one, and renders as text — and [parseAttachmentRef] decodes it
+ * again. The label is the name as it is, with only what would end it early
+ * escaped.
+ */
+fun attachmentMarkdown(
+    fileName: String,
+    embed: Boolean = isImageFileName(fileName),
+): String {
+    val label = fileName.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    val link = "[$label](${attachmentDestination(fileName)})"
+    return if (embed) "!$link" else link
+}
+
+/**
+ * [fileName] percent-encoded as one path segment: every byte of its UTF-8
+ * form outside RFC 3986's unreserved set.
+ */
+internal fun attachmentDestination(fileName: String): String =
+    buildString {
+        for (byte in fileName.toByteArray(Charsets.UTF_8)) {
+            val code = byte.toInt() and 0xFF
+            val char = code.toChar()
+            if (code < 0x80 && (char.isLetterOrDigit() || char in UNRESERVED_MARKS)) {
+                append(char)
+            } else {
+                append('%').append(HEX[code shr 4]).append(HEX[code and 0x0F])
+            }
+        }
+    }
+
+private const val UNRESERVED_MARKS = "-._~"
+private const val HEX = "0123456789ABCDEF"
+
 /** `.attachments.<pageId>` — the directory Collectives stores attachments in. */
 fun attachmentDirName(pageId: Long): String = ".attachments.$pageId"
 
@@ -219,7 +258,7 @@ fun retargetAttachmentRefs(
         val bang = match.groups["bang"]?.value.orEmpty()
         val label = match.groups["label"]?.value.orEmpty()
         val trailing = match.groups["trailing"]?.value.orEmpty()
-        "$bang[$label](${target.replaceLastSegment(newName)}$trailing)"
+        "$bang[$label](${target.replaceLastSegment(attachmentDestination(newName))}$trailing)"
     }
 }
 
@@ -244,7 +283,7 @@ private val REF_TARGET_PATTERN = Regex(
     "(?s)" +
         "(?<fence>```.*?```|~~~.*?~~~)" +
         "|(?<code>`[^`\\n]+`)" +
-        "|(?<ref>(?<bang>!?)\\[(?<label>[^\\]]*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
+        "|(?<ref>(?<bang>!?)\\[(?<label>(?:\\\\.|[^\\]\\\\])*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
 )
 
 private fun fileNameOf(target: String): String =
@@ -267,7 +306,7 @@ private val EMBED_PATTERN = Regex(
     "(?s)" +
         "(?<fence>```.*?```|~~~.*?~~~)" +
         "|(?<code>`[^`\\n]+`)" +
-        "|(?<image>!\\[(?<alt>[^\\]]*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
+        "|(?<image>!\\[(?<alt>(?:\\\\.|[^\\]\\\\])*)]\\((?<target>[^)\\s]+)(?<trailing>\\s+[^)]*)?\\))",
 )
 
 /** Extensions Markwon's `ImagesPlugin` can decode into an inline image. */

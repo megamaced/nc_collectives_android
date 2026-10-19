@@ -1,7 +1,11 @@
 package com.megamaced.nccollectives.util
 
+import org.commonmark.node.Image
+import org.commonmark.node.Link
+import org.commonmark.parser.Parser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -435,6 +439,43 @@ class RetargetAttachmentRefsTest {
         val markdown = "![x](../../photo.jpg)"
 
         assertEquals(markdown, retargetAttachmentRefs(markdown, PAGE_ID, "photo.jpg", "photo-1.jpg"))
+    }
+
+    /**
+     * Issue #61: what the app writes for an attachment is one link or embed
+     * to CommonMark — the parser the renderer uses — and its destination
+     * reads back as the file's name, whatever the name holds.
+     */
+    @Test
+    fun `an attachment reference survives spaces, brackets and other awkward names`() {
+        for (name in listOf("my holiday.jpg", "scan (2).pdf", "a [draft] + notes.pdf", "Café №1.png", "50% off.jpg")) {
+            val markdown = attachmentMarkdown(name)
+            val document = Parser.builder().build().parse(markdown)
+            val paragraph = document.firstChild
+            val node = paragraph?.firstChild
+            val destination = when (node) {
+                is Image -> node.destination
+                is Link -> node.destination
+                else -> null
+            }
+            assertNotNull("$markdown is not one link or image", destination)
+            assertNull("$markdown has more after it", node?.next)
+            assertEquals(markdown, isImageFileName(name), node is Image)
+            assertEquals(markdown, name, parseAttachmentRef(destination!!, PAGE_ID)?.fileName)
+        }
+        assertEquals("![my holiday.jpg](my%20holiday.jpg)", attachmentMarkdown("my holiday.jpg"))
+        assertEquals("[a \\[draft\\] + notes.pdf](a%20%5Bdraft%5D%20%2B%20notes.pdf)", attachmentMarkdown("a [draft] + notes.pdf"))
+        assertEquals("a name with nothing awkward is written as it was", "![photo.jpg](photo.jpg)", attachmentMarkdown("photo.jpg"))
+    }
+
+    @Test
+    fun `a collision rename of an awkward name is written encoded, past an escaped label`() {
+        val markdown = attachmentMarkdown("a [draft].jpg")
+
+        assertEquals(
+            "![a \\[draft\\].jpg](a%20%5Bdraft%5D-1.jpg)",
+            retargetAttachmentRefs(markdown, PAGE_ID, "a [draft].jpg", "a [draft]-1.jpg"),
+        )
     }
 
     private companion object {

@@ -15,6 +15,7 @@ import com.megamaced.nccollectives.share.SharePayload
 import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.attachmentMarkdown
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -401,7 +402,8 @@ class ShareCaptureViewModel
             return StagedImages(names = names, dropped = dropped)
         }
 
-        private fun imageRefMarkdown(resolvedNames: List<String>): String = resolvedNames.joinToString("\n") { name -> "![$name]($name)" }
+        private fun imageRefMarkdown(resolvedNames: List<String>): String =
+            resolvedNames.joinToString("\n") { name -> attachmentMarkdown(name, embed = true) }
 
         private fun buildInitialBody(payload: SharePayload): String =
             buildString {
