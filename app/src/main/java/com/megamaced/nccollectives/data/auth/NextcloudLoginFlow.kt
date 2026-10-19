@@ -67,6 +67,17 @@ class NextcloudLoginFlow
                 .readTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
                 .build()
+
+        // Issue #60: a poll carries the token that buys an app password, so
+        // it goes to the endpoint checked against the server the user typed
+        // and nowhere else. A redirect, which OkHttp would follow with the
+        // same body, is an answer to report, not a hop to take.
+        private val pollClient =
+            client
+                .newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
         private val json = Json { ignoreUnknownKeys = true }
 
         suspend fun initiate(host: String): Result<LoginFlowInitResponse> =
@@ -121,7 +132,7 @@ class NextcloudLoginFlow
                     // cancels the OkHttp exchange instead of leaving a blocking
                     // thread alive until the server times out (B-22). `cancel()`
                     // is a safe no-op once the call has completed.
-                    val call = client.newCall(request)
+                    val call = pollClient.newCall(request)
                     try {
                         call.execute().use { response ->
                             when (response.code) {
@@ -150,6 +161,12 @@ class NextcloudLoginFlow
 
                                 404 -> {
                                     // Not yet authorised — keep polling.
+                                }
+
+                                in 300..399 -> {
+                                    return@withContext LoginFlowStatus.Error(
+                                        "The server redirected the sign-in check elsewhere. Refusing to follow it.",
+                                    )
                                 }
 
                                 else -> {
