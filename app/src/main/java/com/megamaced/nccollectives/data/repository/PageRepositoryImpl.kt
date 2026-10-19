@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.ConditionalBody
+import com.megamaced.nccollectives.data.api.PageBody
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.dto.PageDto
@@ -30,6 +31,7 @@ import com.megamaced.nccollectives.data.splitTags
 import com.megamaced.nccollectives.data.toJsonLongArray
 import com.megamaced.nccollectives.data.toLongCsv
 import com.megamaced.nccollectives.data.toLongCsvList
+import com.megamaced.nccollectives.domain.model.DraftBase
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageCreation
@@ -574,7 +576,8 @@ class PageRepositoryImpl
         override suspend fun saveBody(
             pageId: Long,
             newBody: String,
-        ): SaveOutcome = accountGeneration.bound { generation -> saveBodyUnder(pageId, newBody, generation) }
+            basedOn: DraftBase?,
+        ): SaveOutcome = accountGeneration.bound { generation -> saveBodyUnder(pageId, newBody, generation, basedOn) }
 
         /**
          * [saveBody], recording its outcome only while [generation] is
@@ -585,6 +588,7 @@ class PageRepositoryImpl
             pageId: Long,
             newBody: String,
             generation: Long,
+            basedOn: DraftBase? = null,
         ): SaveOutcome =
             // Checked before the cache is read, not just before it's written:
             // after a switch the page row under this id is the next
@@ -592,20 +596,39 @@ class PageRepositoryImpl
             if (!accountGeneration.isCurrent(generation)) {
                 SaveOutcome.Error(ACCOUNT_CHANGED)
             } else {
-                withContext(AccountBinding(generation)) { saveBodyBound(pageId, newBody, generation) }
+                withContext(AccountBinding(generation)) { saveBodyBound(pageId, newBody, generation, basedOn) }
             }
 
         private suspend fun saveBodyBound(
             pageId: Long,
             newBody: String,
             generation: Long,
+            basedOn: DraftBase?,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
                 ?: return SaveOutcome.Error("Page not cached")
             // Issue #29: the precondition comes from the queue row when there
             // is one, not from the page row. See `savePrecondition`.
             val existing = editQueueDao.forPage(pageId)
-            val precondition = savePrecondition(existing, entity.bodyEtag)
+            // Issue #57: the text is written against the version holding the
+            // text it started from. That is the cached version when the
+            // caller didn't say, or when the cache still holds that text;
+            // otherwise the version the caller started from, which the server
+            // has moved on from, so the save comes back a conflict and the
+            // text is kept.
+            val cacheIsBase = basedOn == null || entity.bodyMd?.let(DraftBase::digestOf) == basedOn.textDigest
+            val writtenFrom = if (cacheIsBase) entity.bodyEtag else basedOn?.etag
+            if (writtenFrom == null && !cacheIsBase && (existing == null || existing.status == "CONFLICTED")) {
+                // Written from text no known version holds — a queued edit
+                // since sent and overtaken, or set aside as a conflict — and
+                // the server no longer has it. The cache's version must not
+                // stand in: that would overwrite whatever overtook the text.
+                return keepAsConflict(entity, newBody, generation, fetchToResolve(entity))
+            }
+            val precondition = savePrecondition(existing, writtenFrom)
+            // Issue #34: the text this edit started from, when that is the
+            // cached body and no queued edit is in between. See the 412 arm.
+            val startedFrom = entity.bodyMd.takeIf { existing == null && cacheIsBase }
             val result = bodyService.saveBody(
                 collectivePath = entity.collectivePath,
                 filePath = entity.filePath,
@@ -646,7 +669,7 @@ class PageRepositoryImpl
                                 coalesceQueuedEdit(
                                     existing = existing,
                                     pageId = pageId,
-                                    serverEtag = entity.bodyEtag,
+                                    serverEtag = writtenFrom,
                                     newBody = newBody,
                                     now = System.currentTimeMillis(),
                                 ),
@@ -662,58 +685,39 @@ class PageRepositoryImpl
                 }
 
                 ApiResult.Conflict -> {
-                    // B-67: leave exactly the state `EditFlushWorker`'s
-                    // conflict path leaves, not just the draft.
-                    //
-                    // Two things were missing. Without a `CONFLICTED` queue
-                    // row the B-19 guard above never arms for this path, so
-                    // the next offline save on this page queues happily —
-                    // with the stale `baseEtag` — and its flush overwrites
-                    // the draft this branch just kept. And leaving `bodyEtag`
-                    // at the value the server has already rejected guarantees
-                    // the next online save is another 412; refetching the
-                    // body is also what lets the user see what they're
-                    // conflicting with.
-                    val fresh = when (
-                        val server = bodyService.fetchBody(
+                    var fresh = fetchToResolve(entity)
+                    // Issue #34: a 412 over a page still exactly the text this
+                    // edit started from changed nothing. The precondition
+                    // failed on the validator's form — weakened, or rewritten
+                    // as Apache's `-gzip` does, by a proxy compressing the
+                    // response it came in — and would fail every save the
+                    // same way. The version just read came uncompressed, as
+                    // the origin has it, so the write is tried again against
+                    // that: still conditional, so an edit landing in between
+                    // is refused rather than overwritten. The same validator
+                    // as before would only be refused again.
+                    val sameText = fresh != null && startedFrom != null && fresh.markdown == startedFrom
+                    val freshEtag = fresh?.etag
+                    if (sameText && freshEtag != null && freshEtag != precondition.baseEtag) {
+                        val retried = bodyService.saveBody(
                             collectivePath = entity.collectivePath,
                             filePath = entity.filePath,
                             fileName = entity.fileName,
+                            body = newBody,
+                            baseEtag = freshEtag,
                         )
-                    ) {
-                        is ApiResult.Success -> server.data
-
-                        // Offline again already, or the refetch failed: the
-                        // draft and the conflict marker still land, and the
-                        // next revalidation on open advances the body.
-                        else -> null
-                    }
-                    val recorded = writeUnder(generation) {
-                        if (fresh != null) {
-                            pageDao.updateBody(
-                                pageId,
-                                fresh.markdown,
-                                fresh.etag,
-                                fresh.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
-                                System.currentTimeMillis(),
-                            )
+                        if (retried is ApiResult.Success) {
+                            val saved = writeUnder(generation) {
+                                pageDao.updateBody(pageId, newBody, retried.data, null, System.currentTimeMillis())
+                                pageDao.updateDraft(pageId, null)
+                                editQueueDao.deleteForPage(pageId)
+                            }
+                            return if (saved) SaveOutcome.Saved else SaveOutcome.Error(ACCOUNT_CHANGED)
                         }
-                        pageDao.updateDraft(pageId, newBody)
-                        editQueueDao.upsert(
-                            EditQueueEntity(
-                                pageId = pageId,
-                                // The etag the draft would have to be written
-                                // against, as far as we know it. Only used if
-                                // the row is ever re-armed — a CONFLICTED row
-                                // is never picked up by `pendingEntries`.
-                                baseEtag = fresh?.etag ?: entity.bodyEtag,
-                                newBodyMd = newBody,
-                                queuedAt = System.currentTimeMillis(),
-                                status = "CONFLICTED",
-                            ),
-                        )
+                        // Changed in between: record it as it is now.
+                        if (retried == ApiResult.Conflict) fresh = fetchToResolve(entity)
                     }
-                    if (recorded) SaveOutcome.Conflict else SaveOutcome.Error(ACCOUNT_CHANGED)
+                    keepAsConflict(entity, newBody, generation, fresh)
                 }
 
                 ApiResult.Unauthorised -> {
@@ -728,6 +732,77 @@ class PageRepositoryImpl
                     SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
                 }
             }
+        }
+
+        /**
+         * The page as the server has it now, for resolving a save it refused,
+         * or null when it can't be read. Uncompressed, so its ETag is the
+         * origin's own and can be written against (issue #34).
+         */
+        private suspend fun fetchToResolve(entity: PageEntity): PageBody? =
+            when (
+                val server = bodyService.fetchBody(
+                    collectivePath = entity.collectivePath,
+                    filePath = entity.filePath,
+                    fileName = entity.fileName,
+                    uncompressed = true,
+                )
+            ) {
+                is ApiResult.Success -> server.data
+
+                // Offline again already, or the refetch failed: the draft
+                // and the conflict marker still land, and the next
+                // revalidation on open advances the body.
+                else -> null
+            }
+
+        /**
+         * Keep [newBody] as a draft beside the server's version, [fresh]
+         * when it could be read.
+         *
+         * B-67: leave exactly the state `EditFlushWorker`'s conflict path
+         * leaves, not just the draft. Two things were missing. Without a
+         * `CONFLICTED` queue row the B-19 guard in [saveBodyBound] never arms
+         * for this path, so the next offline save on this page queues
+         * happily — with the stale `baseEtag` — and its flush overwrites the
+         * draft kept here. And leaving `bodyEtag` at the value the server has
+         * already rejected guarantees the next online save is another 412;
+         * refetching the body is also what lets the user see what they're
+         * conflicting with.
+         */
+        private suspend fun keepAsConflict(
+            entity: PageEntity,
+            newBody: String,
+            generation: Long,
+            fresh: PageBody?,
+        ): SaveOutcome {
+            val pageId = entity.id
+            val recorded = writeUnder(generation) {
+                if (fresh != null) {
+                    pageDao.updateBody(
+                        pageId,
+                        fresh.markdown,
+                        fresh.etag,
+                        fresh.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                        System.currentTimeMillis(),
+                    )
+                }
+                pageDao.updateDraft(pageId, newBody)
+                editQueueDao.upsert(
+                    EditQueueEntity(
+                        pageId = pageId,
+                        // The etag the draft would have to be written
+                        // against, as far as we know it. Only used if
+                        // the row is ever re-armed — a CONFLICTED row
+                        // is never picked up by `pendingEntries`.
+                        baseEtag = fresh?.etag ?: entity.bodyEtag,
+                        newBodyMd = newBody,
+                        queuedAt = System.currentTimeMillis(),
+                        status = "CONFLICTED",
+                    ),
+                )
+            }
+            return if (recorded) SaveOutcome.Conflict else SaveOutcome.Error(ACCOUNT_CHANGED)
         }
 
         override suspend fun replaceWithDraft(

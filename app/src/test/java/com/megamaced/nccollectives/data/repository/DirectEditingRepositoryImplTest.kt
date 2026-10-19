@@ -96,6 +96,7 @@ class DirectEditingRepositoryImplTest {
             lastUserDisplayName = "",
             bodyMd = null,
             bodyTimestamp = null,
+            bodyEtag = null,
             bodyFromQueue = false,
             draftBodyMd = null,
         )

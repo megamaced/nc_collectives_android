@@ -42,6 +42,12 @@ data class Page(
      */
     val bodyTimestamp: Long?,
     /**
+     * ETag of the server version cached for this page — null when unknown.
+     * Like [bodyTimestamp], not the version of a queued edit when
+     * [bodyFromQueue].
+     */
+    val bodyEtag: String?,
+    /**
      * Whether [bodyMd] is the user's own edit still queued for the server
      * (issue #18's overlay) rather than the server's text.
      */

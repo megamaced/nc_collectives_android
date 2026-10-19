@@ -58,17 +58,29 @@ class PageBodyService
         private val callFactory: AccountBoundCallFactory,
         private val tokenStore: TokenStore,
     ) {
+        /**
+         * The page's body and the version it is.
+         *
+         * [uncompressed] asks for it as stored rather than gzipped, which is
+         * what a validator to write against needs (issue #34). A proxy that
+         * compresses a response on the way out may rewrite its ETag — Apache
+         * appends `-gzip`, nginx weakens it — and the origin then refuses
+         * that form in `If-Match`. One sent uncompressed is the origin's own.
+         */
         suspend fun fetchBody(
             collectivePath: String,
             filePath: String,
             fileName: String,
+            uncompressed: Boolean = false,
         ): ApiResult<PageBody> {
             val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
-            val request = Request
+            val builder = Request
                 .Builder()
                 .url(url)
                 .get()
-                .build()
+            // Set explicitly, so OkHttp doesn't ask for gzip on our behalf.
+            if (uncompressed) builder.header("Accept-Encoding", "identity")
+            val request = builder.build()
             return webDavCall(request) { response ->
                 PageBody(
                     markdown = response.body?.string().orEmpty(),
@@ -420,12 +432,14 @@ class PageBodyService
          *
          * The client cannot tell the two apart from a response header. And
          * against an origin that really holds a weak validator, neither form
-         * can strong-compare, so no `If-Match` value saves: the choice is
-         * this 412 — which routes into the conflict branch, keeps the user's
-         * text as a draft and offers "Replace with my draft" — or a blind
-         * write with no precondition, which B-61 refuses. Closing it properly
-         * means the queue row remembering the body the edit was based on, the
-         * same schema change B-61 identified.
+         * can strong-compare, so no `If-Match` value saves. A save refused
+         * that way re-reads the page uncompressed, which no proxy has
+         * rewritten, and if it is still the text the edit started from,
+         * writes again against the version just read
+         * (`PageRepositoryImpl.saveBodyBound`) — still conditional, so an
+         * edit landing in between is not overwritten. When that version is
+         * the one already refused, the 412 stands: the conflict branch keeps
+         * the user's text as a draft and offers "Replace with my draft".
          *
          * What is worth doing is not hiding it: a weak validator is logged,
          * so "every save on my server conflicts" is diagnosable from a log

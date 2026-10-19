@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.domain.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.domain.model.DraftBase
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -148,10 +149,16 @@ interface PageRepository {
      * Tries to save [newBody] to the server now. On network failure the edit
      * is enqueued for `EditFlushWorker` to retry; on 412 the user's body is
      * stored as a draft on the page row and `Conflict` is returned.
+     *
+     * [basedOn] is what [newBody] was written from, when the caller knows:
+     * an editor's text can outlive a restart, or a queued edit it was filled
+     * with, while the cache moves on (issue #57). See [DraftBase]. Null means
+     * the cached text.
      */
     suspend fun saveBody(
         pageId: Long,
         newBody: String,
+        basedOn: DraftBase? = null,
     ): SaveOutcome
 
     /**

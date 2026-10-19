@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.domain.model.DraftBase
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -101,7 +102,7 @@ class PageEditViewModel
                     page
                 }
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
-                seedDraft(current?.bodyMd)
+                seedDraft(current?.bodyMd, current?.takeUnless { it.bodyFromQueue }?.bodyEtag)
                 _uiState.update {
                     it.copy(
                         title = current?.title.orEmpty(),
@@ -132,10 +133,16 @@ class PageEditViewModel
          * Nothing is seeded until there is a body to seed with — a failed
          * fetch with no cached copy leaves the editor untouched, as before.
          */
-        private fun seedDraft(body: String?) {
+        private fun seedDraft(
+            body: String?,
+            etag: String?,
+        ) {
             if (body == null) return
             if (savedStateHandle.get<Boolean>(KEY_SEEDED) == true) return
+            val base = DraftBase.of(body, etag)
             savedStateHandle[KEY_DRAFT] = body
+            savedStateHandle[KEY_BASE_ETAG] = base.etag
+            savedStateHandle[KEY_BASE_DIGEST] = base.textDigest
             savedStateHandle[KEY_SEEDED] = true
         }
 
@@ -178,7 +185,21 @@ class PageEditViewModel
                 // longer passes a copy of the text in, so there is nothing to
                 // drift out of sync with a toolbar action that forgot to
                 // report its result.
-                val outcome = repository.saveBody(pageId, draftBody.value)
+                // Issue #57: against what the draft was seeded from, kept
+                // beside it. The cache can move on to a version the draft
+                // never saw — revalidated after a restart, or the queued edit
+                // it was filled with sent and overtaken — and saving against
+                // that one would overwrite it.
+                val base = savedStateHandle.get<String>(KEY_BASE_DIGEST)?.let {
+                    DraftBase(savedStateHandle.get<String>(KEY_BASE_ETAG), it)
+                }
+                val outcome = repository.saveBody(pageId, draftBody.value, base)
+                // Saved, queued or kept as a conflict draft: from here the
+                // cache or the queue says what the text is written against.
+                if (outcome !is SaveOutcome.Error) {
+                    savedStateHandle[KEY_BASE_ETAG] = null
+                    savedStateHandle[KEY_BASE_DIGEST] = null
+                }
                 _uiState.update {
                     when (outcome) {
                         SaveOutcome.Saved, SaveOutcome.Queued -> {
@@ -211,5 +232,15 @@ class PageEditViewModel
 
             /** Whether [KEY_DRAFT] has been filled from the loaded body yet. */
             const val KEY_SEEDED = "pageEdit.seeded"
+
+            /**
+             * What [KEY_DRAFT] was seeded from — the [DraftBase] — kept beside
+             * it so it survives what the draft survives: the ETag of the
+             * server version, null when the text was a queued edit or the
+             * version is unknown, and a digest of the text. Both null once a
+             * save has landed and the cache holds the draft's own version.
+             */
+            const val KEY_BASE_ETAG = "pageEdit.baseEtag"
+            const val KEY_BASE_DIGEST = "pageEdit.baseDigest"
         }
     }

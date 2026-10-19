@@ -210,6 +210,7 @@ internal fun PageEntity.toDomain(pendingBodyMd: String? = null): Page =
         lastUserDisplayName = lastUserDisplayName,
         bodyMd = pendingBodyMd ?: bodyMd,
         bodyTimestamp = bodyTimestamp,
+        bodyEtag = bodyEtag,
         bodyFromQueue = pendingBodyMd != null,
         draftBodyMd = draftBodyMd,
     )

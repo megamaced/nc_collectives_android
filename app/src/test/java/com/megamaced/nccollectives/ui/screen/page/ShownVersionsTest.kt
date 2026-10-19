@@ -31,6 +31,7 @@ class ShownVersionsTest {
         lastUserDisplayName = "",
         bodyMd = bodyMd,
         bodyTimestamp = bodyTimestamp,
+        bodyEtag = null,
         bodyFromQueue = bodyFromQueue,
         draftBodyMd = null,
     )
