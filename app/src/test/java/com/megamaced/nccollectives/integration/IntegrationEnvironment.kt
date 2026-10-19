@@ -209,6 +209,7 @@ internal class IntegrationEnvironment private constructor(
         bytes: ByteArray = "staged".toByteArray(),
         status: String = AttachmentEntity.STATUS_PENDING,
         attempts: Int = 0,
+        etag: String? = null,
     ): AttachmentEntity {
         val key = AttachmentEntity.key(pageId, fileName)
         val staged = File(File(context.cacheDir, "attachments-pending"), key.replace('/', '_'))
@@ -221,7 +222,7 @@ internal class IntegrationEnvironment private constructor(
             contentType = "image/jpeg",
             size = bytes.size.toLong(),
             lastModifiedMs = 0,
-            etag = null,
+            etag = etag,
             status = status,
             localUriString = android.net.Uri
                 .fromFile(staged)

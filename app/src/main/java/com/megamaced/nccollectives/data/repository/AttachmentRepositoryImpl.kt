@@ -127,8 +127,9 @@ class AttachmentRepositoryImpl
                                     size = dto.filesize,
                                     // OCS returns seconds since epoch; Room/UI use millis.
                                     lastModifiedMs = dto.timestamp * 1000L,
-                                    // OCS doesn't return an ETag; attachments don't use
-                                    // If-Match anywhere so null is fine.
+                                    // OCS doesn't return an ETag, and a listed
+                                    // attachment is deleted by its server id, so
+                                    // none is needed.
                                     etag = null,
                                     status = AttachmentEntity.STATUS_REMOTE,
                                     localUriString = null,
@@ -297,6 +298,24 @@ class AttachmentRepositoryImpl
                 ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
             val key = AttachmentEntity.key(pageId, fileName)
             val existing = attachmentDao.getById(key)
+            // Issue #56: a DELETE goes by name, and nothing proves the
+            // object at that name is this device's unless an upload of it
+            // was answered with success — which would have made the row
+            // REMOTE. A PUT refused because the name was taken, and whose
+            // answer was lost, looks the same from here as one that landed;
+            // the file there may be another client's, hidden by a stale
+            // listing. So a waiting or failed upload is dropped where it
+            // stands, row and staged bytes. If its bytes did land, the next
+            // listing shows them, and they can be deleted by their server id.
+            var dropped = false
+            if (!writeUnder(generation) {
+                    dropped = attachmentDao.deleteUnclaimed(key) == 1
+                    if (dropped) stagedFileFor(context, key).delete()
+                }
+            ) {
+                return accountChanged()
+            }
+            if (dropped) return ApiResult.Success(Unit)
             if (deleteRoute(existing) == DeleteRoute.Tombstone) {
                 // Issue #35: a local-only delete could not honour the
                 // request. Dropping the Room row neither cancels a PUT
@@ -305,14 +324,10 @@ class AttachmentRepositoryImpl
                 // them again as REMOTE — an attachment visibly resurrecting
                 // after the UI said it was deleted.
                 //
-                // So the row becomes a tombstone: hidden from the grid, kept
-                // for `AttachmentUploadWorker` to resolve with a WebDAV
-                // DELETE, and durable across process death. Every non-REMOTE
-                // status takes this path rather than just UPLOADING, because
-                // a FAILED row can have a remote object too — a PUT whose
-                // response was lost is exactly how #24's If-None-Match
-                // handling can leave one — and uniformity is worth more here
-                // than saving a DELETE that 404s.
+                // So a row a worker holds becomes a tombstone: hidden from
+                // the grid, and left for `AttachmentUploadWorker`, which
+                // removes the file only if the upload is answered with
+                // success, and otherwise drops the tombstone (issue #56).
                 // Under the generation: a tombstone on the next account's row
                 // under the same key would have the worker delete its file.
                 if (!writeUnder(generation) { attachmentDao.setStatus(key, AttachmentEntity.STATUS_DELETING) }) return accountChanged()
@@ -386,6 +401,26 @@ class AttachmentRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val key = AttachmentEntity.key(pageId, fileName)
+            // Issue #56: a DELETE goes by name, so it needs proof that the
+            // bytes there are this device's — the ETag the server answered
+            // the upload with (`confirmLanded`). Without it the upload was
+            // never sent, or never answered with success: refused, perhaps,
+            // because the name was another client's. That tombstone is
+            // dropped here, and nothing is sent.
+            var unconfirmed = false
+            if (!writeUnder(generation) {
+                    unconfirmed = attachmentDao.deleteUnconfirmedTombstone(key) == 1
+                    if (unconfirmed) deleteStagedFile(key)
+                }
+            ) {
+                return accountChanged()
+            }
+            if (unconfirmed) return ApiResult.Success(Unit)
+            val landed = attachmentDao
+                .getById(key)
+                ?.takeIf { it.status == AttachmentEntity.STATUS_DELETING }
+                ?.etag
+                ?: return ApiResult.Success(Unit)
             val page = pageDao.getById(pageId)
             if (page == null) {
                 // The page went with its collective. Nothing reachable to
@@ -396,11 +431,16 @@ class AttachmentRepositoryImpl
                 collectivePath = page.collectivePath,
                 filePath = combinePath(page.filePath, attachmentsDirectoryFor(pageId)),
                 fileName = fileName,
+                ifMatch = landed,
             )
             // `deleteFile` counts 404 as success, so reaching here with a
             // Success means the object is gone whether or not it ever
-            // existed. Anything else keeps the tombstone for another run.
-            if (result is ApiResult.Success && !dropTombstone(key, generation)) return accountChanged()
+            // existed. A 412 means the file there is no longer the upload —
+            // replaced since, and not this device's to remove. Anything else
+            // keeps the tombstone for another run.
+            if (result is ApiResult.Success || result == ApiResult.Conflict) {
+                return if (dropTombstone(key, generation)) ApiResult.Success(Unit) else accountChanged()
+            }
             return result
         }
 
@@ -432,7 +472,7 @@ class AttachmentRepositoryImpl
             generation: Long,
         ): String? {
             val oldKey = AttachmentEntity.key(pageId, fileName)
-            val row = attachmentDao.getById(oldKey) ?: return null
+            attachmentDao.getById(oldKey) ?: return null
             // Best-effort: a fresh listing is what lets the local resolver
             // step past the names the server already holds, rather than
             // handing back one it will refuse for the same reason. Offline,
@@ -451,12 +491,25 @@ class AttachmentRepositoryImpl
             // in [enqueueUpload]: after a switch both names may be the next
             // account's.
             var moved = false
+            var cancelled = false
             val recorded = writeUnder(generation) {
+                // Issue #63: the user may have cancelled it while its upload
+                // was out. A 412 means its bytes never landed — the name was
+                // someone else's — so there is nothing on the server to undo,
+                // and a tombstone's DELETE would remove that other file.
+                // Dropped here, not re-queued under a new name.
+                val current = attachmentDao.getById(oldKey)
+                if (current == null || current.status == AttachmentEntity.STATUS_DELETING) {
+                    cancelled = true
+                    attachmentDao.delete(oldKey)
+                    oldStaged.delete()
+                    return@writeUnder
+                }
                 moved = oldStaged.exists() && oldStaged.renameTo(newStaged)
                 if (!moved) return@writeUnder
                 attachmentDao.delete(oldKey)
                 attachmentDao.upsert(
-                    row.copy(
+                    current.copy(
                         id = newKey,
                         fileName = newName,
                         status = AttachmentEntity.STATUS_PENDING,
@@ -470,6 +523,10 @@ class AttachmentRepositoryImpl
                 )
             }
             if (!recorded) return null
+            if (cancelled) {
+                Timber.i("Attachment %s was cancelled; its name was taken, so nothing landed", oldKey)
+                return null
+            }
             if (!moved) {
                 Timber.w("Couldn't move the staged copy of %s aside", oldKey)
                 return null
@@ -934,9 +991,9 @@ private const val FALLBACK_STEM = "attachment"
 /** How [AttachmentRepository.delete] has to reach a given attachment. */
 internal enum class DeleteRoute {
     /**
-     * Keep the row as a `DELETING` tombstone for the worker to resolve. The
-     * bytes may be on the server, in flight, or nowhere, and this device
-     * cannot tell which (issue #35).
+     * Keep the row as a `DELETING` tombstone, so the worker holding it
+     * doesn't record its upload, and removes the file only if the upload is
+     * answered with success (issues #35, #56).
      */
     Tombstone,
 
@@ -945,12 +1002,12 @@ internal enum class DeleteRoute {
 }
 
 /**
- * Issue #35: which of the two shapes a delete takes.
+ * Issue #35: which of the two shapes a delete takes, for a row the delete
+ * could not simply drop.
  *
- * Any row this device still owns goes to a tombstone, including `FAILED` — a
- * PUT whose response was lost leaves a remote object behind a failed row, and
- * #24's `If-None-Match` handling is exactly how that happens. Uniformity is
- * worth more here than saving a WebDAV DELETE that 404s.
+ * A waiting or failed row is dropped where it stands (issue #56), so a row
+ * this device still owns gets here when a worker holds it: its PUT may be on
+ * the wire, and it goes to a tombstone whatever its status was when read.
  *
  * A row that is absent locally is treated as the server's: `delete` refreshes
  * to pick up its id, and reports if the server has never heard of it either.

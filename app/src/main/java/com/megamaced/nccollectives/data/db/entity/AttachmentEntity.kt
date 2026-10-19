@@ -32,6 +32,15 @@ data class AttachmentEntity(
     val contentType: String?,
     val size: Long,
     val lastModifiedMs: Long,
+    /**
+     * The server's ETag for this row's file, when this device knows it. On a
+     * tombstone it is the proof that the bytes at its name are this device's
+     * upload: set only when an upload the user had cancelled was answered
+     * with success, and sent as `If-Match` on the DELETE that removes it.
+     * A tombstone without one is dropped locally; its upload may have been
+     * refused because the name was taken, and whatever is there may be
+     * another client's (issue #56).
+     */
     val etag: String?,
     /** "REMOTE", "PENDING", "UPLOADING", "FAILED", "DELETING". */
     val status: String,
@@ -62,18 +71,21 @@ data class AttachmentEntity(
         const val STATUS_FAILED = "FAILED"
 
         /**
-         * Tombstone: the user deleted this attachment while its bytes may
-         * already have reached the server (issue #35).
+         * Tombstone: the user deleted this attachment while its upload was
+         * in flight (issue #35).
          *
          * A local-only delete could not honour the request — removing the
          * Room row neither cancels an in-flight PUT nor undoes one that
          * has landed, so the file stayed on the server and the next
          * listing inserted it again as `REMOTE`, visibly resurrecting an
          * attachment the UI had reported deleted. The row is kept instead,
-         * hidden from `observeForPage` and picked up by
-         * `AttachmentUploadWorker`, which issues the WebDAV DELETE and only
-         * then drops the row. Durable, so it survives process death between
-         * the upload landing and the delete going out.
+         * hidden from `observeForPage`, so the worker doesn't record the
+         * upload. If the upload is answered with success, the worker keeps
+         * its [etag] on the tombstone and removes the file with a WebDAV
+         * DELETE conditional on it — durable, so it survives process death
+         * before the delete goes out. Any other answer, or none, leaves
+         * nothing proving the bytes at that name are this device's, and the
+         * tombstone is dropped locally (issue #56).
          */
         const val STATUS_DELETING = "DELETING"
 

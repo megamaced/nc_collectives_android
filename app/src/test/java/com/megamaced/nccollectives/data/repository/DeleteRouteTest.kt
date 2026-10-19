@@ -32,16 +32,15 @@ class DeleteRouteTest {
     }
 
     @Test
-    fun `a pending row is tombstoned`() {
-        // The worker can pick it up between this read and the write.
+    fun `a row read as pending is tombstoned`() {
+        // Only asked when it could not be dropped: a worker claimed it
+        // between this read and the delete (issue #56).
         assertEquals(DeleteRoute.Tombstone, deleteRoute(row(AttachmentEntity.STATUS_PENDING)))
     }
 
     @Test
-    fun `a failed row is tombstoned`() {
-        // A PUT whose response was lost leaves a remote object behind a
-        // failed row, which is exactly how #24's If-None-Match handling can
-        // settle. Cheaper to send a DELETE that 404s than to reason about it.
+    fun `a row read as failed is tombstoned`() {
+        // As above: a Retry put it back and a worker claimed it since.
         assertEquals(DeleteRoute.Tombstone, deleteRoute(row(AttachmentEntity.STATUS_FAILED)))
     }
 

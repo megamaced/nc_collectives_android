@@ -207,19 +207,24 @@ class PageBodyService
          * one needs the server-assigned attachment id, which only arrives on
          * the next listing — and the whole point here is to remove the object
          * before any listing sees it.
+         *
+         * [ifMatch] is the ETag the upload was answered with, sent as
+         * `If-Match` so only those bytes are removed: a file replaced since
+         * comes back `412`, as [ApiResult.Conflict] (issue #56).
          */
         suspend fun deleteFile(
             collectivePath: String,
             filePath: String,
             fileName: String,
+            ifMatch: String? = null,
         ): ApiResult<Unit> {
             val url = buildWebDavUrl(collectivePath, filePath, fileName) ?: return unbuildableUrl()
-            val request = Request
+            val builder = Request
                 .Builder()
                 .url(url)
                 .delete()
-                .build()
-            return webDavCall(request, extraSuccessCodes = setOf(404)) { }
+            if (ifMatch != null) builder.header("If-Match", "\"$ifMatch\"")
+            return webDavCall(builder.build(), extraSuccessCodes = setOf(404)) { }
         }
 
         /**

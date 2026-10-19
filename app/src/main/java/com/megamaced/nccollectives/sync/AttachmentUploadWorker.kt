@@ -85,7 +85,12 @@ class AttachmentUploadWorker
             if (pending.isEmpty()) return Result.success()
 
             var retry = false
-            for (row in pending) {
+            for (queued in pending) {
+                // Issue #63: as it is now, not as the queue was read. While
+                // an earlier row uploaded, the user may have cancelled this
+                // one — dropped outright, or tombstoned — and the snapshot
+                // would still say it was waiting.
+                val row = attachmentDao.getById(queued.id) ?: continue
                 // B-63: one row must never take the drain down with it.
                 // `pendingUploads()` selects `UPLOADING` as well as
                 // `PENDING`, so a row that threw out of `doWork` was left
@@ -95,10 +100,12 @@ class AttachmentUploadWorker
                 // staged bytes collected) and the loop carries on.
                 try {
                     // Issue #35: a tombstone is not an upload. The user
-                    // cancelled this attachment while its bytes may already
-                    // have reached the server, so the work is to remove the
-                    // remote object — the row is only still here so that can
-                    // survive a process restart.
+                    // cancelled this attachment while its upload was out.
+                    // If that upload was answered with success, the work is
+                    // to remove what landed — the row is only still here so
+                    // that can survive a process restart. Otherwise nothing
+                    // proves the file at that name is this device's, and
+                    // the tombstone is dropped (issue #56).
                     if (row.status == AttachmentEntity.STATUS_DELETING) {
                         val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
                         if (deleted.isAccountChanged()) return Result.success()
@@ -119,8 +126,7 @@ class AttachmentUploadWorker
                         // Nothing to send and nothing a retry could fix.
                         Timber.w("Attachment %s has no local URI; marking failed", row.id)
                         val failed = underRun(generation) {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                            gcStaged(row.id)
+                            if (attachmentDao.setStatusUnlessCancelled(row.id, AttachmentEntity.STATUS_FAILED) == 1) gcStaged(row.id)
                         }
                         if (!failed) return Result.success()
                         continue
@@ -128,8 +134,17 @@ class AttachmentUploadWorker
 
                     // Issue #30: claiming the row spends one of its own
                     // attempts, which is what the classifier reads instead of
-                    // this worker's `runAttemptCount`.
-                    if (!underRun(generation) { attachmentDao.markUploading(row.id) }) return Result.success()
+                    // this worker's `runAttemptCount`. Issue #63: only if it
+                    // is still waiting. One cancelled since the read above is
+                    // not sent; its tombstone, if it has one, is the next
+                    // run's.
+                    var claimed = false
+                    if (!underRun(generation) { claimed = attachmentDao.markUploading(row.id) == 1 }) return Result.success()
+                    if (!claimed) {
+                        Timber.i("Attachment %s was cancelled before it was sent", row.id)
+                        retry = true
+                        continue
+                    }
                     val attemptsSoFar = row.attempts + 1
 
                     val dir = AttachmentRepositoryImpl.attachmentsDirectoryFor(row.pageId)
@@ -145,7 +160,7 @@ class AttachmentUploadWorker
                         }
 
                         ApiResult.Unauthorised -> {
-                            underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING) }
+                            underRun(generation) { attachmentDao.setStatusUnlessCancelled(row.id, AttachmentEntity.STATUS_PENDING) }
                             return Result.success() // SessionManager surfaces re-auth.
                         }
 
@@ -172,13 +187,20 @@ class AttachmentUploadWorker
                     if (body == null) {
                         Timber.w("Couldn't open %s for upload", uri)
                         val failed = underRun(generation) {
-                            attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED)
-                            gcStaged(row.id)
+                            if (attachmentDao.setStatusUnlessCancelled(row.id, AttachmentEntity.STATUS_FAILED) == 1) gcStaged(row.id)
                         }
                         if (!failed) return Result.success()
                         continue
                     }
 
+                    // Issue #56: one cancelled since the claim is not sent.
+                    // Its tombstone is the next run's, and goes without a
+                    // DELETE.
+                    if (attachmentDao.getById(row.id)?.status != AttachmentEntity.STATUS_UPLOADING) {
+                        Timber.i("Attachment %s was cancelled before it was sent", row.id)
+                        retry = true
+                        continue
+                    }
                     val put = bodyService.uploadFile(
                         collectivePath = page.collectivePath,
                         filePath = AttachmentRepositoryImpl.combinePath(page.filePath, dir),
@@ -189,12 +211,25 @@ class AttachmentUploadWorker
                     if (put.isAccountChanged()) return Result.success()
                     when (put) {
                         is ApiResult.Success -> {
-                            // Issue #23: `row` is a snapshot from before the
-                            // PUT, and the upsert below is an insert. A row
-                            // that has gone or been tombstoned since must not
-                            // be recreated as REMOTE by its own upload
-                            // finishing.
-                            //
+                            // Issue #23: a row that has gone or been
+                            // tombstoned since the PUT went out must not be
+                            // recorded as REMOTE by its own upload finishing.
+                            // Issue #63: so the check and the write are one
+                            // statement, with no gap for a cancellation.
+                            val size = sizeOf(uri)
+                            var landed = false
+                            val recorded = underRun(generation) {
+                                val now = System.currentTimeMillis()
+                                landed = attachmentDao.markUploaded(row.id, contentType, size, put.data, now) == 1
+                                // B-29: bytes are safely on the server now;
+                                // drop the staging copy.
+                                if (landed) gcStaged(row.id)
+                            }
+                            if (!recorded) {
+                                Timber.i("Account changed mid-upload; not recording %s", row.id)
+                                return Result.success()
+                            }
+                            if (landed) continue
                             // Issue #35: a delete leaves a DELETING row
                             // rather than no row, so that arm hands the
                             // just-uploaded object to `resolveDeletion` —
@@ -203,40 +238,23 @@ class AttachmentUploadWorker
                             // on the next listing. A missing row means the
                             // page itself went (a collective cascade), and
                             // there is nothing addressable left to delete.
-                            val current = attachmentDao.getById(row.id)
-                            if (current == null) {
+                            if (attachmentDao.getById(row.id) == null) {
                                 Timber.i("Attachment %s vanished mid-upload; not recording it", row.id)
                                 if (!underRun(generation) { gcStaged(row.id) }) return Result.success()
                                 continue
                             }
-                            if (current.status == AttachmentEntity.STATUS_DELETING) {
-                                Timber.i("Attachment %s was cancelled mid-upload; removing what landed", row.id)
-                                val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
-                                if (deleted.isAccountChanged()) return Result.success()
-                                if (deleted !is ApiResult.Success) retry = true
-                                continue
-                            }
-                            val size = sizeOf(uri)
-                            val recorded = underRun(generation) {
-                                attachmentDao.upsert(
-                                    row.copy(
-                                        contentType = contentType,
-                                        size = size,
-                                        etag = put.data,
-                                        lastModifiedMs = System.currentTimeMillis(),
-                                        status = AttachmentEntity.STATUS_REMOTE,
-                                        localUriString = null,
-                                        lastSyncedAt = System.currentTimeMillis(),
-                                    ),
-                                )
-                                // B-29: bytes are safely on the server now; drop the
-                                // staging copy.
-                                gcStaged(row.id)
-                            }
-                            if (!recorded) {
-                                Timber.i("Account changed mid-upload; not recording %s", row.id)
-                                return Result.success()
-                            }
+                            Timber.i("Attachment %s was cancelled mid-upload; removing what landed", row.id)
+                            // Issue #56: this answer is the proof the bytes at
+                            // that name are this device's, kept on the
+                            // tombstone so the DELETE can be conditional on
+                            // it, now or on a later run. A success with no
+                            // ETag proves nothing a DELETE could be
+                            // conditional on: the tombstone is dropped, and
+                            // the next listing shows the file.
+                            if (!underRun(generation) { attachmentDao.confirmLanded(row.id, put.data) }) return Result.success()
+                            val deleted = attachmentRepository.resolveDeletion(row.pageId, row.fileName)
+                            if (deleted.isAccountChanged()) return Result.success()
+                            if (deleted !is ApiResult.Success) retry = true
                         }
 
                         is ApiResult.NetworkError -> {
@@ -245,7 +263,7 @@ class AttachmentUploadWorker
                         }
 
                         ApiResult.Unauthorised -> {
-                            underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_PENDING) }
+                            underRun(generation) { attachmentDao.setStatusUnlessCancelled(row.id, AttachmentEntity.STATUS_PENDING) }
                             return Result.success()
                         }
 
@@ -307,7 +325,12 @@ class AttachmentUploadWorker
                     // can retry from the grid rather than re-pick a file
                     // they may no longer have.
                     Timber.w(e, "Upload of %s threw; marking it failed and carrying on", row.id)
-                    if (!underRun(generation) { attachmentDao.setStatus(row.id, AttachmentEntity.STATUS_FAILED) }) return Result.success()
+                    if (!underRun(
+                            generation,
+                        ) { attachmentDao.setStatusUnlessCancelled(row.id, AttachmentEntity.STATUS_FAILED) }
+                    ) {
+                        return Result.success()
+                    }
                 }
             }
             return if (retry) Result.retry() else Result.success()
@@ -387,7 +410,11 @@ class AttachmentUploadWorker
                 UploadFailureAction.RetryLater -> AttachmentEntity.STATUS_PENDING
                 UploadFailureAction.Terminal -> AttachmentEntity.STATUS_FAILED
             }
-            return if (underRun(generation) { attachmentDao.setStatus(attachmentId, status) }) action else null
+            var settled = false
+            if (!underRun(generation) { settled = attachmentDao.setStatusUnlessCancelled(attachmentId, status) == 1 }) return null
+            // Issue #63: cancelled while this attempt was out. Its tombstone
+            // stands, and another run resolves it.
+            return if (settled) action else UploadFailureAction.RetryLater
         }
 
         /** [writes] in one transaction while this run's account is current; see `NcCollectivesDatabase.writeUnder`. */
