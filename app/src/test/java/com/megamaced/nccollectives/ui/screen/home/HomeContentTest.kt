@@ -4,9 +4,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -20,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class HomeContentTest {
@@ -103,20 +106,111 @@ class HomeContentTest {
 
     @Test
     fun aFullPreviewOffersNoSeeAll() {
-        show(feed = HomeFeed(updatedSinceRead = pages(HOME_PREVIEW_ROWS)))
+        show(feed = HomeFeed(updatedSinceRead = pages(HOME_PREVIEW_CARDS)))
 
-        rule.onNodeWithText("Page $HOME_PREVIEW_ROWS").assertExists()
+        rule.onNodeWithText("Page $HOME_PREVIEW_CARDS").assertExists()
         rule.onNodeWithText("See all").assertDoesNotExist()
     }
 
     @Test
-    fun oneRowMoreThanThePreviewOffersSeeAll_andIsNotShown() {
-        show(feed = HomeFeed(updatedSinceRead = pages(HOME_PREVIEW_ROWS + 1)))
+    fun oneCardMoreThanThePreviewOffersSeeAll_andIsNotShown() {
+        show(feed = HomeFeed(updatedSinceRead = pages(HOME_PREVIEW_CARDS + 1)))
 
-        rule.onNodeWithText("Page $HOME_PREVIEW_ROWS").assertExists()
-        rule.onNodeWithText("Page ${HOME_PREVIEW_ROWS + 1}").assertDoesNotExist()
+        rule.onNodeWithText("Page $HOME_PREVIEW_CARDS").assertExists()
+        rule.onNodeWithText("Page ${HOME_PREVIEW_CARDS + 1}").assertDoesNotExist()
         rule.onNodeWithText("See all").performClick()
         assertEquals(listOf(HomeSection.UpdatedSinceRead), seeAll)
+    }
+
+    @Test
+    fun aCardSaysWhichCollectiveAndWhoEditedIt() {
+        show(
+            feed = HomeFeed(recentlyUpdated = listOf(listItem(5, collectiveId = 2, lastUserDisplayName = "Alice"))),
+            // One collective, so no filter chips repeat its name.
+            collectives = listOf(collective(2)),
+        )
+
+        rule.onNodeWithText("Collective 2").assertExists()
+        rule.onNodeWithText("Alice", substring = true).assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h2000dp") // Tall enough that every section is drawn.
+    fun theCardSectionsOfferSeeAll_onlyPastAFullGrid() {
+        show(
+            feed = HomeFeed(
+                recentlyUpdated = pages(HOME_PREVIEW_CARDS),
+                yourEdits = pages(HOME_PREVIEW_CARDS + 1, from = 100),
+            ),
+        )
+
+        rule.onAllNodesWithText("See all").assertCountEquals(1)
+        rule.onNodeWithText("See all").performClick()
+        assertEquals("only Your recent edits has more than a grid", listOf(HomeSection.YourEdits), seeAll)
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h2000dp")
+    fun aFullGridOfYourEditsOffersNoSeeAll() {
+        show(
+            feed = HomeFeed(
+                recentlyUpdated = pages(HOME_PREVIEW_CARDS + 1),
+                yourEdits = pages(HOME_PREVIEW_CARDS, from = 100),
+            ),
+        )
+
+        rule.onAllNodesWithText("See all").assertCountEquals(1)
+        rule.onNodeWithText("See all").performClick()
+        assertEquals(listOf(HomeSection.RecentlyUpdated), seeAll)
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h2000dp")
+    fun recentlyUpdatedDrawsNoMoreThanAGrid() {
+        show(feed = HomeFeed(recentlyUpdated = pages(HOME_PREVIEW_CARDS + 1)))
+
+        rule.onNodeWithText("Page $HOME_PREVIEW_CARDS").assertExists()
+        rule.onNodeWithText("Page ${HOME_PREVIEW_CARDS + 1}").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h1600dp")
+    fun everyCardSectionAgesWithTheScreensClock() {
+        val edited = 1_000L
+        var now by mutableStateOf(edited * 1_000L + 2 * 60_000L)
+        val feed = HomeFeed(
+            jumpBackIn = listOf(listItem(1, serverTimestamp = edited)),
+            updatedSinceRead = listOf(listItem(2, serverTimestamp = edited)),
+            recentlyUpdated = listOf(listItem(3, serverTimestamp = edited)),
+            yourEdits = listOf(listItem(4, serverTimestamp = edited)),
+        )
+        rule.setContent {
+            HomeContent(
+                feed = feed,
+                collectives = listOf(collective(1)),
+                recentFilter = null,
+                nowMillis = now,
+                listState = rememberLazyListState(),
+                onOpenPage = {},
+                onSeeAll = {},
+                onRecentFilter = {},
+                onBrowseTag = {},
+                onOpenAlerts = {},
+            )
+        }
+        rule.onAllNodesWithText("2 minutes ago").assertCountEquals(4)
+
+        rule.runOnIdle { now = edited * 1_000L + 3 * 3_600_000L }
+
+        rule.onAllNodesWithText("3 hours ago").assertCountEquals(4)
+    }
+
+    @Test
+    fun aCardOpensItsPage() {
+        show(feed = HomeFeed(yourEdits = listOf(listItem(9, title = "Mine"))))
+
+        rule.onNodeWithText("Mine").performClick()
+        assertEquals(listOf(9L), opened)
     }
 
     @Test

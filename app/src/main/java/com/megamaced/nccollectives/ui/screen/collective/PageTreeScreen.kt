@@ -179,7 +179,6 @@ internal fun PageTreeScreen(
                     landingPage = ui.landingPage,
                     collectiveName = ui.collectiveName,
                     collectiveEmoji = ui.collectiveEmoji,
-                    recentPages = ui.recentPages,
                     membersStrip = ui.membersStrip,
                     showLandingCard = isCompactWidth,
                     onToggle = viewModel::toggleExpanded,
@@ -228,7 +227,6 @@ private fun PageTreeList(
     landingPage: com.megamaced.nccollectives.domain.model.Page?,
     collectiveName: String,
     collectiveEmoji: String?,
-    recentPages: List<PageListItem>,
     membersStrip: MembersStripState,
     showLandingCard: Boolean,
     onToggle: (Long) -> Unit,
@@ -269,15 +267,13 @@ private fun PageTreeList(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
     ) {
-        // Members first, then Recent pages, then the landing card: the web
-        // client renders its members widget above recent pages, and keeping
-        // that relative order means someone who knows the web app finds the
-        // avatars where they expect. It is also the cheapest thing to put
-        // at the top — one collapsible 48dp row against a 132dp card strip
-        // and a multi-line card — so it displaces the first tree row least,
-        // and it groups the collective's *identity* (who is in it, next to
-        // the name in the top bar) above the two widgets that are both
-        // content entry points.
+        // Members first, then the landing card: the web client renders its
+        // members widget above its content, and keeping that order means
+        // someone who knows the web app finds the avatars where they expect.
+        // It is also the cheaper thing to put at the top — one collapsible
+        // 48dp row against a multi-line card — so it displaces the first
+        // tree row least, and it groups the collective's *identity* (who is
+        // in it, next to the name in the top bar) above its content.
         //
         // Not gated on `showLandingCard`: the strip measures its own
         // container and truncates to fit, so unlike the landing card it has
@@ -291,11 +287,6 @@ private fun PageTreeList(
                     onOpenMembers = onOpenMembers,
                     onRetry = onRetryMembers,
                 )
-            }
-        }
-        if (recentPages.isNotEmpty()) {
-            item(key = "header-recent") {
-                RecentPagesStrip(pages = recentPages, onPageClick = onPageClick)
             }
         }
         if (showLandingCard && landingPage != null) {

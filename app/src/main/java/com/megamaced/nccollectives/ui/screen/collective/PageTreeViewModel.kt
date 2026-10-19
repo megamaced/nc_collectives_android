@@ -113,8 +113,6 @@ data class PageTreeUiState(
      * markdown that no other row here carries.
      */
     val landingPage: Page? = null,
-    /** Most-recently-edited pages in this collective for the recent-pages strip. */
-    val recentPages: List<PageListItem> = emptyList(),
     /** Circle membership for the landing-page members strip. */
     val membersStrip: MembersStripState = MembersStripState(),
     /**
@@ -162,7 +160,7 @@ class PageTreeViewModel
                 pagesFlow,
                 // R-43: `_uiState` is written for every unrelated field —
                 // isRefreshing on/off, each statusMessage set + clear,
-                // recentPages and parentChoices arriving — and each write
+                // parentChoices and the landing page arriving — and each write
                 // re-emits the same `expanded` set. Without this filter
                 // `buildVisibleNodes` (groupBy + associateBy + recursive
                 // walk) re-runs 6+ times per screen entry on a large
@@ -212,11 +210,6 @@ class PageTreeViewModel
                 // this is the whole reason the split is affordable.
                 pageRepository.observeLandingPage(collectiveId).collect { landing ->
                     _uiState.update { it.copy(landingPage = landing) }
-                }
-            }
-            viewModelScope.launch {
-                pageRepository.observeRecentPages(collectiveId, RECENT_LIMIT).collect { recent ->
-                    _uiState.update { it.copy(recentPages = recent) }
                 }
             }
             refresh()
@@ -472,8 +465,6 @@ class PageTreeViewModel
         }
 
         private companion object {
-            const val RECENT_LIMIT = 8
-
             /**
              * Members fetched for the strip. [MAX_STRIP_AVATARS], not
              * `DEFAULT_MEMBER_LIMIT`: the strip shows no count and no "+N"

@@ -50,8 +50,8 @@ import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
-import com.megamaced.nccollectives.ui.screen.collective.RecentPagesStrip
 import com.megamaced.nccollectives.util.pageEditedLine
+import com.megamaced.nccollectives.util.relativeTimeAgo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
@@ -241,28 +241,21 @@ internal fun HomeContent(
             }
         }
 
-        if (feed.jumpBackIn.isNotEmpty()) {
-            item(key = "jump-back-in") {
-                HomeSectionHeader(
-                    title = HomeSection.JumpBackIn.title,
-                    onSeeAll = seeAll(HomeSection.JumpBackIn, feed.jumpBackIn.size, HOME_PREVIEW_CARDS),
-                )
-                RecentPagesStrip(
-                    pages = feed.jumpBackIn.take(HOME_PREVIEW_CARDS),
-                    onPageClick = onOpenPage,
-                    title = null,
-                    caption = { page -> labels[page.collectiveId] },
-                )
-            }
-        }
-
-        pageSection(
-            section = HomeSection.UpdatedSinceRead,
-            pages = feed.updatedSinceRead,
-            limit = HOME_PREVIEW_ROWS,
+        cardSection(
+            section = HomeSection.JumpBackIn,
+            pages = feed.jumpBackIn,
             labels = labels,
             nowMillis = nowMillis,
-            onSeeAll = seeAll(HomeSection.UpdatedSinceRead, feed.updatedSinceRead.size, HOME_PREVIEW_ROWS),
+            onSeeAll = seeAll(HomeSection.JumpBackIn, feed.jumpBackIn.size, HOME_PREVIEW_CARDS),
+            onOpenPage = onOpenPage,
+        )
+
+        cardSection(
+            section = HomeSection.UpdatedSinceRead,
+            pages = feed.updatedSinceRead,
+            labels = labels,
+            nowMillis = nowMillis,
+            onSeeAll = seeAll(HomeSection.UpdatedSinceRead, feed.updatedSinceRead.size, HOME_PREVIEW_CARDS),
             onOpenPage = onOpenPage,
         )
 
@@ -270,7 +263,7 @@ internal fun HomeContent(
             item(key = "header-recent") {
                 HomeSectionHeader(
                     title = HomeSection.RecentlyUpdated.title,
-                    onSeeAll = seeAll(HomeSection.RecentlyUpdated, feed.recentlyUpdated.size, HOME_PREVIEW_RECENT),
+                    onSeeAll = seeAll(HomeSection.RecentlyUpdated, feed.recentlyUpdated.size, HOME_PREVIEW_CARDS),
                 )
                 if (showsCollectiveFilter(collectives)) {
                     CollectiveFilterChips(collectives, recentFilter, onRecentFilter)
@@ -283,17 +276,22 @@ internal fun HomeContent(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                 }
+                PageCardGrid(
+                    pages = feed.recentlyUpdated.take(HOME_PREVIEW_CARDS),
+                    onPageClick = onOpenPage,
+                    caption = { page -> labels[page.collectiveId] },
+                    supporting = { page -> cardLine(HomeSection.RecentlyUpdated, page, nowMillis) },
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
-            pageRows(HomeSection.RecentlyUpdated, feed.recentlyUpdated.take(HOME_PREVIEW_RECENT), labels, nowMillis, onOpenPage)
         }
 
-        pageSection(
+        cardSection(
             section = HomeSection.YourEdits,
             pages = feed.yourEdits,
-            limit = HOME_PREVIEW_ROWS,
             labels = labels,
             nowMillis = nowMillis,
-            onSeeAll = seeAll(HomeSection.YourEdits, feed.yourEdits.size, HOME_PREVIEW_ROWS),
+            onSeeAll = seeAll(HomeSection.YourEdits, feed.yourEdits.size, HOME_PREVIEW_CARDS),
             onOpenPage = onOpenPage,
         )
 
@@ -314,21 +312,29 @@ internal fun HomeContent(
     }
 }
 
-/** A list section's header and its first [limit] rows; nothing when [pages] is empty. */
-private fun LazyListScope.pageSection(
+/**
+ * A card section's header and its first [HOME_PREVIEW_CARDS] pages as a grid
+ * of cards; nothing when [pages] is empty. "See all" opens the section as a
+ * list.
+ */
+private fun LazyListScope.cardSection(
     section: HomeSection,
     pages: List<PageListItem>,
-    limit: Int,
     labels: Map<Long, String>,
     nowMillis: Long,
     onSeeAll: (() -> Unit)?,
     onOpenPage: (Long) -> Unit,
 ) {
     if (pages.isEmpty()) return
-    item(key = "header-${section.key}") {
+    item(key = section.key) {
         HomeSectionHeader(title = section.title, onSeeAll = onSeeAll)
+        PageCardGrid(
+            pages = pages.take(HOME_PREVIEW_CARDS),
+            onPageClick = onOpenPage,
+            caption = { page -> labels[page.collectiveId] },
+            supporting = { page -> cardLine(section, page, nowMillis) },
+        )
     }
-    pageRows(section, pages.take(limit), labels, nowMillis, onOpenPage)
 }
 
 internal fun LazyListScope.pageRows(
@@ -361,3 +367,18 @@ internal fun supportingLine(
         HomeSection.YourEdits -> pageEditedLine("", page.serverTimestamp, nowMillis)
         else -> pageEditedLine(page.lastUserDisplayName, page.serverTimestamp, nowMillis)
     }
+
+/**
+ * What a card says happened to its page: who last edited it and when, shorter
+ * than a list row's [supportingLine] to fit a card. Your own edits leave the
+ * editor out: in that section it is always you.
+ */
+internal fun cardLine(
+    section: HomeSection,
+    page: PageListItem,
+    nowMillis: Long,
+): String? {
+    val editor = page.lastUserDisplayName.takeIf { it.isNotBlank() && section != HomeSection.YourEdits }
+    val time = page.serverTimestamp.takeIf { it > 0L }?.let { relativeTimeAgo(it * 1_000L, nowMillis) }
+    return listOfNotNull(editor, time).joinToString(" · ").ifEmpty { null }
+}

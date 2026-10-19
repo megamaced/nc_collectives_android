@@ -70,99 +70,6 @@ import com.megamaced.nccollectives.ui.components.monogramOf
 import okhttp3.HttpUrl
 
 /**
- * Horizontal strip of page cards. [PageTreeScreen] renders it above the tree
- * as "Recent pages", mirroring the widget Nextcloud's web client shows on
- * the collective landing page, and Home renders it across every collective
- * under a header of its own ([title] null). Hidden when [pages] is empty.
- *
- * [caption] adds a few words after each card's timestamp. Home uses it to
- * say which collective a page is in; inside a collective that goes without
- * saying, so the tree passes nothing.
- *
- * R-54: takes [PageListItem]s. A card shows an emoji, a title and a
- * relative timestamp — nothing that needs a body — so the strip is one of
- * the list consumers that must be incapable of reading one.
- */
-@Composable
-internal fun RecentPagesStrip(
-    pages: List<PageListItem>,
-    onPageClick: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-    title: String? = "Recent pages",
-    caption: (PageListItem) -> String? = { null },
-) {
-    if (pages.isEmpty()) return
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (title != null) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
-            )
-        }
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(pages, key = { it.id }) { page ->
-                RecentPageCard(page = page, caption = caption(page), onClick = { onPageClick(page.id) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecentPageCard(
-    page: PageListItem,
-    caption: String?,
-    onClick: () -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .width(132.dp)
-            .height(132.dp)
-            .clickable(role = Role.Button, onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = page.emoji?.takeIf { it.isNotBlank() } ?: "📄",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Column {
-                Text(
-                    text = page.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.size(4.dp))
-                // One line for both: the card has no height to spare, and the
-                // timestamp leads so a long caption truncates instead of it.
-                Text(
-                    text = listOfNotNull(
-                        relativeTime(page.serverTimestamp).takeIf { it.isNotEmpty() },
-                        caption?.takeIf { it.isNotBlank() },
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/**
  * Material card showing the collective's landing page (emoji + name + first
  * few lines of the body). Rendered above the tree on phone-sized screens
  * only — tablet/foldable layouts will get a proper two-pane view in a
@@ -627,23 +534,6 @@ internal fun visibleAvatarCount(
     val usable = containerWidthDp - reservedWidthDp
     if (usable < slotWidthDp) return 0
     return minOf(memberCount, usable / slotWidthDp, maxAvatars)
-}
-
-/**
- * Render a server-timestamp (seconds since epoch) as a relative-time label
- * like "5 minutes ago". Falls back to an absolute date if the value can't
- * be turned into a sensible label.
- */
-private fun relativeTime(serverTimestampSeconds: Long): String {
-    if (serverTimestampSeconds <= 0L) return ""
-    val millis = serverTimestampSeconds * 1_000L
-    val span = DateUtils.getRelativeTimeSpanString(
-        millis,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS,
-        DateUtils.FORMAT_ABBREV_RELATIVE,
-    )
-    return span.toString()
 }
 
 // R-45: hoisted out of [plainTextPreview] so the seven patterns compile

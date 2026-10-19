@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.home
 
+import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.TagCount
 import org.junit.Assert.assertEquals
@@ -96,5 +97,24 @@ class HomeFeedRulesTest {
 
         assertFalse(supportingLine(HomeSection.YourEdits, page, now)!!.contains("Alice"))
         assertTrue(supportingLine(HomeSection.RecentlyUpdated, page, now)!!.contains("Alice"))
+    }
+
+    @Test
+    fun aCardSaysWhoEditedItAndWhen_shortly_andNotWhoAmongYourOwnEdits() {
+        val now = 10_000_000_000L
+        val page = listItem(1, serverTimestamp = now / 1000 - 7200, lastUserDisplayName = "Alice")
+
+        assertEquals("Alice · 2 hours ago", cardLine(HomeSection.RecentlyUpdated, page, now))
+        assertEquals("2 hours ago", cardLine(HomeSection.YourEdits, page, now))
+        assertEquals("Alice", cardLine(HomeSection.UpdatedSinceRead, page.copy(serverTimestamp = 0), now))
+        assertNull(cardLine(HomeSection.JumpBackIn, page.copy(serverTimestamp = 0, lastUserDisplayName = ""), now))
+    }
+
+    @Test
+    fun thereAreAsManyCardColumnsAsFit_neverFewerThanTwo() {
+        assertEquals("a narrow phone", 2, cardColumns(300.dp))
+        assertEquals("a phone", 2, cardColumns(379.dp))
+        assertEquals("an unfolded foldable", 3, cardColumns(568.dp))
+        assertEquals("a tablet", 4, cardColumns(MIN_CARD_WIDTH * 4 + 8.dp * 3))
     }
 }

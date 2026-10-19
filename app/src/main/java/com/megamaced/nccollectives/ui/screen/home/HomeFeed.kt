@@ -60,14 +60,11 @@ data class HomeFeed(
             tags.isEmpty()
 }
 
-/** How many rows a section shows on Home before "See all". */
+/** How many rows "Needs attention" shows on Home before "See all". */
 internal const val HOME_PREVIEW_ROWS = 5
 
-/** Cards in "Jump back in" before "See all". */
-internal const val HOME_PREVIEW_CARDS = 10
-
-/** Rows in "Recently updated" before "See all". */
-internal const val HOME_PREVIEW_RECENT = 8
+/** How many cards a card section shows on Home before "See all": three rows of two on a phone. */
+internal const val HOME_PREVIEW_CARDS = 6
 
 /** Tag chips shown before "Show all tags". */
 internal const val HOME_PREVIEW_TAGS = 12

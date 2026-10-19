@@ -168,8 +168,8 @@ class HomeViewModelTest {
                     .yourEdits
                     .map { it.id },
             )
-            verify { pageRepository.observeUpdatedSinceViewed("me", HOME_PREVIEW_ROWS + 1) }
-            verify { pageRepository.observeLastEditedBy("me", HOME_PREVIEW_ROWS + 1) }
+            verify { pageRepository.observeUpdatedSinceViewed("me", HOME_PREVIEW_CARDS + 1) }
+            verify { pageRepository.observeLastEditedBy("me", HOME_PREVIEW_CARDS + 1) }
         }
 
     @Test
@@ -179,7 +179,7 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             verify { pageRepository.observeRecentlyViewed(HOME_PREVIEW_CARDS + 1) }
-            verify { pageRepository.observeRecentPagesAcrossCollectives(HOME_PREVIEW_RECENT + 1) }
+            verify { pageRepository.observeRecentPagesAcrossCollectives(HOME_PREVIEW_CARDS + 1) }
         }
 
     @Test
@@ -198,7 +198,7 @@ class HomeViewModelTest {
                     .recentlyUpdated
                     .isEmpty(),
             )
-            verify { pageRepository.observeRecentPages(2, HOME_PREVIEW_RECENT + 1) }
+            verify { pageRepository.observeRecentPages(2, HOME_PREVIEW_CARDS + 1) }
             assertFalse(vm.feed.value!!.isEmpty(recentFiltered = vm.recentFilter.value != null))
 
             vm.setRecentFilter(null)

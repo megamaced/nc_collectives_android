@@ -100,7 +100,7 @@ class HomeViewModel
                 pageRepository.observeAttention(),
                 pageRepository.observeRecentlyViewed(HOME_PREVIEW_CARDS + 1),
                 currentUser.id.flatMapLatest { userId -> identitySections(userId) },
-                recentFilterSource.flatMapLatest { pageRepository.observeRecentlyUpdated(it, HOME_PREVIEW_RECENT + 1) },
+                recentFilterSource.flatMapLatest { pageRepository.observeRecentlyUpdated(it, HOME_PREVIEW_CARDS + 1) },
                 pageRepository.observeTagCounts(),
             ) { attention, viewed, (updated, edits), recent, tags ->
                 HomeFeed(
@@ -171,8 +171,8 @@ class HomeViewModel
                 flowOf(emptyList<PageListItem>() to emptyList())
             } else {
                 combine(
-                    pageRepository.observeUpdatedSinceViewed(userId, HOME_PREVIEW_ROWS + 1),
-                    pageRepository.observeLastEditedBy(userId, HOME_PREVIEW_ROWS + 1),
+                    pageRepository.observeUpdatedSinceViewed(userId, HOME_PREVIEW_CARDS + 1),
+                    pageRepository.observeLastEditedBy(userId, HOME_PREVIEW_CARDS + 1),
                 ) { updated, edits -> updated to edits }
             }
 
