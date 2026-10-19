@@ -1,7 +1,5 @@
 package com.megamaced.nccollectives.ui.screen.settings
 
-import android.net.Uri
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +52,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
@@ -64,7 +64,9 @@ import com.megamaced.nccollectives.data.prefs.SyncStatus
 import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.ui.attachment.openInBrowser
 import com.megamaced.nccollectives.util.syncStatusLines
+import kotlinx.coroutines.launch
 
 private const val SOURCE_URL = "https://github.com/megamaced/nc_collectives_android"
 private const val LICENCE_URL = "https://www.gnu.org/licenses/agpl-3.0.html"
@@ -90,6 +92,13 @@ internal fun SettingsScreen(
     var pendingRemoval by remember { mutableStateOf<AccountSummary?>(null) }
     val pendingEdits by viewModel.pendingEditCount.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val linkScope = rememberCoroutineScope()
+
+    fun openLink(url: String) {
+        if (!openInBrowser(context, url.toUri())) {
+            linkScope.launch { snackbarHostState.showSnackbar("No browser app to open $url") }
+        }
+    }
 
     // Side-effects for terminal manual-update-check states. UpdateAvailable
     // → open the release page in a Custom Tab and reset; UpToDate / Failed
@@ -98,7 +107,10 @@ internal fun SettingsScreen(
     LaunchedEffect(updateCheck) {
         when (val state = updateCheck) {
             is UpdateCheckUiState.UpdateAvailable -> {
-                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(state.htmlUrl))
+                // Issue #62: no browser is an answer to show, not a crash.
+                if (!openInBrowser(context, state.htmlUrl.toUri())) {
+                    snackbarHostState.showSnackbar("A newer version is out, but there's no browser app to open ${state.htmlUrl}")
+                }
                 viewModel.dismissUpdateCheck()
             }
 
@@ -288,12 +300,8 @@ internal fun SettingsScreen(
                 state = updateCheck,
                 onCheck = viewModel::checkForUpdate,
             )
-            LinkRow(label = "Source code") {
-                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(SOURCE_URL))
-            }
-            LinkRow(label = "Licence (AGPL-3.0)") {
-                CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(LICENCE_URL))
-            }
+            LinkRow(label = "Source code") { openLink(SOURCE_URL) }
+            LinkRow(label = "Licence (AGPL-3.0)") { openLink(LICENCE_URL) }
 
             SectionBreak()
 
