@@ -6,7 +6,7 @@ Features:
 * Home, from the local cache so it works offline: edits waiting to sync or in conflict, new alerts, and cards for the pages you opened recently, pages changed since you read them, recently updated pages and your own edits, each with See all for the full list. Plus the tags across every collective.
 * Alerts: mentions of you, and changes to pages in collectives set to notify you. Dismissing one clears it on the server too. In-app only: no system notifications.
 * Collectives and nested page trees, sorted A–Z, Z–A, newest or oldest first. Pages can also follow the custom order shared with the web app, and be dragged within their parent.
-* Markdown rendering with images, links, task lists, tables, syntax-highlighted code blocks and Nextcloud Text callouts (INFO / WARN / ERROR / SUCCESS). [[Page Name]] wikilinks and relative .md links open in the app.
+* Markdown rendering with images, links, task lists, tables, syntax-highlighted code blocks, Nextcloud Text callouts (INFO / WARN / ERROR / SUCCESS) and ==highlight== marks. [[Page Name]] wikilinks and relative .md links open in the app.
 * Each page lists its subpages, the pages that link to it, and its headings.
 * View-first, with a floating Edit button; the bars slide away as you scroll. Two editors: a native markdown editor with a formatting toolbar and a preview, which works offline (the default), and a collaborative editor backed by Nextcloud Text (beta — real-time editing with others) when the server offers it and you're online.
 * Offline reading and editing. Edits made offline are queued, and each is sent against the version it was written from: when the server reports that someone else changed the page meanwhile, your text is kept as a draft beside theirs and you choose which wins.

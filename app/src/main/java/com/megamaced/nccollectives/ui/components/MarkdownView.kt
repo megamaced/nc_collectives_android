@@ -158,6 +158,8 @@ fun MarkdownView(
     val prismComment = colorScheme.outline.toArgb()
     val prismFunction = colorScheme.primary.toArgb()
     val prismOperator = colorScheme.onSurfaceVariant.toArgb()
+    val markBackground = colorScheme.tertiaryContainer.toArgb()
+    val markForeground = colorScheme.onTertiaryContainer.toArgb()
 
     // Markwon sizes headings, code, and blockquotes as multipliers off the
     // TextView's own text size, so scaling this one value scales the whole
@@ -202,11 +204,15 @@ fun MarkdownView(
             .usePlugin(StrikethroughPlugin.create())
             // HtmlPlugin (Batch 24) renders `<br>`, `<sub>`, `<sup>`,
             // `<a>`, `<img>`, alignment and other inline HTML that
-            // Markdown leaves through to the rendered Spannable. Note:
+            // Markdown leaves through to the rendered Spannable, plus
+            // `<mark>` (highlights) through MarkTagHandler. Note:
             // `<details>`/`<summary>` aren't interactive — Markwon
             // doesn't ship a collapsible widget, so they render inline.
-            .usePlugin(HtmlPlugin.create())
             .usePlugin(
+                HtmlPlugin.create { plugin ->
+                    plugin.addHandler(MarkTagHandler(markBackground, markForeground))
+                },
+            ).usePlugin(
                 ImagesPlugin.create { plugin ->
                     // Issue #64: photos the right way up.
                     plugin.defaultMediaDecoder(OrientedMediaDecoder(resources))

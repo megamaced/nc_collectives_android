@@ -92,10 +92,9 @@ internal fun rewriteCallouts(markdown: String): String {
 
 /**
  * Rewrites `==text==` highlight syntax (the `markdown-it-mark`
- * dialect upstream Text uses) into `<mark>text</mark>`. Markwon's
- * `HtmlPlugin` (wired in Batch 24) renders `<mark>` as a yellow
- * highlight by default — not perfectly M3-tinted but visually
- * obvious that the text is highlighted.
+ * dialect upstream Text uses) into `<mark>text</mark>`, which
+ * `MarkdownView` draws as highlighted text through its
+ * `MarkTagHandler`.
  *
  * The transform respects fenced code blocks and inline code spans
  * via the same alternation-regex pattern `expandWikilinks` uses:
