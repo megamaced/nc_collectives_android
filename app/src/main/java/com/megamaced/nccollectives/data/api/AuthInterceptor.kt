@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.api
 
+import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.auth.serverHostOf
@@ -79,9 +80,10 @@ class AuthInterceptor
 
             // Only authenticated requests count toward the 401 streak — a
             // public probe (login-poll, etc) returning 401 doesn't mean our
-            // token is dead.
+            // token is dead. Each is charged to the account its request was
+            // made for (issue #58).
             if (attach) {
-                sessionManager.onAuthenticatedResponse(response.code)
+                sessionManager.onAuthenticatedResponse(response.code, request.tag(AccountBinding::class.java)?.generation)
             }
 
             return response

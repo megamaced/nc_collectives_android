@@ -250,11 +250,29 @@ class SessionManager
          * the *active* account's credential, so a 401 streak is attributable
          * to exactly one account, and that is the only one that should pay
          * for it.
+         *
+         * Issue #58: that account is the one the request was *made* for,
+         * named by its [generation], not whichever is active when the
+         * response arrives. A response to a request made before a switch,
+         * landing after it, says nothing about the account now signed in:
+         * it is counted toward its own account's streak, which no longer
+         * expires anyone, and never toward the next account's. [generation]
+         * is null only for a request no account was bound to, which is
+         * charged to the active account as before.
          */
-        fun onAuthenticatedResponse(code: Int) {
+        fun onAuthenticatedResponse(
+            code: Int,
+            generation: Long?,
+        ) {
             if (sessionChangeInProgress.get()) return
-            if (!authFailures.onResponse(code)) return
+            val madeUnder = generation ?: accountGeneration.current()
+            if (!authFailures.onResponse(code, madeUnder)) return
             val expired = tokenStore.activeAccountId()
+            // Checked after the read: a switch moves the generation on
+            // before it changes the active account, so an account read while
+            // the generation is still current is the one these responses
+            // were signed as.
+            if (!accountGeneration.isCurrent(madeUnder)) return
             if (expired == null) {
                 // Nothing to remove — the store emptied under us. Just make
                 // sure the observed state agrees with it.

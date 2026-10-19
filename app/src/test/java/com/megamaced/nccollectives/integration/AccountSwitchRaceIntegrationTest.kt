@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.di.NetworkModule
 import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import io.mockk.every
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.Request
+import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
@@ -480,6 +482,29 @@ class AccountSwitchRaceIntegrationTest {
 
             assertTrue("was $result", result is ApiResult.Unexpected && result.cause is AccountChangedException)
             assertTrue(dispatcher.requestsTo("/pages").isEmpty())
+        }
+
+    /**
+     * Issue #58: the 401 is reported with the generation its request was
+     * made under, so `SessionManager` charges it to that account and not
+     * to the one signed in by the time it comes back.
+     */
+    @Test
+    fun a401IsReportedAgainstTheAccountItsRequestWasMadeFor() =
+        runTest {
+            dispatcher
+                .on("/pages", MockResponse().setResponseCode(401), method = "GET")
+                // Answered after a whole switch.
+                .whileInFlight("/pages") {
+                    env.accountGeneration.invalidate()
+                    env.accountGeneration.settle()
+                }
+            val made = env.accountGeneration.current()
+
+            apiCall { env.api.listPages(IntegrationEnvironment.COLLECTIVE_ID) }
+
+            verify { env.sessionManager.onAuthenticatedResponse(401, made) }
+            verify(exactly = 0) { env.sessionManager.onAuthenticatedResponse(401, env.accountGeneration.current()) }
         }
 
     @Test

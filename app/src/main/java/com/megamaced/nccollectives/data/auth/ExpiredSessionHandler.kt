@@ -32,13 +32,20 @@ interface ExpiredSessionHandler {
  *
  * Not thread-confined by construction: [onResponse] is called from
  * `AuthInterceptor`, i.e. from whichever OkHttp thread happens to carry the
- * response, and several can land at once.
+ * response, and several can land at once. Each call is synchronised whole.
+ *
+ * Issue #58: a run of 401s belongs to one account generation. A response is
+ * counted with the generation its request was made under, so a late answer
+ * to the outgoing account's request can only add to that account's run,
+ * never to the next one's — however the switch interleaves with the count.
  */
 internal class AuthFailureTracker(
     private val threshold: Int = CONSECUTIVE_401_THRESHOLD,
 ) {
-    private val consecutive401s = java.util.concurrent.atomic
-        .AtomicInteger(0)
+    /** The generation the run being counted belongs to; older ones are past. */
+    private var runGeneration = Long.MIN_VALUE
+
+    private var consecutive401s = 0
 
     /**
      * Armed until an expiry is dispatched, then re-armed by the next
@@ -47,36 +54,50 @@ internal class AuthFailureTracker(
      * Issue #19: without it, every 401 after the threshold dispatches
      * again. That was survivable when expiry was a self-contained state
      * flip; now that it removes an account and wipes the device it must
-     * happen once per streak. The streak is counted across several
-     * concurrent requests, so "once" has to be a compare-and-set rather
-     * than an equality test on the count.
+     * happen once per streak.
      */
-    private val armed = java.util.concurrent.atomic
-        .AtomicBoolean(true)
+    private var armed = true
 
     /**
+     * Record a response to a request made under [generation].
+     *
      * @return true when this response means the credential is dead and the
      * caller should expire the session.
      */
-    fun onResponse(code: Int): Boolean {
+    @Synchronized
+    fun onResponse(
+        code: Int,
+        generation: Long,
+    ): Boolean {
+        // An answer for an account already switched away from says nothing
+        // about the one now signed in.
+        if (generation < runGeneration) return false
+        if (generation > runGeneration) {
+            runGeneration = generation
+            consecutive401s = 0
+            armed = true
+        }
         if (code != 401) {
             // B-51: reset on *any* non-401, not just 2xx. `code in 200..299`
             // meant a transient `401 -> 500 -> 401` sequence (a flaky reverse
             // proxy, say) still signed the user out — the 5xx was no evidence
             // of a working auth exchange, but no evidence of a dead token
             // either. Only consecutive 401s stack.
-            consecutive401s.set(0)
-            armed.set(true)
+            consecutive401s = 0
+            armed = true
             return false
         }
-        val n = consecutive401s.incrementAndGet()
-        return n >= threshold && armed.compareAndSet(true, false)
+        consecutive401s++
+        if (consecutive401s < threshold || !armed) return false
+        armed = false
+        return true
     }
 
     /** Forget the streak — a new credential is live. */
+    @Synchronized
     fun reset() {
-        consecutive401s.set(0)
-        armed.set(true)
+        consecutive401s = 0
+        armed = true
     }
 
     companion object {
