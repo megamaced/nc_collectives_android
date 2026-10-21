@@ -8,6 +8,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
+import com.megamaced.nccollectives.util.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -93,10 +94,10 @@ class FavoritesViewModel
         /** Each favorite the user just removed from this screen, so it can be offered back. */
         val removed: Flow<PageListItem> = _removed.receiveAsFlow()
 
-        private val _messages = Channel<String>(Channel.BUFFERED)
+        private val _messages = Channel<UiText>(Channel.BUFFERED)
 
         /** One-shot messages: a change the server refused. */
-        val messages: Flow<String> = _messages.receiveAsFlow()
+        val messages: Flow<UiText> = _messages.receiveAsFlow()
 
         init {
             // Make sure both caches have at least had one chance to refresh so

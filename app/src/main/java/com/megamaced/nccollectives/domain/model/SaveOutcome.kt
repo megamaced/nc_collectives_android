@@ -1,5 +1,8 @@
 package com.megamaced.nccollectives.domain.model
 
+import com.megamaced.nccollectives.data.api.Failure
+import com.megamaced.nccollectives.util.UiText
+
 /**
  * Result of a page-body save attempt. Distinguishes the offline-queued
  * happy-path ([Queued]) from a real success-on-the-server ([Saved]) and
@@ -19,7 +22,10 @@ sealed interface SaveOutcome {
      */
     data object Conflict : SaveOutcome
 
+    /** Not saved, nor queued, for [failure]'s reason. */
     data class Error(
-        val message: String,
-    ) : SaveOutcome
+        val failure: Failure,
+    ) : SaveOutcome {
+        val message: UiText get() = failure.toUiText()
+    }
 }

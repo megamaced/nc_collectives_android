@@ -1,9 +1,12 @@
 package com.megamaced.nccollectives.util
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.megamaced.nccollectives.data.api.Failure
 import com.megamaced.nccollectives.data.prefs.SyncStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
 
 /**
@@ -11,47 +14,48 @@ import java.util.concurrent.TimeUnit
  * of the status line — they're what lets someone tell "nothing has changed"
  * apart from "syncing has been broken for two days".
  */
+@RunWith(AndroidJUnit4::class)
 class SyncStatusLinesTest {
     private val now = TimeUnit.DAYS.toMillis(20_000)
 
     @Test
     fun neverSynced_saysSo() {
         val lines = syncStatusLines(SyncStatus(), now)
-        assertEquals("Not synced yet", lines.summary)
+        assertEquals("Not synced yet", lines.summary.english())
         assertNull(lines.error)
     }
 
     @Test
     fun secondsAgo_readsAsJustNow() {
         val lines = syncStatusLines(SyncStatus(lastSuccessAt = now - 30_000L), now)
-        assertEquals("Last synced just now", lines.summary)
+        assertEquals("Last synced: just now", lines.summary.english())
     }
 
     @Test
     fun singularAndPluralUnits() {
         assertEquals(
-            "Last synced 1 minute ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.MINUTES.toMillis(1)), now).summary,
+            "Last synced: 1 minute ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.MINUTES.toMillis(1)), now).summary.english(),
         )
         assertEquals(
-            "Last synced 5 minutes ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.MINUTES.toMillis(5)), now).summary,
+            "Last synced: 5 minutes ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.MINUTES.toMillis(5)), now).summary.english(),
         )
         assertEquals(
-            "Last synced 1 hour ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.HOURS.toMillis(1)), now).summary,
+            "Last synced: 1 hour ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.HOURS.toMillis(1)), now).summary.english(),
         )
         assertEquals(
-            "Last synced 6 hours ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.HOURS.toMillis(6)), now).summary,
+            "Last synced: 6 hours ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.HOURS.toMillis(6)), now).summary.english(),
         )
         assertEquals(
-            "Last synced 1 day ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.DAYS.toMillis(1)), now).summary,
+            "Last synced: 1 day ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.DAYS.toMillis(1)), now).summary.english(),
         )
         assertEquals(
-            "Last synced 3 days ago",
-            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.DAYS.toMillis(3)), now).summary,
+            "Last synced: 3 days ago",
+            syncStatusLines(SyncStatus(lastSuccessAt = now - TimeUnit.DAYS.toMillis(3)), now).summary.english(),
         )
     }
 
@@ -63,14 +67,14 @@ class SyncStatusLinesTest {
             SyncStatus(
                 lastSuccessAt = now - TimeUnit.DAYS.toMillis(2),
                 lastFailureAt = now - TimeUnit.MINUTES.toMillis(10),
-                lastFailureMessage = "Couldn't reach the server. Check your connection.",
+                lastFailure = Failure.Network,
             ),
             now,
         )
-        assertEquals("Last synced 2 days ago", lines.summary)
+        assertEquals("Last synced: 2 days ago", lines.summary.english())
         assertEquals(
-            "Last attempt 10 minutes ago failed: Couldn't reach the server. Check your connection.",
-            lines.error,
+            "Last attempt failed (10 minutes ago): Couldn't reach the server. Check your connection.",
+            lines.error?.english(),
         )
     }
 
@@ -79,12 +83,12 @@ class SyncStatusLinesTest {
         val lines = syncStatusLines(
             SyncStatus(
                 lastFailureAt = now - TimeUnit.MINUTES.toMillis(2),
-                lastFailureMessage = "Server returned 500",
+                lastFailure = Failure.Http(500),
             ),
             now,
         )
-        assertEquals("Not synced yet", lines.summary)
-        assertEquals("Last attempt 2 minutes ago failed: Server returned 500", lines.error)
+        assertEquals("Not synced yet", lines.summary.english())
+        assertEquals("Last attempt failed (2 minutes ago): Server returned 500", lines.error?.english())
     }
 
     @Test
@@ -92,16 +96,25 @@ class SyncStatusLinesTest {
         // Defensive: a message with no `lastFailureAt` would otherwise render
         // as "Last attempt <the epoch> failed".
         val lines = syncStatusLines(
-            SyncStatus(lastSuccessAt = now - 1_000L, lastFailureMessage = "stale"),
+            SyncStatus(lastSuccessAt = now - 1_000L, lastFailure = Failure.Network),
             now,
         )
         assertNull(lines.error)
     }
 
     @Test
+    fun aFailureStoredInEnglishByAnEarlierBuild_isShownAsItWas() {
+        val lines = syncStatusLines(
+            SyncStatus(lastFailureAt = now - TimeUnit.MINUTES.toMillis(2), legacyFailureMessage = "Server returned 500"),
+            now,
+        )
+        assertEquals("Last attempt failed (2 minutes ago): Server returned 500", lines.error?.english())
+    }
+
+    @Test
     fun futureTimestamp_readsAsJustNow() {
-        // Device clock adjustments must not produce "Last synced -3 minutes ago".
+        // Device clock adjustments must not produce "Last synced: -3 minutes ago".
         val lines = syncStatusLines(SyncStatus(lastSuccessAt = now + TimeUnit.HOURS.toMillis(3)), now)
-        assertEquals("Last synced just now", lines.summary)
+        assertEquals("Last synced: just now", lines.summary.english())
     }
 }

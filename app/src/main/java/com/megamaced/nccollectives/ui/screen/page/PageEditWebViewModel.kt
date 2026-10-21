@@ -3,14 +3,18 @@ package com.megamaced.nccollectives.ui.screen.page
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.ServerVersionTracker
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.auth.serverHostOf
 import com.megamaced.nccollectives.domain.repository.DirectEditingRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +51,7 @@ sealed interface PageEditWebUiState {
     ) : PageEditWebUiState
 
     data class Failed(
-        val message: String,
+        val message: UiText,
     ) : PageEditWebUiState
 
     /**
@@ -118,7 +122,7 @@ class PageEditWebViewModel
             viewModelScope.launch {
                 val page = pageRepository.getPage(pageId)
                 if (page == null) {
-                    _uiState.value = PageEditWebUiState.Failed("Page is no longer cached locally")
+                    _uiState.value = PageEditWebUiState.Failed(AppFailure.NotOnDevice.toUiText())
                     return@launch
                 }
                 // Probed here rather than on app launch: we're about to make
@@ -142,7 +146,7 @@ class PageEditWebViewModel
 
                     else -> {
                         _uiState.value = PageEditWebUiState.Failed(
-                            result.userMessage() ?: "Couldn't open the collaborative editor",
+                            result.userMessage() ?: uiText(R.string.web_editor_open_failed),
                         )
                     }
                 }
@@ -154,7 +158,7 @@ class PageEditWebViewModel
          * (Batch 30c — e.g. WebView SSL error). Transitions to
          * [PageEditWebUiState.Failed] so the screen's snackbar fires.
          */
-        fun surfaceLoadFailure(message: String) {
+        fun surfaceLoadFailure(message: UiText) {
             _uiState.value = PageEditWebUiState.Failed(message)
         }
 

@@ -1,6 +1,8 @@
 package com.megamaced.nccollectives.ui.screen.alerts
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.Failure
 import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.domain.model.Alert
@@ -14,6 +16,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.AlertBadgeViewModel
 import com.megamaced.nccollectives.ui.navigation.badgeText
+import com.megamaced.nccollectives.util.english
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -36,6 +39,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 
 internal fun alert(
     id: Long,
@@ -77,6 +81,7 @@ private fun collective(
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(AndroidJUnit4::class)
 class AlertsViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val alerts = MutableStateFlow(listOf(alert(1), alert(2, seen = true), alert(3)))
@@ -164,7 +169,7 @@ class AlertsViewModelTest {
             answer.complete(ApiResult.HttpError(500, "Server error"))
             advanceUntilIdle()
             assertEquals(listOf(1L, 2L, 3L), vm.alerts.value!!.map { it.id })
-            assertTrue(vm.messages.first().isNotBlank())
+            assertEquals(Failure.Http(500).toUiText(), vm.messages.first())
         }
 
     @Test
@@ -176,7 +181,7 @@ class AlertsViewModelTest {
             for (result in listOf(DismissAllResult(3, 0), DismissAllResult(1, 0), DismissAllResult(2, 1), DismissAllResult(0, 2))) {
                 coEvery { alertRepository.dismissAll() } returns result
                 vm.dismissAll()
-                said += vm.messages.first()
+                said += vm.messages.first().english()
             }
 
             assertEquals(
@@ -340,7 +345,12 @@ class AlertsViewModelTest {
             vm.open(alert(1, collectiveId = 7), visit = 1)
             advanceUntilIdle()
 
-            assertTrue(vm.messages.first().contains("online"))
+            assertTrue(
+                vm.messages
+                    .first()
+                    .english()
+                    .contains("online"),
+            )
             assertNull(vm.opening.value)
         }
 

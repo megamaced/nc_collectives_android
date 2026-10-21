@@ -2,8 +2,10 @@ package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
 import com.megamaced.nccollectives.data.api.DirectEditingService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.appFailure
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.auth.TokenStore
 import com.megamaced.nccollectives.data.auth.isSameServerHttpsUrl
@@ -72,9 +74,7 @@ class DirectEditingRepositoryImpl
                     ),
                 )
             val expectedHost = tokenStore.getCredentials()?.host
-                ?: return ApiResult.Unexpected(
-                    IllegalStateException("No stored Nextcloud host; refusing to open an editor session"),
-                )
+                ?: return appFailure(AppFailure.NoAccount)
             // `editorId = "text"` is the upstream id Text registers itself
             // under. Passing it explicitly avoids relying on the server's
             // default-editor-for-mimetype resolution, which depends on

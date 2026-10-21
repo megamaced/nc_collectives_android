@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.util
 
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.GitHubReleaseService
 import timber.log.Timber
 import javax.inject.Inject
@@ -40,16 +41,16 @@ class UpdateChecker
                 runCatching { service.latestRelease() }
                     .onFailure { Timber.tag(TAG).w(it, "Manual update check failed") }
                     .getOrNull()
-                    ?: return ManualCheckResult.Failed("Couldn't reach GitHub. Check your connection and try again.")
+                    ?: return ManualCheckResult.Failed(uiText(R.string.update_check_offline))
 
             if (release.draft || release.preRelease) {
                 return ManualCheckResult.UpToDate
             }
 
             val latest = parseSemVer(release.tagName)
-                ?: return ManualCheckResult.Failed("Release tag \"${release.tagName}\" doesn't look like a version.")
+                ?: return ManualCheckResult.Failed(uiText(R.string.update_check_bad_release_tag, release.tagName))
             val current = parseSemVer(BuildConfig.VERSION_NAME)
-                ?: return ManualCheckResult.Failed("This build's version (${BuildConfig.VERSION_NAME}) doesn't look like a version.")
+                ?: return ManualCheckResult.Failed(uiText(R.string.update_check_bad_build_version, BuildConfig.VERSION_NAME))
 
             return if (latest > current) {
                 ManualCheckResult.UpdateAvailable(tag = release.tagName, htmlUrl = release.htmlUrl)
@@ -77,7 +78,7 @@ sealed interface ManualCheckResult {
     ) : ManualCheckResult
 
     data class Failed(
-        val message: String,
+        val message: UiText,
     ) : ManualCheckResult
 }
 

@@ -39,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.util.resolve
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,9 +66,9 @@ internal fun TagBrowseScreen(
                             text = ui.tagName,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        if (ui.collectiveName.isNotEmpty()) {
+                        ui.collectiveName?.let { name ->
                             Text(
-                                text = ui.collectiveName,
+                                text = name.resolve(),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

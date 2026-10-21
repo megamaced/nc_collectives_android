@@ -14,8 +14,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.resolve
 
 @Composable
 fun LoadingState(modifier: Modifier = Modifier) {
@@ -56,7 +60,7 @@ fun EmptyState(
 
 @Composable
 fun ErrorState(
-    message: String,
+    message: UiText,
     onRetry: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -70,12 +74,12 @@ fun ErrorState(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Something went wrong",
+            text = stringResource(R.string.state_error_title),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.error,
         )
         Text(
-            text = message,
+            text = message.resolve(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -83,7 +87,7 @@ fun ErrorState(
         )
         if (onRetry != null) {
             Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
-                Text("Retry")
+                Text(stringResource(R.string.action_retry))
             }
         }
     }
@@ -103,7 +107,7 @@ fun ErrorState(
 @Composable
 fun ListStateSwitch(
     isLoading: Boolean,
-    error: String?,
+    error: UiText?,
     isEmpty: Boolean,
     onRetry: (() -> Unit)?,
     empty: @Composable () -> Unit,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.util.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,8 +19,8 @@ import kotlinx.coroutines.launch
 data class RemoteListUiState<T>(
     val isLoading: Boolean = false,
     val items: List<T> = emptyList(),
-    val errorMessage: String? = null,
-    val statusMessage: String? = null,
+    val errorMessage: UiText? = null,
+    val statusMessage: UiText? = null,
 )
 
 /**
@@ -55,9 +56,9 @@ abstract class RemoteListViewModel<T> : ViewModel() {
 
     protected abstract suspend fun purgeItem(id: Long): ApiResult<Unit>
 
-    protected abstract val restoredMessage: String
+    protected abstract val restoredMessage: UiText
 
-    protected abstract val purgedMessage: String
+    protected abstract val purgedMessage: UiText
 
     fun refresh() {
         if (_uiState.value.isLoading) return
@@ -93,7 +94,7 @@ abstract class RemoteListViewModel<T> : ViewModel() {
      */
     private fun commit(
         id: Long,
-        successMessage: String,
+        successMessage: UiText,
         action: suspend (Long) -> ApiResult<Unit>,
     ) {
         viewModelScope.launch {

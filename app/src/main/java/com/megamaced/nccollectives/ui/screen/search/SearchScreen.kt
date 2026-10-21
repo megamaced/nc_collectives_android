@@ -60,6 +60,7 @@ import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.home.HOME_PREVIEW_TAGS
 import com.megamaced.nccollectives.ui.screen.home.TagChips
+import com.megamaced.nccollectives.util.resolve
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -176,7 +177,7 @@ internal fun SearchScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = ui.errorMessage!!,
+                            text = ui.errorMessage!!.resolve(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(24.dp),

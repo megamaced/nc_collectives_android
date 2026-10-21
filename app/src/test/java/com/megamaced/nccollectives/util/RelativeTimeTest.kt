@@ -1,7 +1,9 @@
 package com.megamaced.nccollectives.util
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
 
 /**
@@ -9,24 +11,25 @@ import java.util.concurrent.TimeUnit
  * third reads them out of Settings, so a change here is a change to what
  * the app says — which is exactly what this should make loud.
  */
+@RunWith(AndroidJUnit4::class)
 class RelativeTimeTest {
     private val now = TimeUnit.DAYS.toMillis(20_000)
 
     private fun ago(
         amount: Long,
         unit: TimeUnit,
-    ): String = relativeTimeAgo(now - unit.toMillis(amount), now)
+    ): String = relativeTimeAgo(now - unit.toMillis(amount), now).english()
 
     @Test
     fun underAMinute_isJustNow() {
-        assertEquals("just now", relativeTimeAgo(now, now))
+        assertEquals("just now", relativeTimeAgo(now, now).english())
         assertEquals("just now", ago(59, TimeUnit.SECONDS))
     }
 
     @Test
     fun futureTimestamp_isJustNow() {
         // A device clock correction must not produce "-3 minutes ago".
-        assertEquals("just now", relativeTimeAgo(now + TimeUnit.HOURS.toMillis(3), now))
+        assertEquals("just now", relativeTimeAgo(now + TimeUnit.HOURS.toMillis(3), now).english())
     }
 
     @Test

@@ -55,11 +55,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -71,6 +73,7 @@ import com.megamaced.nccollectives.ui.components.LoadingState
 import com.megamaced.nccollectives.ui.components.MarkdownView
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
+import com.megamaced.nccollectives.util.resolve
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +137,7 @@ internal fun PageEditScreen(
         viewModel.onBodyChanged(next.text)
     }
 
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(ui.saveSucceeded) {
         if (!ui.saveSucceeded) return@LaunchedEffect
         // B-79: the conflict outcome still counts as saved (the edit is kept
@@ -141,7 +145,7 @@ internal fun PageEditScreen(
         // screen's snackbar host dies with the screen — so hold the close
         // until the notice has actually been on screen.
         ui.saveNotice?.let { notice ->
-            snackbarHostState.showSnackbar(notice, duration = SnackbarDuration.Long)
+            snackbarHostState.showSnackbar(notice.resolve(resources), duration = SnackbarDuration.Long)
         }
         onClose()
     }

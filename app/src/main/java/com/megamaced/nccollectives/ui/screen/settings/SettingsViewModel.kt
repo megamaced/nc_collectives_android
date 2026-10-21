@@ -19,8 +19,10 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.sync.FullSync
 import com.megamaced.nccollectives.sync.SyncOutcome
+import com.megamaced.nccollectives.sync.failureText
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.ManualCheckResult
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +75,7 @@ sealed interface UpdateCheckUiState {
     ) : UpdateCheckUiState
 
     data class Failed(
-        val message: String,
+        val message: UiText,
     ) : UpdateCheckUiState
 }
 
@@ -91,7 +93,7 @@ sealed interface ManualSyncUiState {
     data object Done : ManualSyncUiState
 
     data class Failed(
-        val message: String,
+        val message: UiText,
     ) : ManualSyncUiState
 }
 
@@ -242,12 +244,7 @@ class SettingsViewModel
             if (_manualSync.value is ManualSyncUiState.Syncing) return
             _manualSync.value = ManualSyncUiState.Syncing
             viewModelScope.launch {
-                _manualSync.value = when (val outcome = fullSync.run()) {
-                    SyncOutcome.Success -> ManualSyncUiState.Done
-                    SyncOutcome.Unauthorised -> ManualSyncUiState.Failed("Session expired — please log in again.")
-                    is SyncOutcome.Retryable -> ManualSyncUiState.Failed(outcome.message)
-                    is SyncOutcome.Failed -> ManualSyncUiState.Failed(outcome.message)
-                }
+                _manualSync.value = fullSync.run().failureText()?.let(ManualSyncUiState::Failed) ?: ManualSyncUiState.Done
             }
         }
 

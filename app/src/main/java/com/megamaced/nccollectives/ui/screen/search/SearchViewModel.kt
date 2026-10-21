@@ -12,6 +12,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.domain.repository.SearchRepository
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -33,7 +34,7 @@ data class SearchUiState(
     val query: String = "",
     val results: List<SearchHit> = emptyList(),
     val isSearching: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     /** Empty set means "all collectives". */
     val selectedCollectiveIds: Set<Long> = emptySet(),
 )

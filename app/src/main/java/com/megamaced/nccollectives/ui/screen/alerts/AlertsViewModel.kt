@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.ui.screen.alerts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountBinding
@@ -15,6 +16,8 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -120,8 +123,8 @@ class AlertsViewModel
         private val _isRefreshing = MutableStateFlow(false)
         val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-        private val _messages = Channel<String>(Channel.BUFFERED)
-        val messages: Flow<String> = _messages.receiveAsFlow()
+        private val _messages = Channel<UiText>(Channel.BUFFERED)
+        val messages: Flow<UiText> = _messages.receiveAsFlow()
 
         private var lastRefreshAt = Long.MIN_VALUE
         private var visits = 0L
@@ -189,7 +192,7 @@ class AlertsViewModel
             ) : Resolution
 
             data class Unavailable(
-                val message: String,
+                val message: UiText,
             ) : Resolution
         }
 
@@ -198,36 +201,36 @@ class AlertsViewModel
             visit: Long,
         ): Resolution {
             if (alert.kind == AlertKind.PageDeleted) {
-                val collectiveId = alert.collectiveId ?: return Resolution.Unavailable("That page was deleted")
+                val collectiveId = alert.collectiveId ?: return Resolution.Unavailable(uiText(R.string.alert_page_deleted))
                 if (!collectiveCached(collectiveId)) {
                     val refreshed = collectiveRepository.refresh()
-                    if (!collectiveCached(collectiveId)) return unavailable(refreshed, "That collective isn't available any more")
+                    if (!collectiveCached(collectiveId)) return unavailable(refreshed, uiText(R.string.alert_collective_unavailable))
                 }
                 return Resolution.Open(AlertTarget.Collective(collectiveId, visit))
             }
             if (pageCached(alert.pageId)) return Resolution.Open(AlertTarget.Page(alert.pageId, visit))
-            val collectiveId = alert.collectiveId ?: return Resolution.Unavailable("That page isn't available any more")
+            val collectiveId = alert.collectiveId ?: return Resolution.Unavailable(uiText(R.string.alert_page_unavailable))
             if (!collectiveCached(collectiveId)) {
                 val refreshed = collectiveRepository.refresh()
-                if (!collectiveCached(collectiveId)) return unavailable(refreshed, "That collective isn't available any more")
+                if (!collectiveCached(collectiveId)) return unavailable(refreshed, uiText(R.string.alert_collective_unavailable))
             }
             val refreshed = pageRepository.refresh(collectiveId)
             return if (pageCached(alert.pageId)) {
                 Resolution.Open(AlertTarget.Page(alert.pageId, visit))
             } else {
-                unavailable(refreshed, "That page isn't available any more")
+                unavailable(refreshed, uiText(R.string.alert_page_unavailable))
             }
         }
 
         /** A failed fetch says why; a successful one that didn't find it means it's gone. */
         private fun unavailable(
             fetch: ApiResult<Unit>,
-            gone: String,
+            gone: UiText,
         ): Resolution.Unavailable =
             Resolution.Unavailable(
                 when (fetch) {
                     is ApiResult.Success -> gone
-                    is ApiResult.NetworkError -> "Couldn't reach the server to open that — try again when you're online"
+                    is ApiResult.NetworkError -> uiText(R.string.alert_open_offline)
                     else -> fetch.userMessage() ?: gone
                 },
             )
@@ -244,7 +247,7 @@ class AlertsViewModel
                 // Gone from the cache on success; on failure it comes back.
                 dismissing.update { it - alertId }
                 if (result !is ApiResult.Success) {
-                    _messages.trySend(result.userMessage() ?: "Couldn't dismiss that alert")
+                    _messages.trySend(result.userMessage() ?: uiText(R.string.alert_dismiss_failed))
                 }
             }
         }
@@ -254,9 +257,15 @@ class AlertsViewModel
                 val result = alertRepository.dismissAll()
                 _messages.trySend(
                     when {
-                        result.failed == 0 -> "Dismissed ${plural(result.dismissed)}"
-                        result.dismissed == 0 -> "Couldn't dismiss the alerts"
-                        else -> "Dismissed ${plural(result.dismissed)}; ${result.failed} couldn't be dismissed"
+                        result.failed == 0 -> UiText.Plural(R.plurals.alerts_dismissed, result.dismissed)
+
+                        result.dismissed == 0 -> uiText(R.string.alerts_dismiss_all_failed)
+
+                        else -> uiText(
+                            R.string.alerts_dismissed_partly,
+                            UiText.Plural(R.plurals.alerts_dismissed, result.dismissed),
+                            UiText.Plural(R.plurals.alerts_not_dismissed, result.failed),
+                        )
                     },
                 )
             }
@@ -270,8 +279,6 @@ class AlertsViewModel
                 collectiveRepository.setNotifyLevel(collectiveId, level).onFailureMessage { _messages.trySend(it) }
             }
         }
-
-        private fun plural(count: Int): String = if (count == 1) "1 alert" else "$count alerts"
 
         private companion object {
             const val RESUME_REFRESH_INTERVAL_MS = 15_000L

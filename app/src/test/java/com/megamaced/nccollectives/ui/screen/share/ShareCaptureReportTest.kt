@@ -1,11 +1,16 @@
 package com.megamaced.nccollectives.ui.screen.share
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.Failure
 import com.megamaced.nccollectives.domain.model.SaveOutcome
+import com.megamaced.nccollectives.util.english
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /**
  * Issues #25 and #31 — what a share capture is allowed to claim.
@@ -16,6 +21,7 @@ import org.junit.Test
  * #25's check — the shared text failing its own write, and shared images
  * never being staged at all.
  */
+@RunWith(AndroidJUnit4::class)
 class CaptureReportTest {
     private fun created(
         imageRefs: String = "![a](a.png)",
@@ -34,7 +40,7 @@ class CaptureReportTest {
     @Test
     fun `everything landing says so plainly`() {
         val report = captureReport(created(), SaveOutcome.Saved)
-        assertEquals("""Saved as "Notes"""", report.message)
+        assertEquals("""Saved as "Notes"""", report.message.english())
         assertTrue(report.succeeded)
         assertFalse(report.resumable)
     }
@@ -45,18 +51,18 @@ class CaptureReportTest {
         // as being on the server either.
         val report = captureReport(created(), SaveOutcome.Queued)
         assertTrue(report.succeeded)
-        assertTrue(report.message.contains("sync"))
-        assertNotEquals(captureReport(created(), SaveOutcome.Saved).message, report.message)
+        assertTrue(report.message.english().contains("sync"))
+        assertNotEquals(captureReport(created(), SaveOutcome.Saved).message.english(), report.message.english())
     }
 
     @Test
     fun `a failed reference save is the one case worth retrying`() {
         // The page exists and trying again would finish it, so the payload is
         // kept and PartialCreate resumes rather than creating a second page.
-        val report = captureReport(created(), SaveOutcome.Error("no webdav url"))
+        val report = captureReport(created(), SaveOutcome.Error(Failure.Unexpected("no webdav url")))
         assertFalse(report.succeeded)
         assertTrue(report.resumable)
-        assertTrue(report.message.contains("no webdav url"))
+        assertTrue(report.message.english().contains("no webdav url"))
     }
 
     @Test
@@ -64,22 +70,22 @@ class CaptureReportTest {
         // Issue #31: createPage's body outcome used to be logged and dropped.
         val report = captureReport(created(bodyOutcome = SaveOutcome.Queued), SaveOutcome.Saved)
         assertTrue(report.succeeded)
-        assertTrue(report.message.contains("text"))
+        assertTrue(report.message.english().contains("text"))
     }
 
     @Test
     fun `a failed text write is named, and is not resumable`() {
         // A 403 or a 5xx on the initial body. The page is there and empty;
         // retrying the append cannot fix the text, so don't offer it.
-        val report = captureReport(created(bodyOutcome = SaveOutcome.Error("Server error 500")), SaveOutcome.Saved)
-        assertTrue(report.message.contains("Server error 500"))
+        val report = captureReport(created(bodyOutcome = SaveOutcome.Error(Failure.Http(500))), SaveOutcome.Saved)
+        assertTrue(report.message.english().contains("Server returned 500"))
         assertFalse(report.resumable)
     }
 
     @Test
     fun `dropped images are reported even when everything else worked`() {
         val report = captureReport(created(imagesDropped = 2), SaveOutcome.Saved)
-        assertTrue(report.message.contains("2 images couldn't be read"))
+        assertTrue(report.message.english().contains("2 images couldn't be read"))
         // Still a success: the text and the readable images are saved, and a
         // URI that couldn't be staged will not stage on a second attempt.
         assertTrue(report.succeeded)
@@ -88,7 +94,7 @@ class CaptureReportTest {
 
     @Test
     fun `one dropped image is singular`() {
-        assertTrue(captureReport(created(imagesDropped = 1), SaveOutcome.Saved).message.contains("1 image couldn't"))
+        assertTrue(captureReport(created(imagesDropped = 1), SaveOutcome.Saved).message.english().contains("1 image couldn't"))
     }
 
     @Test
@@ -101,7 +107,7 @@ class CaptureReportTest {
         )
         assertFalse(report.succeeded)
         assertFalse(report.resumable)
-        assertTrue(report.message.contains("3 images couldn't be read"))
+        assertTrue(report.message.english().contains("3 images couldn't be read"))
     }
 
     @Test
@@ -110,37 +116,38 @@ class CaptureReportTest {
             created(bodyOutcome = SaveOutcome.Queued, imagesDropped = 1),
             SaveOutcome.Queued,
         )
-        assertTrue(report.message.contains("text"))
-        assertTrue(report.message.contains("image links"))
-        assertTrue(report.message.contains("1 image couldn't be read"))
+        assertTrue(report.message.english().contains("text"))
+        assertTrue(report.message.english().contains("image links"))
+        assertTrue(report.message.english().contains("1 image couldn't be read"))
     }
 
     @Test
     fun `every arm names the page`() {
-        val outcomes = listOf(SaveOutcome.Saved, SaveOutcome.Queued, SaveOutcome.Conflict, SaveOutcome.Error("x"))
-        outcomes.forEach { assertTrue(captureReport(created(), it).message.contains("Notes")) }
+        val outcomes = listOf(SaveOutcome.Saved, SaveOutcome.Queued, SaveOutcome.Conflict, SaveOutcome.Error(Failure.Unexpected("x")))
+        outcomes.forEach { assertTrue(captureReport(created(), it).message.english().contains("Notes")) }
     }
 }
 
 /** The append half. Issue #31: a dropped image was invisible here too. */
+@RunWith(AndroidJUnit4::class)
 class AppendReportTest {
     @Test
     fun `a clean append says so`() {
         val report = appendReport(SaveOutcome.Saved, imagesDropped = 0)
-        assertEquals("Appended", report.message)
+        assertEquals("Appended", report.message.english())
         assertTrue(report.succeeded)
     }
 
     @Test
     fun `a queued append says it will sync`() {
-        assertTrue(appendReport(SaveOutcome.Queued, imagesDropped = 0).message.contains("sync"))
+        assertTrue(appendReport(SaveOutcome.Queued, imagesDropped = 0).message.english().contains("sync"))
     }
 
     @Test
     fun `dropped images are appended to the message`() {
         val report = appendReport(SaveOutcome.Saved, imagesDropped = 2)
-        assertTrue(report.message.startsWith("Appended"))
-        assertTrue(report.message.contains("2 images couldn't be read"))
+        assertTrue(report.message.english().startsWith("Appended"))
+        assertTrue(report.message.english().contains("2 images couldn't be read"))
         assertTrue(report.succeeded)
     }
 
@@ -148,8 +155,8 @@ class AppendReportTest {
     fun `a failed append reports the failure and nothing else`() {
         // Adding "and also 2 images failed" to a message the user is already
         // being told is an error only buries the actionable part.
-        val report = appendReport(SaveOutcome.Error("Page not cached"), imagesDropped = 2)
-        assertEquals("Page not cached", report.message)
+        val report = appendReport(SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice)), imagesDropped = 2)
+        assertEquals(Failure.App(AppFailure.NotOnDevice).toUiText().english(), report.message.english())
         assertFalse(report.succeeded)
     }
 
@@ -157,19 +164,20 @@ class AppendReportTest {
     fun `an append is never resumable`() {
         // Unlike a create, nothing has been half-built that a retry has to
         // avoid duplicating.
-        assertFalse(appendReport(SaveOutcome.Error("x"), imagesDropped = 0).resumable)
+        assertFalse(appendReport(SaveOutcome.Error(Failure.Unexpected("x")), imagesDropped = 0).resumable)
     }
 }
 
 /** Nothing the share carried could be saved (issue #31). */
+@RunWith(AndroidJUnit4::class)
 class NothingToSaveMessageTest {
     @Test
     fun `dropped images are named as the reason`() {
-        assertTrue(nothingToSaveMessage(imagesDropped = 2).contains("2 images couldn't be read"))
+        assertTrue(nothingToSaveMessage(imagesDropped = 2).english().contains("2 images couldn't be read"))
     }
 
     @Test
     fun `an empty share says that instead`() {
-        assertTrue(nothingToSaveMessage(imagesDropped = 0).contains("empty"))
+        assertTrue(nothingToSaveMessage(imagesDropped = 0).english().contains("empty"))
     }
 }

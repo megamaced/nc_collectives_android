@@ -2,9 +2,11 @@ package com.megamaced.nccollectives.data.repository
 
 import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
 import com.megamaced.nccollectives.data.api.CirclesApiService
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.appFailure
 import com.megamaced.nccollectives.data.api.ifSuccess
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.auth.AccountGeneration
@@ -120,9 +122,7 @@ class CollectiveRepositoryImpl
             favorite: Boolean,
             generation: Long,
         ): ApiResult<Unit> {
-            val current = dao.getById(collectiveId) ?: return ApiResult.Unexpected(
-                IllegalStateException("Collective $collectiveId not cached"),
-            )
+            val current = dao.getById(collectiveId) ?: return appFailure(AppFailure.NotOnDevice)
             val currentList = current.userFavoritePagesCsv.toLongCsvList()
             val nextList = if (favorite) {
                 if (pageId in currentList) currentList else currentList + pageId
@@ -183,9 +183,7 @@ class CollectiveRepositoryImpl
         ): ApiResult<Unit> =
             accountGeneration.bound { generation ->
                 userSettingsLock.withLock {
-                    val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
-                        IllegalStateException("Collective $collectiveId not cached"),
-                    )
+                    val current = dao.getById(collectiveId) ?: return@withLock appFailure(AppFailure.NotOnDevice)
                     if (current.userPageOrder == order.wire) return@withLock ApiResult.Success(Unit)
 
                     if (!writeUnder(generation) { dao.updatePageOrder(collectiveId, order.wire) }) return@withLock accountChanged()
@@ -203,9 +201,7 @@ class CollectiveRepositoryImpl
         ): ApiResult<Unit> =
             accountGeneration.bound { generation ->
                 userSettingsLock.withLock {
-                    val current = dao.getById(collectiveId) ?: return@withLock ApiResult.Unexpected(
-                        IllegalStateException("Collective $collectiveId not cached"),
-                    )
+                    val current = dao.getById(collectiveId) ?: return@withLock appFailure(AppFailure.NotOnDevice)
                     if (current.userNotify == level.wire) return@withLock ApiResult.Success(Unit)
 
                     if (!writeUnder(generation) { dao.updateNotify(collectiveId, level.wire) }) return@withLock accountChanged()
@@ -223,7 +219,7 @@ class CollectiveRepositoryImpl
         ): ApiResult<Collective> {
             val trimmedName = name.trim()
             if (trimmedName.isEmpty()) {
-                return ApiResult.Unexpected(IllegalArgumentException("Collective name must not be blank"))
+                return appFailure(AppFailure.BlankName)
             }
             val now = System.currentTimeMillis()
             return accountGeneration.bound { generation ->
@@ -251,9 +247,7 @@ class CollectiveRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val current = dao.getById(collectiveId)
-                ?: return ApiResult.Unexpected(
-                    IllegalStateException("Collective $collectiveId not cached"),
-                )
+                ?: return appFailure(AppFailure.NotOnDevice)
             // Empty string clears the emoji server-side (matches the page
             // emoji endpoint and the EmojiPickerSheet "Clear" button).
             val previousEmoji = current.emoji
@@ -349,9 +343,7 @@ class CollectiveRepositoryImpl
                 // connectivity problem. Sending it would request
                 // `/circles//members`, a different route whose answer would
                 // be misleading.
-                return ApiResult.Unexpected(
-                    IllegalArgumentException("Collective has no circleId; membership is unavailable"),
-                )
+                return appFailure(AppFailure.NoMembersList)
             }
             // A non-positive limit reads as "no limit" server-side, which is
             // the ~440 KB unbounded response the cap exists to prevent. Fall

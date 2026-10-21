@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
+import com.megamaced.nccollectives.util.resolve
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,8 +138,8 @@ internal fun ShareCaptureScreen(
                 )
             }
 
-            ui.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            ui.finishedMessage?.takeIf { ui.finished }?.let { Text(it) }
+            ui.errorMessage?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error) }
+            ui.finishedMessage?.takeIf { ui.finished }?.let { Text(it.resolve()) }
 
             Spacer(Modifier.height(8.dp))
             Button(

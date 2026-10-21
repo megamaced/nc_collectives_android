@@ -1,18 +1,22 @@
 package com.megamaced.nccollectives.data.repository
 
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.AppFailureException
+
 /**
  * Normalise a user-entered title to something safe to use as a filename.
  * Strips filesystem path separators and ASCII control codes, collapses
- * whitespace, refuses empty / `.` / `..`, caps at 250 UTF-8 bytes (leaves
- * room for `.md` under the typical 255-byte filesystem limit).
+ * whitespace, refuses empty / `.` / `..` with an [AppFailureException]
+ * saying which, caps at 250 UTF-8 bytes (leaves room for `.md` under the
+ * typical 255-byte filesystem limit).
  */
 internal fun sanitiseTitleForFilename(title: String): String {
     val cleaned = title
         .filter { ch -> ch !in FORBIDDEN_FILENAME_CHARS && ch.code >= 0x20 }
         .replace(WHITESPACE_RUN, " ")
         .trim()
-    require(cleaned.isNotEmpty()) { "Page title cannot be empty" }
-    require(cleaned != "." && cleaned != "..") { "Page title cannot be \".\" or \"..\"" }
+    if (cleaned.isEmpty()) throw AppFailureException(AppFailure.EmptyTitle)
+    if (cleaned == "." || cleaned == "..") throw AppFailureException(AppFailure.ReservedTitle)
     val utf8 = cleaned.toByteArray(Charsets.UTF_8)
     if (utf8.size <= MAX_FILENAME_BYTES) return cleaned
     // B-32: `String(utf8, 0, MAX_FILENAME_BYTES, UTF_8)` substitutes a

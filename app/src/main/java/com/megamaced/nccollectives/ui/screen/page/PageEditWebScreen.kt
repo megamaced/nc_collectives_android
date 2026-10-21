@@ -47,12 +47,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -60,9 +62,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.attachment.openInBrowser
 import com.megamaced.nccollectives.ui.attachment.openWithSystemHandler
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
+import com.megamaced.nccollectives.util.resolve
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.delay
 import timber.log.Timber
 import kotlin.math.roundToInt
@@ -141,12 +146,13 @@ internal fun PageEditWebScreen(
         }
     }
 
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(ui) {
         if (ui is PageEditWebUiState.Failed) {
             val msg = (ui as PageEditWebUiState.Failed).message
             val result = snackbarHostState.showSnackbar(
-                message = msg,
-                actionLabel = "Retry",
+                message = msg.resolve(resources),
+                actionLabel = resources.getString(R.string.action_retry),
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.requestSession()
         }
@@ -249,9 +255,7 @@ internal fun PageEditWebScreen(
                         onCloseFromJs = viewModel::onClose,
                         onReloadFromJs = viewModel::onReloadRequested,
                         onSslError = {
-                            viewModel.surfaceLoadFailure(
-                                "Couldn't verify the server's TLS certificate. The editor was not opened.",
-                            )
+                            viewModel.surfaceLoadFailure(uiText(R.string.web_editor_certificate_failed))
                         },
                         onWebViewCreated = { webView = it },
                         // Identity-checked rather than an unconditional
@@ -269,7 +273,7 @@ internal fun PageEditWebScreen(
 
                 is PageEditWebUiState.Failed -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                        Text(state.message.resolve(), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 

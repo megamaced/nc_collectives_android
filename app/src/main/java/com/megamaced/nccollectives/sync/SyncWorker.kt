@@ -25,7 +25,7 @@ class SyncWorker
             val isOneShot = inputData.getBoolean(KEY_ONE_SHOT, false)
             val outcome = fullSync.run()
             if (outcome is SyncOutcome.Retryable && isOneShot) {
-                Timber.w("One-shot sync failed (%s); leaving it to the next foreground", outcome.message)
+                Timber.w("One-shot sync failed (%s); leaving it to the next foreground", outcome.failure)
             }
             return when (retryDecision(outcome, isOneShot)) {
                 SyncRetryDecision.Complete -> Result.success()

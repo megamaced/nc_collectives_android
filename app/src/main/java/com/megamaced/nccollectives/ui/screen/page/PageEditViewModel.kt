@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.DraftBase
@@ -11,6 +12,8 @@ import com.megamaced.nccollectives.domain.model.SaveOutcome
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +27,7 @@ data class PageEditUiState(
     val initialBody: String? = null,
     val isLoadingBody: Boolean = false,
     val isSaving: Boolean = false,
-    val saveError: String? = null,
+    val saveError: UiText? = null,
     val saveSucceeded: Boolean = false,
     /**
      * Message that has to be seen *before* the editor closes — currently
@@ -36,7 +39,7 @@ data class PageEditUiState(
      * the user actually needed was the one message they never saw. The
      * screen now holds the close until this has been shown.
      */
-    val saveNotice: String? = null,
+    val saveNotice: UiText? = null,
 )
 
 @HiltViewModel
@@ -209,7 +212,7 @@ class PageEditViewModel
                         SaveOutcome.Conflict -> {
                             it.copy(
                                 isSaving = false,
-                                saveNotice = "Page changed on the server. Your edits were saved as a draft you can resolve on the page.",
+                                saveNotice = uiText(R.string.edit_saved_as_draft),
                                 saveSucceeded = true,
                             )
                         }

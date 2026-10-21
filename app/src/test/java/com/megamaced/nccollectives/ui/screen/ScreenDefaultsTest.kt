@@ -1,9 +1,13 @@
 package com.megamaced.nccollectives.ui.screen
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.english
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 import java.io.IOException
 
 /**
@@ -16,16 +20,17 @@ import java.io.IOException
  * really does produce a message, because "null means success" is only safe
  * while that holds.
  */
+@RunWith(AndroidJUnit4::class)
 class ScreenDefaultsTest {
     private fun messageFrom(result: ApiResult<*>): String? {
-        var seen: String? = null
+        var seen: UiText? = null
         var calls = 0
         result.onFailureMessage {
             seen = it
             calls++
         }
         assertTrue("called at most once, got $calls", calls <= 1)
-        return seen
+        return seen?.english()
     }
 
     @Test
@@ -54,7 +59,7 @@ class ScreenDefaultsTest {
 
     @Test
     fun unauthorised_reportsSessionExpired() {
-        assertEquals("Session expired — please log in again.", messageFrom(ApiResult.Unauthorised))
+        assertEquals("Session expired. Please sign in again.", messageFrom(ApiResult.Unauthorised))
     }
 
     @Test
@@ -67,12 +72,12 @@ class ScreenDefaultsTest {
 
     @Test
     fun unexpected_reportsCauseMessage() {
-        assertEquals("kaboom", messageFrom(ApiResult.Unexpected(IllegalStateException("kaboom"))))
+        assertEquals("Something went wrong: kaboom", messageFrom(ApiResult.Unexpected(IllegalStateException("kaboom"))))
     }
 
     @Test
     fun unexpectedWithoutMessage_stillReportsSomething() {
         // A message-less throwable must not read as success.
-        assertEquals("Unexpected error", messageFrom(ApiResult.Unexpected(IllegalStateException())))
+        assertEquals("Something went wrong.", messageFrom(ApiResult.Unexpected(IllegalStateException())))
     }
 }

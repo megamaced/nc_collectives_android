@@ -76,6 +76,7 @@ import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.util.relativeTimeAgo
+import com.megamaced.nccollectives.util.resolve
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -338,7 +339,7 @@ private fun AlertRow(
             )
             if (alert.timestamp > 0) {
                 Text(
-                    text = relativeTimeAgo(alert.timestamp * 1_000L, nowMillis),
+                    text = relativeTimeAgo(alert.timestamp * 1_000L, nowMillis).resolve(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

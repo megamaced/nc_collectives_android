@@ -3,6 +3,11 @@ package com.megamaced.nccollectives.ui.components
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalResources
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.resolve
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -19,13 +24,14 @@ import kotlinx.coroutines.flow.Flow
  */
 @Composable
 fun SnackbarStatusEffect(
-    message: String?,
+    message: UiText?,
     host: SnackbarHostState,
     onConsumed: () -> Unit,
 ) {
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(message) {
         if (message == null) return@LaunchedEffect
-        host.showSnackbar(message)
+        host.showSnackbar(message.resolve(resources))
         onConsumed()
     }
 }
@@ -38,10 +44,12 @@ fun SnackbarStatusEffect(
  */
 @Composable
 fun SnackbarMessageEffect(
-    messages: Flow<String>,
+    messages: Flow<UiText>,
     host: SnackbarHostState,
 ) {
+    // Read as each message arrives, so it is worded in the language of that moment.
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(messages, host) {
-        messages.collect { message -> host.showSnackbar(message) }
+        messages.collect { message -> host.showSnackbar(message.resolve(resources)) }
     }
 }

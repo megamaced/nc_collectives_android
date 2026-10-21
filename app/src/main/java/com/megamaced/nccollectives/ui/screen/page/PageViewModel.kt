@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.page
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountGeneration
@@ -27,6 +28,8 @@ import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
 import com.megamaced.nccollectives.util.AttachmentRef
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -60,7 +63,7 @@ enum class EditRoute { Plain, Web }
  */
 data class EditRouteDecision(
     val route: EditRoute,
-    val fallbackMessage: String?,
+    val fallbackMessage: UiText?,
 )
 
 /**
@@ -88,8 +91,8 @@ data class PageViewUiState(
      * refresh spinner every single time a page is opened.
      */
     val isRefreshingBody: Boolean = false,
-    val errorMessage: String? = null,
-    val statusMessage: String? = null,
+    val errorMessage: UiText? = null,
+    val statusMessage: UiText? = null,
     /** Available tags for the page's collective; populated when the tags sheet is opened. */
     val availableTags: List<PageTag> = emptyList(),
     val isLoadingTags: Boolean = false,
@@ -382,8 +385,8 @@ class PageViewModel
                         statusMessage = when {
                             !userInitiated -> state.statusMessage
                             failure != null -> if (hadCachedBody) failure else state.statusMessage
-                            result is ApiResult.Success && result.data -> "Page updated"
-                            else -> "Already up to date"
+                            result is ApiResult.Success && result.data -> uiText(R.string.page_updated)
+                            else -> uiText(R.string.page_up_to_date)
                         },
                     )
                 }
@@ -421,7 +424,7 @@ class PageViewModel
                             .d("Edit route: plain (preference=PreferCollaborative, server=unavailable; surfacing toast)")
                         EditRouteDecision(
                             route = EditRoute.Plain,
-                            fallbackMessage = "Collaborative editor unavailable — opening plain editor.",
+                            fallbackMessage = uiText(R.string.edit_collaborative_unavailable),
                         )
                     }
                 }
@@ -510,7 +513,7 @@ class PageViewModel
 
                     else -> {
                         _uiState.update {
-                            it.copy(statusMessage = createResult.userMessage() ?: "Couldn't create tag")
+                            it.copy(statusMessage = createResult.userMessage() ?: uiText(R.string.tag_create_failed))
                         }
                     }
                 }
@@ -520,7 +523,7 @@ class PageViewModel
         fun renamePage(newTitle: String) {
             viewModelScope.launch {
                 val result = pageRepository.renamePage(pageId, newTitle)
-                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, "renamed")) }
+                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, uiText(R.string.page_renamed))) }
             }
         }
 
@@ -559,7 +562,7 @@ class PageViewModel
         fun movePage(newParentPageId: Long) {
             viewModelScope.launch {
                 val result = pageRepository.movePage(pageId, newParentPageId)
-                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, "moved")) }
+                _uiState.update { it.copy(statusMessage = renameOrMoveMessage(result, uiText(R.string.page_moved))) }
             }
         }
 
@@ -622,7 +625,7 @@ class PageViewModel
             _uiState.update { it.copy(trashedAwaitingUndo = false) }
             val collectiveId = trashedFromCollectiveId
             if (collectiveId == null) {
-                _uiState.update { it.copy(statusMessage = "Couldn't restore the page") }
+                _uiState.update { it.copy(statusMessage = uiText(R.string.page_restore_failed)) }
                 return
             }
             viewModelScope.launch {
@@ -631,9 +634,9 @@ class PageViewModel
                 _uiState.update {
                     it.copy(
                         statusMessage = if (result is ApiResult.Success) {
-                            "Page restored"
+                            uiText(R.string.trash_page_restored)
                         } else {
-                            result.userMessage() ?: "Couldn't restore the page"
+                            result.userMessage() ?: uiText(R.string.page_restore_failed)
                         },
                     )
                 }
@@ -659,7 +662,7 @@ class PageViewModel
                 pageRepository.discardDraft(pageId)
                 // B-78: confirm the destruction actually happened. The banner
                 // simply vanishing left no trace of an irreversible action.
-                _uiState.update { it.copy(statusMessage = "Draft discarded") }
+                _uiState.update { it.copy(statusMessage = uiText(R.string.page_draft_discarded)) }
             }
         }
 
@@ -689,7 +692,7 @@ class PageViewModel
                     onResolved(resolved)
                 } else {
                     _uiState.update {
-                        it.copy(statusMessage = "Linked page \"$target\" not found")
+                        it.copy(statusMessage = uiText(R.string.page_link_not_found, target))
                     }
                 }
             }
@@ -722,8 +725,7 @@ class PageViewModel
                         else -> {
                             state.copy(
                                 downloadingAttachment = null,
-                                statusMessage = result.userMessage()
-                                    ?: "Couldn't open ${ref.fileName}",
+                                statusMessage = result.userMessage(),
                             )
                         }
                     }
@@ -736,7 +738,7 @@ class PageViewModel
          * is non-null when nothing on the device could open the file — the
          * user gets told rather than watching a tap do nothing.
          */
-        fun acknowledgeAttachmentOpened(failureMessage: String? = null) {
+        fun acknowledgeAttachmentOpened(failureMessage: UiText? = null) {
             _uiState.update {
                 it.copy(
                     attachmentToOpen = null,
@@ -747,18 +749,18 @@ class PageViewModel
 
         private fun renameOrMoveMessage(
             result: ApiResult<Unit>,
-            verb: String,
-        ): String? =
+            done: UiText,
+        ): UiText? =
             when (result) {
-                is ApiResult.Success -> "Page $verb"
+                is ApiResult.Success -> done
                 else -> result.userMessage()
             }
 
-        private fun saveOutcomeMessage(outcome: SaveOutcome): String? =
+        private fun saveOutcomeMessage(outcome: SaveOutcome): UiText =
             when (outcome) {
-                SaveOutcome.Saved -> "Page replaced"
-                SaveOutcome.Queued -> "Saved offline — will sync when online"
-                SaveOutcome.Conflict -> "Still conflicting — try again later"
+                SaveOutcome.Saved -> uiText(R.string.page_replaced)
+                SaveOutcome.Queued -> uiText(R.string.page_saved_offline)
+                SaveOutcome.Conflict -> uiText(R.string.page_still_conflicting)
                 is SaveOutcome.Error -> outcome.message
             }
 

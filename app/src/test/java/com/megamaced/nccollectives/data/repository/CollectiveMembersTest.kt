@@ -1,6 +1,8 @@
 package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.AppFailureException
 import com.megamaced.nccollectives.data.api.CirclesApiService
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.Envelope
@@ -148,7 +150,7 @@ class CollectiveMembersTest {
             val result = repository().listMembers("   ", limit = DEFAULT_MEMBER_LIMIT)
 
             assertTrue(result is ApiResult.Unexpected)
-            assertTrue((result as ApiResult.Unexpected).cause is IllegalArgumentException)
+            assertEquals(AppFailure.NoMembersList, ((result as ApiResult.Unexpected).cause as AppFailureException).reason)
             coVerify(exactly = 0) { circlesApi.listMembers(any(), any()) }
         }
 }

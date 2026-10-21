@@ -2,11 +2,15 @@ package com.megamaced.nccollectives.ui.screen.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.auth.AccountSwitcher
+import com.megamaced.nccollectives.data.auth.LoginFlowException
 import com.megamaced.nccollectives.data.auth.LoginFlowInitResponse
 import com.megamaced.nccollectives.data.auth.LoginFlowStatus
 import com.megamaced.nccollectives.data.auth.NextcloudLoginFlow
 import com.megamaced.nccollectives.data.auth.isSameServerHttpsUrl
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +22,7 @@ import javax.inject.Inject
 data class LoginUiState(
     val hostInput: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val loginUrl: String? = null,
     val isPolling: Boolean = false,
     val loginSuccess: Boolean = false,
@@ -41,7 +45,7 @@ class LoginViewModel
         fun startLogin() {
             val host = _uiState.value.hostInput.trim()
             if (host.isBlank()) {
-                _uiState.update { it.copy(error = "Enter your Nextcloud server URL") }
+                _uiState.update { it.copy(error = uiText(R.string.login_error_no_server)) }
                 return
             }
 
@@ -52,7 +56,7 @@ class LoginViewModel
             // letting the underlying connection fail confusingly.
             if (host.startsWith("http://", ignoreCase = true)) {
                 _uiState.update {
-                    it.copy(error = "HTTPS is required — drop the http:// prefix.")
+                    it.copy(error = uiText(R.string.login_error_https_required))
                 }
                 return
             }
@@ -72,7 +76,7 @@ class LoginViewModel
                     onSuccess = { initResponse -> onFlowInitiated(initResponse, normalisedHost) },
                     onFailure = { e ->
                         _uiState.update {
-                            it.copy(isLoading = false, error = e.message ?: "Connection failed")
+                            it.copy(isLoading = false, error = (e as? LoginFlowException)?.text ?: uiText(R.string.login_error_connect))
                         }
                     },
                 )
@@ -94,8 +98,7 @@ class LoginViewModel
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        error = "Server returned a different host than the one you entered " +
-                            "($expectedHost). Refusing to continue.",
+                        error = uiText(R.string.login_error_other_host_unnamed, expectedHost),
                     )
                 }
                 return

@@ -1,15 +1,19 @@
 package com.megamaced.nccollectives.ui.screen.home
 
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.TagCount
+import com.megamaced.nccollectives.util.english
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /** The decisions behind what Home shows, apart from drawing it. */
+@RunWith(AndroidJUnit4::class)
 class HomeFeedRulesTest {
     private val two = listOf(collective(1), collective(2))
 
@@ -95,8 +99,8 @@ class HomeFeedRulesTest {
         val page = listItem(1, serverTimestamp = 1_000, lastUserDisplayName = "Alice")
         val now = 1_000_000L + 2 * 3_600_000L
 
-        assertFalse(supportingLine(HomeSection.YourEdits, page, now)!!.contains("Alice"))
-        assertTrue(supportingLine(HomeSection.RecentlyUpdated, page, now)!!.contains("Alice"))
+        assertFalse(supportingLine(HomeSection.YourEdits, page, now)!!.english().contains("Alice"))
+        assertTrue(supportingLine(HomeSection.RecentlyUpdated, page, now)!!.english().contains("Alice"))
     }
 
     @Test
@@ -104,9 +108,9 @@ class HomeFeedRulesTest {
         val now = 10_000_000_000L
         val page = listItem(1, serverTimestamp = now / 1000 - 7200, lastUserDisplayName = "Alice")
 
-        assertEquals("Alice · 2 hours ago", cardLine(HomeSection.RecentlyUpdated, page, now))
-        assertEquals("2 hours ago", cardLine(HomeSection.YourEdits, page, now))
-        assertEquals("Alice", cardLine(HomeSection.UpdatedSinceRead, page.copy(serverTimestamp = 0), now))
+        assertEquals("Alice · 2 hours ago", cardLine(HomeSection.RecentlyUpdated, page, now)?.english())
+        assertEquals("2 hours ago", cardLine(HomeSection.YourEdits, page, now)?.english())
+        assertEquals("Alice", cardLine(HomeSection.UpdatedSinceRead, page.copy(serverTimestamp = 0), now)?.english())
         assertNull(cardLine(HomeSection.JumpBackIn, page.copy(serverTimestamp = 0, lastUserDisplayName = ""), now))
     }
 

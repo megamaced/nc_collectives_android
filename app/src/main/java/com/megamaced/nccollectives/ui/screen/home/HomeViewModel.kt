@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.home
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.CurrentUser
@@ -14,7 +15,10 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.FullSync
 import com.megamaced.nccollectives.sync.SyncOutcome
+import com.megamaced.nccollectives.sync.failureText
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -146,8 +150,8 @@ class HomeViewModel
         val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
         /** One-shot snackbar messages; see `CollectiveListViewModel.messages` (B-79). */
-        private val _messages = Channel<String>(Channel.BUFFERED)
-        val messages: Flow<String> = _messages.receiveAsFlow()
+        private val _messages = Channel<UiText>(Channel.BUFFERED)
+        val messages: Flow<UiText> = _messages.receiveAsFlow()
 
         private val _createdPages = Channel<CreatedPage>(Channel.BUFFERED)
         val createdPages: Flow<CreatedPage> = _createdPages.receiveAsFlow()
@@ -216,7 +220,7 @@ class HomeViewModel
                 try {
                     when (val result = pageRepository.createPage(collectiveId, parentId, cleaned, body = "")) {
                         is ApiResult.Success -> _createdPages.trySend(CreatedPage(result.data.page.id, cleaned, visit))
-                        else -> _messages.trySend(result.userMessage() ?: "Couldn't create the page")
+                        else -> _messages.trySend(result.userMessage() ?: uiText(R.string.page_create_failed))
                     }
                 } finally {
                     _isCreatingPage.value = false
@@ -229,12 +233,7 @@ class HomeViewModel
             if (_isRefreshing.value) return
             _isRefreshing.value = true
             viewModelScope.launch {
-                val failure = when (val outcome = fullSync.run()) {
-                    SyncOutcome.Success -> null
-                    SyncOutcome.Unauthorised -> "Session expired — please log in again."
-                    is SyncOutcome.Retryable -> outcome.message
-                    is SyncOutcome.Failed -> outcome.message
-                }
+                val failure = fullSync.run().failureText()
                 _isRefreshing.value = false
                 failure?.let { _messages.trySend(it) }
             }

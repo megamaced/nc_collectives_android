@@ -362,10 +362,7 @@ class PageBodyService
          * `DirectEditingRepositoryImpl.serverPathFor`, which already treat
          * this failure as data rather than an exception.
          */
-        private fun unbuildableUrl(): ApiResult<Nothing> =
-            ApiResult.Unexpected(
-                IllegalStateException("Couldn't build the WebDAV URL: no credentials, or a rejected path segment"),
-            )
+        private fun unbuildableUrl(): ApiResult<Nothing> = appFailure(AppFailure.UnsafePath)
 
         /** Null when the URL can't be built — see [unbuildableUrl]. */
         private fun buildWebDavUrl(

@@ -39,9 +39,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.EmptyState
@@ -50,8 +52,11 @@ import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.pageEditedLine
 import com.megamaced.nccollectives.util.relativeTimeAgo
+import com.megamaced.nccollectives.util.resolve
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
@@ -276,11 +281,12 @@ internal fun HomeContent(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                 }
+                val resources = LocalResources.current
                 PageCardGrid(
                     pages = feed.recentlyUpdated.take(HOME_PREVIEW_CARDS),
                     onPageClick = onOpenPage,
                     caption = { page -> labels[page.collectiveId] },
-                    supporting = { page -> cardLine(HomeSection.RecentlyUpdated, page, nowMillis) },
+                    supporting = { page -> cardLine(HomeSection.RecentlyUpdated, page, nowMillis)?.resolve(resources) },
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -328,11 +334,12 @@ private fun LazyListScope.cardSection(
     if (pages.isEmpty()) return
     item(key = section.key) {
         HomeSectionHeader(title = section.title, onSeeAll = onSeeAll)
+        val resources = LocalResources.current
         PageCardGrid(
             pages = pages.take(HOME_PREVIEW_CARDS),
             onPageClick = onOpenPage,
             caption = { page -> labels[page.collectiveId] },
-            supporting = { page -> cardLine(section, page, nowMillis) },
+            supporting = { page -> cardLine(section, page, nowMillis)?.resolve(resources) },
         )
     }
 }
@@ -348,7 +355,7 @@ internal fun LazyListScope.pageRows(
         HomePageRow(
             page = page,
             caption = labels[page.collectiveId],
-            supporting = supportingLine(section, page, nowMillis),
+            supporting = supportingLine(section, page, nowMillis)?.resolve(),
             onClick = { onOpenPage(page.id) },
         )
     }
@@ -362,7 +369,7 @@ internal fun supportingLine(
     section: HomeSection,
     page: PageListItem,
     nowMillis: Long,
-): String? =
+): UiText? =
     when (section) {
         HomeSection.YourEdits -> pageEditedLine("", page.serverTimestamp, nowMillis)
         else -> pageEditedLine(page.lastUserDisplayName, page.serverTimestamp, nowMillis)
@@ -377,8 +384,12 @@ internal fun cardLine(
     section: HomeSection,
     page: PageListItem,
     nowMillis: Long,
-): String? {
+): UiText? {
     val editor = page.lastUserDisplayName.takeIf { it.isNotBlank() && section != HomeSection.YourEdits }
     val time = page.serverTimestamp.takeIf { it > 0L }?.let { relativeTimeAgo(it * 1_000L, nowMillis) }
-    return listOfNotNull(editor, time).joinToString(" · ").ifEmpty { null }
+    return when {
+        editor != null && time != null -> uiText(R.string.home_card_editor_and_time, editor, time)
+        editor != null -> UiText.Raw(editor)
+        else -> time
+    }
 }

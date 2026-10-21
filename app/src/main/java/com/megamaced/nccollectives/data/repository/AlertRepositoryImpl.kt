@@ -1,8 +1,10 @@
 package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
 import com.megamaced.nccollectives.data.api.NotificationsApiService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.appFailure
 import com.megamaced.nccollectives.data.api.dto.NotificationDto
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.bound
@@ -115,7 +117,7 @@ class AlertRepositoryImpl
                 }
 
                 in 200..299 -> {
-                    response.body()?.ocs?.data ?: return ApiResult.Unexpected(IllegalStateException("Empty notifications list"))
+                    response.body()?.ocs?.data ?: return appFailure(AppFailure.EmptyResponse)
                 }
 
                 HTTP_UNAUTHORISED -> {

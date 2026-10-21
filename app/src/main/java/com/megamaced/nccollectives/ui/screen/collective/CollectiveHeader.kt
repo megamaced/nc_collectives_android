@@ -67,6 +67,7 @@ import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.AVATAR_REQUEST_PX
 import com.megamaced.nccollectives.ui.components.memberAvatarUrl
 import com.megamaced.nccollectives.ui.components.monogramOf
+import com.megamaced.nccollectives.util.resolve
 import okhttp3.HttpUrl
 
 /**
@@ -259,7 +260,7 @@ private fun MembersStripBody(
                     state.isLoading && state.members.isEmpty() -> MembersSkeleton()
 
                     error != null && state.members.isEmpty() -> MembersNotice(
-                        text = error,
+                        text = error.resolve(),
                         // No retry offered for a terminal failure, and 403
                         // is terminal — see [isRetryableFailure].
                         onRetry = if (state.canRetry) onRetry else null,

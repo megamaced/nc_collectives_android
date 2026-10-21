@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.sync
 
+import com.megamaced.nccollectives.data.api.Failure
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -15,7 +16,7 @@ class SyncRetryDecisionTest {
     fun oneShotNetworkFailure_completesRatherThanRetrying() {
         assertEquals(
             SyncRetryDecision.Complete,
-            retryDecision(SyncOutcome.Retryable("Couldn't reach the server"), isOneShot = true),
+            retryDecision(SyncOutcome.Retryable(Failure.Network), isOneShot = true),
         )
     }
 
@@ -25,15 +26,15 @@ class SyncRetryDecisionTest {
         // it eventually land.
         assertEquals(
             SyncRetryDecision.Retry,
-            retryDecision(SyncOutcome.Retryable("Couldn't reach the server"), isOneShot = false),
+            retryDecision(SyncOutcome.Retryable(Failure.Network), isOneShot = false),
         )
     }
 
     @Test
     fun serverRefusal_neverRetries() {
         // Same request, same answer — retrying just burns battery.
-        assertEquals(SyncRetryDecision.Complete, retryDecision(SyncOutcome.Failed("Server returned 500"), isOneShot = false))
-        assertEquals(SyncRetryDecision.Complete, retryDecision(SyncOutcome.Failed("Server returned 500"), isOneShot = true))
+        assertEquals(SyncRetryDecision.Complete, retryDecision(SyncOutcome.Failed(Failure.Http(500)), isOneShot = false))
+        assertEquals(SyncRetryDecision.Complete, retryDecision(SyncOutcome.Failed(Failure.Http(500)), isOneShot = true))
     }
 
     @Test

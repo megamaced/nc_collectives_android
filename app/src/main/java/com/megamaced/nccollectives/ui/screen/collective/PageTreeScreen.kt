@@ -71,6 +71,7 @@ import com.megamaced.nccollectives.ui.components.SortHeader
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.pageEditedLine
+import com.megamaced.nccollectives.util.resolve
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -408,7 +409,7 @@ private fun PageTreeItem(
             )
             if (editedLine != null) {
                 Text(
-                    text = editedLine,
+                    text = editedLine.resolve(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

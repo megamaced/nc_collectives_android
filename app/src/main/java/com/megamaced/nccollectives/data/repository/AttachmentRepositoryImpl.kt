@@ -5,9 +5,11 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.appFailure
 import com.megamaced.nccollectives.data.api.mapSuccess
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.bound
@@ -72,7 +74,7 @@ class AttachmentRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val page = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             // OCS-3: typed JSON list replaces the WebDAV PROPFIND + XML
             // parse in Batch 12. The server's `id` field is the stable
             // attachment id used by [delete] (OCS-4).
@@ -295,7 +297,7 @@ class AttachmentRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val page = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val key = AttachmentEntity.key(pageId, fileName)
             val existing = attachmentDao.getById(key)
             // Issue #56: a DELETE goes by name, and nothing proves the
@@ -344,9 +346,7 @@ class AttachmentRepositoryImpl
                 val refreshed = refreshBound(pageId, generation)
                 if (refreshed !is ApiResult.Success) return refreshed
                 serverId = attachmentDao.getById(key)?.serverAttachmentId
-                    ?: return ApiResult.Unexpected(
-                        IllegalStateException("Attachment $fileName not found on server"),
-                    )
+                    ?: return appFailure(AppFailure.AttachmentNotFound)
             }
             val result = apiCall { api.deleteAttachment(page.collectiveId, pageId, serverId) }
             if (result is ApiResult.Success && !writeUnder(generation) { attachmentDao.delete(key) }) return accountChanged()
@@ -365,13 +365,13 @@ class AttachmentRepositoryImpl
         ): ApiResult<Unit> {
             val key = AttachmentEntity.key(pageId, fileName)
             val existing = attachmentDao.getById(key)
-                ?: return ApiResult.Unexpected(IllegalStateException("Attachment $fileName not found"))
+                ?: return appFailure(AppFailure.AttachmentNotFound)
             if (existing.status == AttachmentEntity.STATUS_REMOTE) return ApiResult.Success(Unit)
             if (existing.status == AttachmentEntity.STATUS_DELETING) {
                 // Not reachable from the grid, which hides tombstones — but
                 // re-arming one as PENDING would upload bytes the user asked
                 // to be rid of (issue #35).
-                return ApiResult.Unexpected(IllegalStateException("$fileName is being deleted"))
+                return appFailure(AppFailure.AttachmentBeingDeleted)
             }
             val staged = stagedFileFor(context, key)
             if (!staged.exists() || staged.length() == 0L) {
@@ -379,9 +379,7 @@ class AttachmentRepositoryImpl
                 // fail again for a reason the user can't see. The cache
                 // directory is evictable, and the two worker arms that drop
                 // the staging copy do it because there was nothing to keep.
-                return ApiResult.Unexpected(
-                    IllegalStateException("The staged copy of $fileName is no longer on the device"),
-                )
+                return appFailure(AppFailure.UploadSourceGone)
             }
             // Issue #30: a fresh budget. The user asked for this attempt
             // explicitly, so it is not a continuation of the ones that failed.
@@ -601,19 +599,17 @@ class AttachmentRepositoryImpl
             generation: Long,
         ): ApiResult<OpenableAttachment> {
             val page = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val segments = relativePath.split('/').filter { it.isNotEmpty() }
             if (segments.isEmpty()) {
-                return ApiResult.Unexpected(IllegalArgumentException("Empty attachment path"))
+                return appFailure(AppFailure.UnsafePath)
             }
             // S-14′ again, on this side of the boundary: `parseAttachmentRef`
             // already refuses traversal, but the attachments *screen* builds
             // a path from a server-supplied filename. A `..` segment would
             // otherwise stage the download outside the cache directory.
             if (segments.any { it == ".." }) {
-                return ApiResult.Unexpected(
-                    IllegalArgumentException("Refusing attachment path with a traversal segment"),
-                )
+                return appFailure(AppFailure.UnsafePath)
             }
             val fileName = segments.last()
             // Directory part of the ref joined onto the page's own filePath.

@@ -63,12 +63,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.util.uiText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,7 +123,7 @@ internal fun AttachmentsScreen(
         val attachment = ui.attachmentToOpen ?: return@LaunchedEffect
         val opened = openAttachmentExternally(context, attachment)
         viewModel.acknowledgeOpened(
-            failureMessage = if (opened) null else "No app installed that can open ${attachment.fileName}",
+            failureMessage = if (opened) null else uiText(R.string.attachment_no_app, attachment.fileName),
         )
     }
 

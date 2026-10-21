@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen
 import androidx.compose.ui.unit.dp
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.util.UiText
 
 /**
  * How long a screen ViewModel's `stateIn` keeps its upstream alive after the
@@ -28,7 +29,7 @@ internal val FAB_CLEARANCE = 88.dp
  * earned its keep only where a success must not clear a message something
  * else has set — which is what this expresses.
  */
-internal inline fun ApiResult<*>.onFailureMessage(onMessage: (String) -> Unit) {
+internal inline fun ApiResult<*>.onFailureMessage(onMessage: (UiText) -> Unit) {
     val message = userMessage()
     if (message != null) onMessage(message)
 }

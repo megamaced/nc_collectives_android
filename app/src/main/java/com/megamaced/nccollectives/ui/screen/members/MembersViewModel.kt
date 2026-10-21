@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.members
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Collective
@@ -11,6 +12,8 @@ import com.megamaced.nccollectives.domain.model.DEFAULT_MEMBER_LIMIT
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.isRetryableFailure
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,7 +72,7 @@ data class MembersUiState(
     val isLoading: Boolean = false,
     val collectiveName: String = "",
     val members: List<CollectiveMember> = emptyList(),
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     val canRetry: Boolean = true,
     val mayHaveMore: Boolean = false,
 )
@@ -163,7 +166,7 @@ class MembersViewModel
                 // trashed or unshared while this screen was open. There is
                 // nothing to resolve a circle id from, and re-asking would
                 // query a collective the user can no longer see.
-                terminal("This collective isn't available any more.")
+                terminal(uiText(R.string.alert_collective_unavailable))
                 return
             }
             _uiState.update { it.copy(collectiveName = collective.name) }
@@ -175,10 +178,7 @@ class MembersViewModel
                 // `MIGRATION_8_9`: the next `refresh()` fills the column in,
                 // this collector fires again, and `load` clears this state
                 // itself. Nothing for the user to retry in the meantime.
-                terminal(
-                    "This device doesn't know which team backs this collective yet. " +
-                        "Refreshing your collectives fills that in.",
-                )
+                terminal(uiText(R.string.members_team_unknown))
                 return
             }
             if (circleId == listedCircleId) return
@@ -221,7 +221,7 @@ class MembersViewModel
         }
 
         /** A failure with no request behind it and nothing to retry. */
-        private fun terminal(message: String) {
+        private fun terminal(message: UiText) {
             _uiState.update {
                 it.copy(isLoading = false, errorMessage = message, canRetry = false)
             }

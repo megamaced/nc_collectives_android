@@ -5,6 +5,7 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.screen.home.collective
 import com.megamaced.nccollectives.ui.screen.home.listItem
+import com.megamaced.nccollectives.util.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -97,7 +98,7 @@ class FavoritesViewModelTest {
             coEvery { collectiveRepository.toggleFavorite(any(), any(), any()) } returns ApiResult.NetworkError(java.io.IOException())
             val vm = FavoritesViewModel(collectiveRepository, pageRepository)
             val removed = mutableListOf<Long>()
-            val messages = mutableListOf<String>()
+            val messages = mutableListOf<UiText>()
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.removed.collect { removed += it.id } }
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.messages.collect { messages += it } }
             backgroundScope.launch { vm.groups.collect {} }

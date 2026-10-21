@@ -1,12 +1,14 @@
 package com.megamaced.nccollectives.ui.screen.tag
 
 import androidx.lifecycle.SavedStateHandle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.home.collective
 import com.megamaced.nccollectives.ui.screen.home.listItem
+import com.megamaced.nccollectives.util.uiText
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -76,7 +78,7 @@ class TagBrowseViewModelTest {
 
             assertEquals(listOf(true, true, false), vm.rows.value.map { it.isFavorite })
             assertEquals(listOf("📚 Wiki", "Recipes", "Recipes"), vm.rows.value.map { it.collectiveLabel })
-            assertEquals("All collectives", vm.uiState.value.collectiveName)
+            assertEquals(uiText(R.string.tag_all_collectives), vm.uiState.value.collectiveName)
             verify(exactly = 0) { pageRepository.observePagesWithTagInCollective(any(), any()) }
         }
 

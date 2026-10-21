@@ -1,10 +1,12 @@
 package com.megamaced.nccollectives.ui.screen.trash
 
 import androidx.lifecycle.SavedStateHandle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -20,8 +22,8 @@ class TrashViewModel
             savedStateHandle.get<Long>(Destination.Trash.ARG_COLLECTIVE_ID),
         )
 
-        override val restoredMessage = "Page restored"
-        override val purgedMessage = "Page permanently deleted"
+        override val restoredMessage = uiText(R.string.trash_page_restored)
+        override val purgedMessage = uiText(R.string.trash_page_deleted)
 
         init {
             refresh()

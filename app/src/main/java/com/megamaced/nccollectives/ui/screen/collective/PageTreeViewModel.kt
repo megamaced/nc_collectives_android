@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.collective
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Collective
@@ -20,7 +21,9 @@ import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.ui.screen.isRetryableFailure
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.shouldAutoRefresh
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -69,7 +72,7 @@ data class MembersStripState(
     /** True only while a fetch is in flight. */
     val isLoading: Boolean = false,
     /** User-facing text for a failed fetch; null when nothing has failed. */
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     /**
      * Whether the failure in [errorMessage] may be tried again. False for
      * every terminal arm, 403 above all — see [isRetryableFailure].
@@ -98,11 +101,11 @@ data class MembersStripState(
 
 data class PageTreeUiState(
     val isRefreshing: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     val collectiveName: String = "",
     val collectiveEmoji: String? = null,
     val expanded: Set<Long> = emptySet(),
-    val statusMessage: String? = null,
+    val statusMessage: UiText? = null,
     /** Pages eligible as the parent for a new top-level "Add page" — folder pages and the landing page. */
     val parentChoices: List<PageListItem> = emptyList(),
     /**
@@ -388,7 +391,7 @@ class PageTreeViewModel
                 )
                 _uiState.update {
                     it.copy(
-                        statusMessage = if (result is ApiResult.Success) "Page created" else result.userMessage(),
+                        statusMessage = if (result is ApiResult.Success) uiText(R.string.page_created) else result.userMessage(),
                         // Auto-expand the parent so the new page is visible.
                         expanded = if (result is ApiResult.Success) it.expanded + parentPageId else it.expanded,
                     )

@@ -43,11 +43,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -56,6 +58,7 @@ import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.auth.AccountSummary
 import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.PageOpenMode
@@ -66,6 +69,7 @@ import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.attachment.openInBrowser
+import com.megamaced.nccollectives.util.resolve
 import com.megamaced.nccollectives.util.syncStatusLines
 import kotlinx.coroutines.launch
 
@@ -105,6 +109,7 @@ internal fun SettingsScreen(
     // → open the release page in a Custom Tab and reset; UpToDate / Failed
     // → snackbar then reset. Drives off `updateCheck` itself so a fresh
     // tap re-triggers cleanly each time.
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(updateCheck) {
         when (val state = updateCheck) {
             is UpdateCheckUiState.UpdateAvailable -> {
@@ -117,13 +122,13 @@ internal fun SettingsScreen(
 
             is UpdateCheckUiState.UpToDate -> {
                 snackbarHostState.showSnackbar(
-                    "You're on the latest version (${BuildConfig.VERSION_NAME}).",
+                    resources.getString(R.string.update_check_up_to_date, BuildConfig.VERSION_NAME),
                 )
                 viewModel.dismissUpdateCheck()
             }
 
             is UpdateCheckUiState.Failed -> {
-                snackbarHostState.showSnackbar(state.message)
+                snackbarHostState.showSnackbar(state.message.resolve(resources))
                 viewModel.dismissUpdateCheck()
             }
 
@@ -139,12 +144,12 @@ internal fun SettingsScreen(
     LaunchedEffect(manualSync) {
         when (val state = manualSync) {
             ManualSyncUiState.Done -> {
-                snackbarHostState.showSnackbar("Sync complete")
+                snackbarHostState.showSnackbar(resources.getString(R.string.sync_complete))
                 viewModel.dismissManualSync()
             }
 
             is ManualSyncUiState.Failed -> {
-                snackbarHostState.showSnackbar(state.message)
+                snackbarHostState.showSnackbar(state.message.resolve(resources))
                 viewModel.dismissManualSync()
             }
 
@@ -738,13 +743,13 @@ private fun SyncStatusRow(
     val lines = remember(status, state) { syncStatusLines(status, System.currentTimeMillis()) }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = lines.summary,
+            text = lines.summary.resolve(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         lines.error?.let { message ->
             Text(
-                text = message,
+                text = message.resolve(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

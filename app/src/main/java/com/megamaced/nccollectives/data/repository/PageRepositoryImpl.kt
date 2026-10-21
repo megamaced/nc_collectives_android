@@ -4,14 +4,18 @@ import androidx.room.withTransaction
 import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.TAG_SEP_STRING
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.AppFailureException
 import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.ConditionalBody
+import com.megamaced.nccollectives.data.api.Failure
 import com.megamaced.nccollectives.data.api.PageBody
 import com.megamaced.nccollectives.data.api.PageBodyService
 import com.megamaced.nccollectives.data.api.apiCall
+import com.megamaced.nccollectives.data.api.appFailure
 import com.megamaced.nccollectives.data.api.dto.PageDto
+import com.megamaced.nccollectives.data.api.failure
 import com.megamaced.nccollectives.data.api.mapSuccess
-import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountBinding
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.bound
@@ -460,7 +464,7 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<String> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val result = bodyService.fetchBody(
                 collectivePath = entity.collectivePath,
                 filePath = entity.filePath,
@@ -510,7 +514,7 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Boolean> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag, entity.bodyTimestamp)
             if (plan !is BodyFetchPlan.Revalidate) {
                 return fetchBodyBound(pageId, generation).mapSuccess { true }
@@ -594,7 +598,7 @@ class PageRepositoryImpl
             // after a switch the page row under this id is the next
             // account's, and its path would aim the PUT at their file.
             if (!accountGeneration.isCurrent(generation)) {
-                SaveOutcome.Error(ACCOUNT_CHANGED)
+                SaveOutcome.Error(Failure.App(AppFailure.AccountChanged))
             } else {
                 withContext(AccountBinding(generation)) { saveBodyBound(pageId, newBody, generation, basedOn) }
             }
@@ -606,7 +610,7 @@ class PageRepositoryImpl
             basedOn: DraftBase?,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
-                ?: return SaveOutcome.Error("Page not cached")
+                ?: return SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice))
             // Issue #29: the precondition comes from the queue row when there
             // is one, not from the page row. See `savePrecondition`.
             val existing = editQueueDao.forPage(pageId)
@@ -679,7 +683,7 @@ class PageRepositoryImpl
                             syncScheduler.flushEditsWhenOnline()
                             SaveOutcome.Queued
                         } else {
-                            SaveOutcome.Error(ACCOUNT_CHANGED)
+                            SaveOutcome.Error(Failure.App(AppFailure.AccountChanged))
                         }
                     }
                 }
@@ -712,7 +716,7 @@ class PageRepositoryImpl
                                 pageDao.updateDraft(pageId, null)
                                 editQueueDao.deleteForPage(pageId)
                             }
-                            return if (saved) SaveOutcome.Saved else SaveOutcome.Error(ACCOUNT_CHANGED)
+                            return if (saved) SaveOutcome.Saved else SaveOutcome.Error(Failure.App(AppFailure.AccountChanged))
                         }
                         // Changed in between: record it as it is now.
                         if (retried == ApiResult.Conflict) fresh = fetchToResolve(entity)
@@ -721,15 +725,15 @@ class PageRepositoryImpl
                 }
 
                 ApiResult.Unauthorised -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
 
                 is ApiResult.HttpError -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Server error")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
 
                 is ApiResult.Unexpected -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
             }
         }
@@ -802,7 +806,7 @@ class PageRepositoryImpl
                     ),
                 )
             }
-            return if (recorded) SaveOutcome.Conflict else SaveOutcome.Error(ACCOUNT_CHANGED)
+            return if (recorded) SaveOutcome.Conflict else SaveOutcome.Error(Failure.App(AppFailure.AccountChanged))
         }
 
         override suspend fun replaceWithDraft(
@@ -820,7 +824,7 @@ class PageRepositoryImpl
             generation: Long,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
-                ?: return SaveOutcome.Error("Page not cached")
+                ?: return SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice))
             // Force the write through by skipping the If-Match precondition.
             val result = bodyService.saveBody(
                 collectivePath = entity.collectivePath,
@@ -864,7 +868,7 @@ class PageRepositoryImpl
                         syncScheduler.flushEditsWhenOnline()
                         SaveOutcome.Queued
                     } else {
-                        SaveOutcome.Error(ACCOUNT_CHANGED)
+                        SaveOutcome.Error(Failure.App(AppFailure.AccountChanged))
                     }
                 }
 
@@ -873,15 +877,15 @@ class PageRepositoryImpl
                 }
 
                 ApiResult.Unauthorised -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Unauthorised")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
 
                 is ApiResult.HttpError -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Server error")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
 
                 is ApiResult.Unexpected -> {
-                    SaveOutcome.Error(result.userMessage() ?: "Unexpected error")
+                    SaveOutcome.Error(result.failure() ?: Failure.Unexpected(null))
                 }
             }
         }
@@ -912,7 +916,7 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val previous = entity.emoji
             // Optimistic local update. The rollback is under the same
             // generation: a request refused because the account changed
@@ -984,7 +988,7 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val current = splitTags(entity.tagsCsv)
             val next = if (add) {
                 if (tagName in current) current else current + tagName
@@ -1018,11 +1022,11 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             val cleaned = try {
                 sanitiseTitleForFilename(newTitle)
-            } catch (e: IllegalArgumentException) {
-                return ApiResult.Unexpected(e)
+            } catch (e: AppFailureException) {
+                return appFailure(e.reason)
             }
             if (cleaned == entity.title) return ApiResult.Success(Unit)
             // OCS-2: `PUT /pages/{id}` body `{title}` renames atomically,
@@ -1064,14 +1068,14 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<PageCreation> {
             val parent = pageDao.getById(parentPageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Parent $parentPageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             if (parent.collectiveId != collectiveId) {
-                return ApiResult.Unexpected(IllegalStateException("Parent belongs to a different collective"))
+                return appFailure(AppFailure.OtherCollective)
             }
             val cleaned = try {
                 sanitiseTitleForFilename(title)
-            } catch (e: IllegalArgumentException) {
-                return ApiResult.Unexpected(e)
+            } catch (e: AppFailureException) {
+                return appFailure(e.reason)
             }
             // OCS-1: `POST /pages/{parentId}` handles indexing, naming, and
             // folder promotion atomically on the server. Replaces the
@@ -1156,9 +1160,7 @@ class PageRepositoryImpl
                 return accountChanged()
             }
             if (saved == null) {
-                return ApiResult.Unexpected(
-                    IllegalStateException("Page ${createdDto.id} disappeared from cache after create"),
-                )
+                return appFailure(AppFailure.NotOnDevice)
             }
             return ApiResult.Success(PageCreation(page = saved.toDomain(), bodyOutcome = bodyOutcome))
         }
@@ -1171,11 +1173,9 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
+                ?: return appFailure(AppFailure.NotOnDevice)
             if (entity.parentId == 0L) {
-                return ApiResult.Unexpected(
-                    UnsupportedOperationException("Can't trash the landing page — delete the collective instead"),
-                )
+                return appFailure(AppFailure.LandingPage)
             }
             val result = apiCall { api.trashPage(entity.collectiveId, pageId) }
             if (result is ApiResult.Success) {
@@ -1323,7 +1323,7 @@ class PageRepositoryImpl
             generation: Long,
         ): SaveOutcome {
             val entity = pageDao.getById(pageId)
-                ?: return SaveOutcome.Error("Page not cached")
+                ?: return SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice))
             // Make sure we have the current body before appending, otherwise
             // we'd overwrite the page with just the appended snippet.
             //
@@ -1337,7 +1337,7 @@ class PageRepositoryImpl
                 ?: run {
                     val fetched = fetchBodyBound(pageId, generation)
                     if (fetched !is ApiResult.Success) {
-                        return SaveOutcome.Error(fetched.userMessage() ?: "Couldn't load page body")
+                        return SaveOutcome.Error(fetched.failure() ?: Failure.Unexpected(null))
                     }
                     fetched.data
                 }
@@ -1357,7 +1357,7 @@ class PageRepositoryImpl
             generation: Long,
         ): SaveOutcome {
             if (oldName == newName) return SaveOutcome.Saved
-            val entity = pageDao.getById(pageId) ?: return SaveOutcome.Error("Page not cached")
+            val entity = pageDao.getById(pageId) ?: return SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice))
             // Same precedence as `appendToPage`: a queued edit is the local
             // truth about this body, the row's cached copy is the server's,
             // and only a page we have never held the body of needs fetching.
@@ -1367,7 +1367,7 @@ class PageRepositoryImpl
             // reference anyway.
             val baseBody = editQueueDao.pendingBody(pageId)
                 ?: entity.bodyMd
-                ?: return SaveOutcome.Error("Page body not cached")
+                ?: return SaveOutcome.Error(Failure.App(AppFailure.NotOnDevice))
             val retargeted = retargetAttachmentRefs(baseBody, pageId, oldName, newName)
             if (retargeted == baseBody) return SaveOutcome.Saved
             return saveBodyUnder(pageId, retargeted, generation)
@@ -1384,16 +1384,12 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val entity = pageDao.getById(pageId)
-                ?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-            val newParent = pageDao.getById(newParentPageId) ?: return ApiResult.Unexpected(
-                IllegalStateException("Target parent $newParentPageId not cached"),
-            )
+                ?: return appFailure(AppFailure.NotOnDevice)
+            val newParent = pageDao.getById(newParentPageId) ?: return appFailure(AppFailure.NotOnDevice)
             if (newParent.collectiveId != entity.collectiveId) {
                 // Cross-collective moves use a separate `PUT /pages/{id}/to/{newCollectiveId}`
                 // endpoint. Out of scope for now.
-                return ApiResult.Unexpected(
-                    UnsupportedOperationException("Cross-collective moves aren't supported"),
-                )
+                return appFailure(AppFailure.CrossCollectiveMove)
             }
             if (entity.parentId == newParentPageId) return ApiResult.Success(Unit)
             // OCS-2: `PUT /pages/{id}` body `{parentId}` moves the page
@@ -1463,9 +1459,7 @@ class PageRepositoryImpl
             generation: Long,
         ): ApiResult<Unit> {
             val parent = pageDao.getById(parentPageId)
-                ?: return ApiResult.Unexpected(
-                    IllegalStateException("Parent page $parentPageId not cached"),
-                )
+                ?: return appFailure(AppFailure.NotOnDevice)
             val previousCsv = parent.subpageOrderCsv
             val nextCsv = subpageOrderIds.toLongCsv()
             if (nextCsv == previousCsv) return ApiResult.Success(Unit)

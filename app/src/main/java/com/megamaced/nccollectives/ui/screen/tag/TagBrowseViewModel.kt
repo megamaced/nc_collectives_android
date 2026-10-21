@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.tag
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
@@ -10,6 +11,8 @@ import com.megamaced.nccollectives.domain.repository.observeFavoritePageIds
 import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.ui.screen.onFailureMessage
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,9 +42,9 @@ data class TagBrowseRow(
 )
 
 data class TagBrowseUiState(
-    val collectiveName: String = "",
+    val collectiveName: UiText? = null,
     val tagName: String = "",
-    val statusMessage: String? = null,
+    val statusMessage: UiText? = null,
 )
 
 @HiltViewModel
@@ -66,7 +69,7 @@ class TagBrowseViewModel
         private val _uiState = MutableStateFlow(
             TagBrowseUiState(
                 tagName = tagName,
-                collectiveName = if (acrossCollectives) "All collectives" else "",
+                collectiveName = if (acrossCollectives) uiText(R.string.tag_all_collectives) else null,
             ),
         )
         val uiState: StateFlow<TagBrowseUiState> = _uiState.asStateFlow()
@@ -111,7 +114,7 @@ class TagBrowseViewModel
                     // the screen's lifetime is wasted machinery.
                     val snapshot = collectiveRepository.observeCollectives().first()
                     snapshot.firstOrNull { it.id == collectiveId }?.let { c ->
-                        _uiState.update { it.copy(collectiveName = c.name) }
+                        _uiState.update { it.copy(collectiveName = UiText.Raw(c.name)) }
                     }
                 }
             }

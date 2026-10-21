@@ -1,41 +1,4 @@
-com/megamaced/nccollectives/data/api/ApiErrorMessage.kt	is ApiResult.NetworkError -> "Couldn't reach the server. Check your connection."
-com/megamaced/nccollectives/data/api/ApiErrorMessage.kt	is ApiResult.Unauthorised -> "Session expired — please log in again."
-com/megamaced/nccollectives/data/api/ApiErrorMessage.kt	is ApiResult.Conflict -> "Page changed on the server while you were editing."
-com/megamaced/nccollectives/data/api/ApiErrorMessage.kt	403 -> "Access refused (403). You may not have permission, or it may no longer exist."
-com/megamaced/nccollectives/data/api/ApiErrorMessage.kt	else -> "Server returned $code"
-com/megamaced/nccollectives/data/auth/NextcloudLoginFlow.kt	?: return@withContext LoginFlowStatus.Error("Empty response")
-com/megamaced/nccollectives/data/auth/NextcloudLoginFlow.kt	return@withContext LoginFlowStatus.Error("Server returned ${response.code}")
-com/megamaced/nccollectives/data/auth/NextcloudLoginFlow.kt	LoginFlowStatus.Error("Login timed out")
-com/megamaced/nccollectives/data/auth/NextcloudLoginFlow.kt	private const val USER_AGENT = "NC Collectives Android"
-com/megamaced/nccollectives/data/repository/AccountWrites.kt	internal const val ACCOUNT_CHANGED = "The account changed before this could be saved"
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	IllegalStateException("Attachment $fileName not found on server"),
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Attachment $fileName not found"))
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	return ApiResult.Unexpected(IllegalStateException("$fileName is being deleted"))
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	IllegalStateException("The staged copy of $fileName is no longer on the device"),
-com/megamaced/nccollectives/data/repository/AttachmentRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/CollectiveRepositoryImpl.kt	IllegalStateException("Collective $collectiveId not cached"),
-com/megamaced/nccollectives/data/repository/CollectiveRepositoryImpl.kt	IllegalStateException("Collective $collectiveId not cached"),
-com/megamaced/nccollectives/data/repository/CollectiveRepositoryImpl.kt	IllegalStateException("Collective $collectiveId not cached"),
-com/megamaced/nccollectives/data/repository/CollectiveRepositoryImpl.kt	IllegalStateException("Collective $collectiveId not cached"),
 com/megamaced/nccollectives/data/repository/DirectEditingRepositoryImpl.kt	"Page ${page.id} has a path segment that failed validation; refusing to open session",
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return SaveOutcome.Error("Page not cached")
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return SaveOutcome.Error("Page not cached")
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Parent $parentPageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	IllegalStateException("Page ${createdDto.id} disappeared from cache after create"),
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return SaveOutcome.Error("Page not cached")
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	val entity = pageDao.getById(pageId) ?: return SaveOutcome.Error("Page not cached")
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return SaveOutcome.Error("Page body not cached")
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	?: return ApiResult.Unexpected(IllegalStateException("Page $pageId not cached"))
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	IllegalStateException("Target parent $newParentPageId not cached"),
-com/megamaced/nccollectives/data/repository/PageRepositoryImpl.kt	IllegalStateException("Parent page $parentPageId not cached"),
 com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	PageChipSection(label = "Linked from", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
 com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	PageChipSection(label = "Subpages", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = { clipboard.setText(AnnotatedString(draft)) }) { Text("Copy") }
@@ -46,7 +9,6 @@ com/megamaced/nccollectives/ui/components/ConflictBanner.kt	}) { Text("Discard")
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = { confirmDiscard = false }) { Text("Keep draft") }
 com/megamaced/nccollectives/ui/components/SortHeader.kt	contentDescription = "Sort order",
 com/megamaced/nccollectives/ui/components/SortHeader.kt	Icon(Icons.Filled.Check, contentDescription = "Selected")
-com/megamaced/nccollectives/ui/components/StateComposables.kt	Text("Retry")
 com/megamaced/nccollectives/ui/navigation/NcCollectivesScaffold.kt	contentDescription = "$unseenAlerts new"
 com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	title = { Text("Alerts", style = MaterialTheme.typography.titleMedium) },
 com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	Icon(Icons.Outlined.ClearAll, contentDescription = "Dismiss all")
@@ -67,11 +29,6 @@ com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageDelet
 com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.Mention -> "$who mentioned you in $page$where"
 com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageUpdated -> "$who changed $page$where"
 com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageDeleted -> "$who deleted $page$where"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsViewModel.kt	is ApiResult.NetworkError -> "Couldn't reach the server to open that — try again when you're online"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsViewModel.kt	result.failed == 0 -> "Dismissed ${plural(result.dismissed)}"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsViewModel.kt	result.dismissed == 0 -> "Couldn't dismiss the alerts"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsViewModel.kt	else -> "Dismissed ${plural(result.dismissed)}; ${result.failed} couldn't be dismissed"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsViewModel.kt	private fun plural(count: Int): String = if (count == 1) "1 alert" else "$count alerts"
 com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	Text("Notifications", style = MaterialTheme.typography.titleMedium)
 com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	NotifyLevel.Off -> "Off"
@@ -95,7 +52,6 @@ com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	Icon(Ic
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Set emoji…") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Notifications…") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Move to trash") },
-com/megamaced/nccollectives/ui/screen/collective/CollectiveListViewModel.kt	SyncOutcome.Unauthorised -> "Session expired — please log in again."
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	label = { Text("Name") },
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	placeholder = { Text("Cannot be changed later") },
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	TextButton(onClick = onDismiss, enabled = !isCreating) { Text("Cancel") }
@@ -146,7 +102,6 @@ com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	Icon(Icons.AutoM
 com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	EmptyState(title = "All caught up", message = "No conflicts to resolve and no edits waiting to sync.")
 com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	EmptyState(title = "Nothing here", message = "No pages to show here right now.")
 com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	) { Text("Load more") }
-com/megamaced/nccollectives/ui/screen/home/HomeViewModel.kt	SyncOutcome.Unauthorised -> "Session expired — please log in again."
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	label = { Text("Server URL") },
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	placeholder = { Text("cloud.example.com") },
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	Text("Log in")
@@ -190,7 +145,6 @@ com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	Icon(Icons.Fille
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Take photo",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Pick from gallery",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Pick a file",
-com/megamaced/nccollectives/ui/screen/page/AttachmentsViewModel.kt	statusMessage = if (result is ApiResult.Success) "$fileName deleted" else result.userMessage(),
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	label = { Text("Custom emoji") },
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	placeholder = { Text("Paste or type any emoji") },
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	TextButton(onClick = { onPick("") }) { Text("Clear") }
@@ -205,18 +159,11 @@ com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	Icon(Icons.AutoMirr
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	Icon(Icons.Filled.Save, contentDescription = "Save")
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	message = "Editor is taking a long time to load",
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	actionLabel = "Cancel",
-com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	actionLabel = "Retry",
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	title = { Text("Edit (collaborative)", style = MaterialTheme.typography.titleMedium) },
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	Text("Saving and closing…", style = MaterialTheme.typography.bodyMedium)
 com/megamaced/nccollectives/ui/screen/page/PageOutlineSheet.kt	Text("Page index", style = MaterialTheme.typography.titleMedium)
 com/megamaced/nccollectives/ui/screen/page/PageOutlineSheet.kt	title = "Top of page",
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	result is ApiResult.Success && result.data -> "Page updated"
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	else -> "Already up to date"
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	is ApiResult.Success -> "Page $verb"
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	SaveOutcome.Saved -> "Page replaced"
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	SaveOutcome.Queued -> "Saved offline — will sync when online"
-com/megamaced/nccollectives/ui/screen/page/PageViewModel.kt	SaveOutcome.Conflict -> "Still conflicting — try again later"
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	message = "Downloading $name…",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	message = "Page duplicated",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	actionLabel = "Open",
@@ -254,7 +201,6 @@ com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	EmptyState(title = 
 com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	TextButton(onClick = onClear) { Text("Clear") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	linkScope.launch { snackbarHostState.showSnackbar("No browser app to open $url") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	snackbarHostState.showSnackbar("A newer version is out, but there's no browser app to open ${state.htmlUrl}")
-com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	snackbarHostState.showSnackbar("Sync complete")
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	title = { Text("Settings", style = MaterialTheme.typography.titleMedium) },
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	Box(modifier = Modifier.padding(start = 8.dp)) { Text("Add account") }
@@ -305,15 +251,6 @@ com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text("Page title") },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text("Parent page", style = MaterialTheme.typography.labelMedium)
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text("Append to", style = MaterialTheme.typography.labelMedium)
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	if (payload == null) return "Shared note"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	return "Shared note"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	savedNothing -> "Created \"$title\", but ${droppedImagesPhrase(created.imagesDropped)}"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	lost.isEmpty() -> "Saved as \"$title\""
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	else -> "Saved as \"$title\" — ${lost.joinToString("; ")}"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	SaveOutcome.Saved -> "Appended"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	SaveOutcome.Queued -> "Appended (queued, will sync when online)"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	SaveOutcome.Conflict -> "Page changed on the server; appended as a draft"
-com/megamaced/nccollectives/ui/screen/share/ShareCaptureViewModel.kt	"$count images couldn't be read"
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	title = "No pages tagged",
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	message = "No pages tagged with \"${ui.tagName}\".",
@@ -324,9 +261,3 @@ com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	TextButton(onCl
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	Icon(Icons.Filled.RestoreFromTrash, contentDescription = "Restore")
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	contentDescription = "Delete forever",
 com/megamaced/nccollectives/ui/screen/trash/TrashScreen.kt	title = "Trash",
-com/megamaced/nccollectives/util/PageEditedLine.kt	name != null && relative != null -> "Edited by $name · $relative"
-com/megamaced/nccollectives/util/PageEditedLine.kt	name != null -> "Edited by $name"
-com/megamaced/nccollectives/util/PageEditedLine.kt	relative != null -> "Edited $relative"
-com/megamaced/nccollectives/util/RelativeTime.kt	if (elapsedMs < TimeUnit.MINUTES.toMillis(1)) return "just now"
-com/megamaced/nccollectives/util/RelativeTime.kt	): String = if (count == 1L) "1 $unit ago" else "$count ${unit}s ago"
-com/megamaced/nccollectives/util/SyncStatusLines.kt	?.let { message -> "Last attempt ${relativeTimeAgo(status.lastFailureAt, now)} failed: $message" }

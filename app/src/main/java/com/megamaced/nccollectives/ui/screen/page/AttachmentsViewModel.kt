@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Attachment
@@ -11,7 +12,9 @@ import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.ui.navigation.Destination
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.attachmentDirName
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,7 +27,7 @@ import javax.inject.Inject
 
 data class AttachmentsUiState(
     val isRefreshing: Boolean = false,
-    val statusMessage: String? = null,
+    val statusMessage: UiText? = null,
     /** Filename currently being downloaded for viewing. */
     val downloadingAttachment: String? = null,
     /**
@@ -87,9 +90,9 @@ class AttachmentsViewModel
                 _uiState.update {
                     it.copy(
                         statusMessage = if (resolved != null) {
-                            "Uploading $resolved…"
+                            uiText(R.string.attachment_uploading, resolved)
                         } else {
-                            "Couldn't read $suggestedName"
+                            uiText(R.string.attachment_unreadable, suggestedName)
                         },
                     )
                 }
@@ -119,7 +122,7 @@ class AttachmentsViewModel
                         else -> {
                             state.copy(
                                 downloadingAttachment = null,
-                                statusMessage = result.userMessage() ?: "Couldn't open $fileName",
+                                statusMessage = result.userMessage(),
                             )
                         }
                     }
@@ -128,7 +131,7 @@ class AttachmentsViewModel
         }
 
         /** Called once the screen has fired the view intent. */
-        fun acknowledgeOpened(failureMessage: String? = null) {
+        fun acknowledgeOpened(failureMessage: UiText? = null) {
             _uiState.update {
                 it.copy(
                     attachmentToOpen = null,
@@ -148,9 +151,9 @@ class AttachmentsViewModel
                 _uiState.update {
                     it.copy(
                         statusMessage = if (result is ApiResult.Success) {
-                            "Retrying $fileName"
+                            uiText(R.string.attachment_retrying, fileName)
                         } else {
-                            result.userMessage() ?: "Couldn't retry $fileName"
+                            result.userMessage()
                         },
                     )
                 }
@@ -162,7 +165,14 @@ class AttachmentsViewModel
                 val result = repository.delete(pageId, fileName)
                 _uiState.update {
                     it.copy(
-                        statusMessage = if (result is ApiResult.Success) "$fileName deleted" else result.userMessage(),
+                        statusMessage = if (result is ApiResult.Success) {
+                            uiText(
+                                R.string.attachment_deleted,
+                                fileName,
+                            )
+                        } else {
+                            result.userMessage()
+                        },
                     )
                 }
             }

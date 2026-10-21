@@ -2,6 +2,8 @@ package com.megamaced.nccollectives.ui.screen.trash
 
 import app.cash.turbine.test
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.Failure
+import com.megamaced.nccollectives.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -40,8 +42,8 @@ private class FakeRemoteList : RemoteListViewModel<Row>() {
     val restored = mutableListOf<Long>()
     val purged = mutableListOf<Long>()
 
-    override val restoredMessage = "Row restored"
-    override val purgedMessage = "Row permanently deleted"
+    override val restoredMessage = UiText.Raw("Row restored")
+    override val purgedMessage = UiText.Raw("Row permanently deleted")
 
     override fun idOf(item: Row): Long = item.id
 
@@ -156,7 +158,7 @@ class RemoteListViewModelTest {
                 viewModel.uiState.value.items
                     .map { it.id },
             )
-            assertEquals("Server returned 503", viewModel.uiState.value.errorMessage)
+            assertEquals(Failure.Http(503).toUiText(), viewModel.uiState.value.errorMessage)
             assertFalse(viewModel.uiState.value.isLoading)
         }
 
@@ -174,7 +176,7 @@ class RemoteListViewModelTest {
                 viewModel.uiState.value.items
                     .map { it.id },
             )
-            assertEquals("Row restored", viewModel.uiState.value.statusMessage)
+            assertEquals(UiText.Raw("Row restored"), viewModel.uiState.value.statusMessage)
             // Optimistic, not a re-list: the server already said the row is gone.
             assertEquals(1, viewModel.loadCalls)
         }
@@ -193,7 +195,7 @@ class RemoteListViewModelTest {
                 viewModel.uiState.value.items
                     .map { it.id },
             )
-            assertEquals("Session expired — please log in again.", viewModel.uiState.value.statusMessage)
+            assertEquals(Failure.SessionExpired.toUiText(), viewModel.uiState.value.statusMessage)
         }
 
     @Test
@@ -210,7 +212,7 @@ class RemoteListViewModelTest {
                 viewModel.uiState.value.items
                     .map { it.id },
             )
-            assertEquals("Row permanently deleted", viewModel.uiState.value.statusMessage)
+            assertEquals(UiText.Raw("Row permanently deleted"), viewModel.uiState.value.statusMessage)
         }
 
     @Test
@@ -227,10 +229,7 @@ class RemoteListViewModelTest {
                 viewModel.uiState.value.items
                     .map { it.id },
             )
-            assertEquals(
-                "Couldn't reach the server. Check your connection.",
-                viewModel.uiState.value.statusMessage,
-            )
+            assertEquals(Failure.Network.toUiText(), viewModel.uiState.value.statusMessage)
         }
 
     @Test

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.megamaced.nccollectives.data.api.Failure
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -183,7 +184,13 @@ data class SyncStatus(
     val lastSuccessAt: Long = 0L,
     /** Epoch millis of the last failed sync, or 0 if none since the last success. */
     val lastFailureAt: Long = 0L,
-    val lastFailureMessage: String? = null,
+    /** Why the last failed sync failed, when it was recorded as a [Failure]. */
+    val lastFailure: Failure? = null,
+    /**
+     * Why it failed, in English, as builds before failures were recorded as
+     * a [Failure] stored it. Shown as written until the next sync replaces it.
+     */
+    val legacyFailureMessage: String? = null,
 )
 
 private val Context.dataStore by preferencesDataStore(name = "user_prefs")
@@ -314,20 +321,27 @@ class UserPreferences
                 if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_SUCCESS_AT] = epochMillis
                 prefs.remove(KEY_SYNC_LAST_FAILURE_AT)
+                prefs.remove(KEY_SYNC_LAST_FAILURE)
                 prefs.remove(KEY_SYNC_LAST_FAILURE_MESSAGE)
             }
         }
 
-        /** Stamp a failed sync, leaving the last-success time intact; guarded as [recordSyncSuccess]. */
+        /**
+         * Stamp a failed sync, leaving the last-success time intact; guarded
+         * as [recordSyncSuccess]. [failure] is stored by name (see
+         * [Failure.encode]), so it is worded in whatever language the app is
+         * in when it's shown.
+         */
         suspend fun recordSyncFailure(
             epochMillis: Long,
-            message: String,
+            failure: Failure,
             stillCurrent: () -> Boolean,
         ) {
             context.dataStore.edit { prefs ->
                 if (!stillCurrent()) return@edit
                 prefs[KEY_SYNC_LAST_FAILURE_AT] = epochMillis
-                prefs[KEY_SYNC_LAST_FAILURE_MESSAGE] = message
+                prefs[KEY_SYNC_LAST_FAILURE] = failure.encode()
+                prefs.remove(KEY_SYNC_LAST_FAILURE_MESSAGE)
             }
         }
 
@@ -432,7 +446,8 @@ class UserPreferences
             SyncStatus(
                 lastSuccessAt = this[KEY_SYNC_LAST_SUCCESS_AT] ?: 0L,
                 lastFailureAt = this[KEY_SYNC_LAST_FAILURE_AT] ?: 0L,
-                lastFailureMessage = this[KEY_SYNC_LAST_FAILURE_MESSAGE],
+                lastFailure = this[KEY_SYNC_LAST_FAILURE]?.let(Failure::decode),
+                legacyFailureMessage = this[KEY_SYNC_LAST_FAILURE_MESSAGE],
             )
 
         private fun String?.toList(): List<String> = this?.split(SEP)?.filter { it.isNotEmpty() } ?: emptyList()
@@ -452,6 +467,9 @@ class UserPreferences
             val KEY_SERVER_VERSION = stringPreferencesKey("last_seen_server_version")
             val KEY_SYNC_LAST_SUCCESS_AT = longPreferencesKey("sync_last_success_at")
             val KEY_SYNC_LAST_FAILURE_AT = longPreferencesKey("sync_last_failure_at")
+            val KEY_SYNC_LAST_FAILURE = stringPreferencesKey("sync_last_failure")
+
+            /** The English failure text earlier builds stored; read as [SyncStatus.legacyFailureMessage]. */
             val KEY_SYNC_LAST_FAILURE_MESSAGE = stringPreferencesKey("sync_last_failure_message")
 
             const val MAX_RECENT_SEARCHES = 10

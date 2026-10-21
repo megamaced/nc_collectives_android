@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.ui.screen.collective
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.prefs.CollectiveSort
@@ -15,8 +16,11 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.sync.FullSync
 import com.megamaced.nccollectives.sync.SyncOutcome
+import com.megamaced.nccollectives.sync.failureText
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.shouldAutoRefresh
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -37,7 +41,7 @@ import javax.inject.Inject
 
 data class CollectiveListUiState(
     val isRefreshing: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     val isCreating: Boolean = false,
     /**
      * Set to the new collective id after a successful create so the UI
@@ -107,8 +111,8 @@ class CollectiveListViewModel
          * again apropos of nothing. A channel message is consumed on receipt:
          * shown once, or not at all.
          */
-        private val _messages = Channel<String>(Channel.BUFFERED)
-        val messages: Flow<String> = _messages.receiveAsFlow()
+        private val _messages = Channel<UiText>(Channel.BUFFERED)
+        val messages: Flow<UiText> = _messages.receiveAsFlow()
 
         /**
          * When the last refresh *started*. Seeded by the `init` refresh so
@@ -156,12 +160,7 @@ class CollectiveListViewModel
             lastRefreshAt = System.currentTimeMillis()
             _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
             viewModelScope.launch {
-                val failure = when (val outcome = fullSync.run()) {
-                    SyncOutcome.Success -> null
-                    SyncOutcome.Unauthorised -> "Session expired — please log in again."
-                    is SyncOutcome.Retryable -> outcome.message
-                    is SyncOutcome.Failed -> outcome.message
-                }
+                val failure = fullSync.run().failureText()
                 _uiState.update { it.copy(isRefreshing = false, errorMessage = failure) }
                 // The error arm of the list only shows while it's empty; a
                 // pull the user asked for reports its failure either way.
@@ -178,7 +177,7 @@ class CollectiveListViewModel
         }
 
         /** Queue a snackbar message; nulls (a result with nothing to say) are dropped. */
-        private fun postMessage(message: String?) {
+        private fun postMessage(message: UiText?) {
             if (message == null) return
             _messages.trySend(message)
         }
@@ -196,7 +195,7 @@ class CollectiveListViewModel
             viewModelScope.launch {
                 val result = repository.createCollective(name, emoji)
                 val createdId = if (result is ApiResult.Success) result.data.id else null
-                postMessage(if (result is ApiResult.Success) "Collective created" else result.userMessage())
+                postMessage(if (result is ApiResult.Success) uiText(R.string.collective_created) else result.userMessage())
                 _uiState.update { it.copy(isCreating = false, createdCollectiveId = createdId) }
             }
         }
@@ -222,7 +221,7 @@ class CollectiveListViewModel
         fun trash(collectiveId: Long) {
             viewModelScope.launch {
                 val result = repository.trashCollective(collectiveId)
-                postMessage(if (result is ApiResult.Success) "Moved to trash" else result.userMessage())
+                postMessage(if (result is ApiResult.Success) uiText(R.string.collective_moved_to_trash) else result.userMessage())
             }
         }
     }

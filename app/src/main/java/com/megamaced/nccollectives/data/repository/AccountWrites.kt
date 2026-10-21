@@ -22,9 +22,6 @@ internal suspend fun NcCollectivesDatabase.writeUnder(
         true
     }
 
-/** Why a write was dropped: the account it was made under has been switched away. */
-internal const val ACCOUNT_CHANGED = "The account changed before this could be saved"
-
 /**
  * [this], unless [generation] is no longer current: then the operation's
  * account has gone, and so has anything its success would name — a page,
@@ -36,4 +33,4 @@ internal fun <T> ApiResult<T>.unlessAccountChanged(
 ): ApiResult<T> = if (accountGeneration.isCurrent(generation)) this else accountChanged()
 
 /** The answer for an operation whose account was switched away part way through. */
-internal fun accountChanged(): ApiResult<Nothing> = ApiResult.Unexpected(AccountChangedException(ACCOUNT_CHANGED))
+internal fun accountChanged(): ApiResult<Nothing> = ApiResult.Unexpected(AccountChangedException())

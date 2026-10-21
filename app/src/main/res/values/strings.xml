@@ -1,4 +1,218 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">NC Collectives</string>
+    <string name="app_name" translatable="false">NC Collectives</string>
+
+    <!-- Errors: why something didn't work. Shown in snackbars and inline messages. -->
+    <string name="error_network">Couldn\'t reach the server. Check your connection.</string>
+    <!-- 403 from the server. The app can't tell whether the user lacks permission or the thing is gone. -->
+    <string name="error_access_refused">Access refused (403). You may not have permission, or it may no longer exist.</string>
+    <!-- %1$d is an HTTP status code, such as 500. -->
+    <string name="error_http">Server returned %1$d</string>
+    <string name="error_session_expired">Session expired. Please sign in again.</string>
+    <string name="error_conflict">Page changed on the server while you were editing.</string>
+    <string name="error_unexpected">Something went wrong.</string>
+    <!-- %1$s is a technical detail from the system, in English. -->
+    <string name="error_unexpected_detail">Something went wrong: %1$s</string>
+    <!-- A page, its parent or a collective isn't in the copy on this device. -->
+    <string name="error_not_on_device">That isn\'t on this device yet. Refresh and try again.</string>
+    <!-- The user switched to another Nextcloud account while this was being saved. -->
+    <string name="error_account_changed">The account changed before this could be saved.</string>
+    <string name="error_attachment_not_found">That attachment is no longer on the server.</string>
+    <string name="error_attachment_being_deleted">That attachment is being deleted.</string>
+    <!-- A photo or file the user picked to upload was removed from the phone before it was sent. -->
+    <string name="error_upload_source_gone">The file to upload is no longer on this device.</string>
+    <string name="error_unsafe_path">That file name or location can\'t be used.</string>
+    <string name="error_no_account">No account is signed in.</string>
+    <string name="error_other_collective">That page is in a different collective.</string>
+    <string name="error_cross_collective_move">Pages can\'t be moved to another collective.</string>
+    <!-- The landing page is a collective's top page. -->
+    <string name="error_landing_page">The landing page can\'t be moved to the trash. Delete the collective instead.</string>
+    <string name="error_blank_name">Enter a name.</string>
+    <!-- A page title was empty, or only characters a file name can't contain, which are listed. -->
+    <string name="error_empty_title">Enter a title. It can\'t be only / \\ : * ? \" &lt; &gt; or |.</string>
+    <!-- A page title was "." or "..", which can't name a file. Keep the quoted dots as they are. -->
+    <string name="error_reserved_title">A page can\'t be called \".\" or \"..\".</string>
+    <!-- "Members" are the people a collective is shared with, through a Nextcloud team. -->
+    <string name="error_no_members_list">This collective\'s members can\'t be listed.</string>
+    <string name="error_empty_response">The server sent an empty answer.</string>
+
+    <!-- Signing in. -->
+    <string name="login_error_no_server">Enter your Nextcloud server URL</string>
+    <!-- The user typed an address starting with http://. Only https:// is allowed. -->
+    <string name="login_error_https_required">HTTPS is required. Drop the http:// prefix.</string>
+    <string name="login_error_connect">Couldn\'t connect to the server.</string>
+    <!-- %1$s is a technical detail from the system, in English. -->
+    <string name="login_error_connect_detail">Couldn\'t connect to the server: %1$s</string>
+    <!-- A safety check: the server named a different address than the one the user typed. %1$s is the address the server named; %2$s is the address the user typed. -->
+    <string name="login_error_other_host">The server returned a different address (%1$s) than the one you entered (%2$s). Sign-in stopped.</string>
+    <!-- As login_error_other_host, when the server's own address isn't known. %1$s is the address the user typed. -->
+    <string name="login_error_other_host_unnamed">The server returned a different address than the one you entered (%1$s). Sign-in stopped.</string>
+    <string name="login_error_redirected">The server redirected the sign-in check elsewhere. Sign-in stopped.</string>
+    <string name="login_error_timed_out">Sign-in timed out. Try again.</string>
+
+    <!-- Shared states and actions. -->
+    <!-- Title over an error message, when a screen couldn't load. -->
+    <string name="state_error_title">Something went wrong</string>
+    <string name="action_retry">Retry</string>
+
+    <!-- Relative times. Each stands on its own, after a label or separator, as in "Last synced: 5 minutes ago". -->
+    <string name="time_just_now">just now</string>
+    <plurals name="time_minutes_ago">
+        <item quantity="one">%1$d minute ago</item>
+        <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+    <plurals name="time_hours_ago">
+        <item quantity="one">%1$d hour ago</item>
+        <item quantity="other">%1$d hours ago</item>
+    </plurals>
+    <plurals name="time_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <plurals name="time_weeks_ago">
+        <item quantity="one">%1$d week ago</item>
+        <item quantity="other">%1$d weeks ago</item>
+    </plurals>
+    <plurals name="time_months_ago">
+        <item quantity="one">%1$d month ago</item>
+        <item quantity="other">%1$d months ago</item>
+    </plurals>
+    <plurals name="time_years_ago">
+        <item quantity="one">%1$d year ago</item>
+        <item quantity="other">%1$d years ago</item>
+    </plurals>
+
+    <!-- Sync status, in Settings. -->
+    <string name="sync_not_synced_yet">Not synced yet</string>
+    <!-- %1$s is a relative time, such as "5 minutes ago" or "just now". -->
+    <string name="sync_last_synced">Last synced: %1$s</string>
+    <!-- %1$s is a relative time, such as "5 minutes ago"; %2$s is why the sync failed, such as "Couldn't reach the server. Check your connection." -->
+    <string name="sync_last_attempt_failed">Last attempt failed (%1$s): %2$s</string>
+
+    <!-- The line under a page in a list: who last edited it and when. -->
+    <!-- %1$s is a person's name; %2$s is a relative time, such as "5 minutes ago". -->
+    <string name="page_edited_by_when">Edited by %1$s · %2$s</string>
+    <!-- %1$s is a person's name. -->
+    <string name="page_edited_by">Edited by %1$s</string>
+    <!-- %1$s is a relative time, such as "5 minutes ago". -->
+    <string name="page_edited_when">Edited · %1$s</string>
+
+    <!-- Collectives. -->
+    <string name="collective_created">Collective created</string>
+    <!-- A collective was moved to the trash, from where it can be restored. -->
+    <string name="collective_moved_to_trash">Moved to trash</string>
+
+    <!-- Pages. -->
+    <string name="page_created">Page created</string>
+    <string name="page_create_failed">Couldn\'t create the page</string>
+    <!-- After pulling to refresh a page. -->
+    <string name="page_updated">Page updated</string>
+    <string name="page_up_to_date">Already up to date</string>
+    <string name="page_renamed">Page renamed</string>
+    <string name="page_moved">Page moved</string>
+    <string name="page_restore_failed">Couldn\'t restore the page</string>
+    <!-- The user threw away their version of a page that had changed on the server meanwhile. -->
+    <string name="page_draft_discarded">Draft discarded</string>
+    <!-- The user's version of a page replaced the server's. -->
+    <string name="page_replaced">Page replaced</string>
+    <string name="page_saved_offline">Saved offline. It will sync when you\'re online.</string>
+    <!-- The page changed on the server again while the user was resolving a conflict. -->
+    <string name="page_still_conflicting">Still conflicting. Try again later.</string>
+    <!-- %1$s is the title in a link to another page, such as [[Meeting notes]]. -->
+    <string name="page_link_not_found">Linked page \"%1$s\" not found</string>
+    <string name="tag_create_failed">Couldn\'t create the tag</string>
+
+    <!-- Attachments: files and images on a page. %1$s is a file name in each. -->
+    <string name="attachment_uploading">Uploading %1$s…</string>
+    <string name="attachment_unreadable">Couldn\'t read %1$s</string>
+    <string name="attachment_retrying">Retrying %1$s</string>
+    <string name="attachment_deleted">%1$s deleted</string>
+    <string name="attachment_no_app">No app installed that can open %1$s</string>
+
+    <!-- Alerts: mentions and page changes, from Nextcloud's Notifications app. -->
+    <string name="alert_page_deleted">That page was deleted</string>
+    <string name="alert_page_unavailable">That page isn\'t available any more</string>
+    <string name="alert_collective_unavailable">That collective isn\'t available any more</string>
+    <string name="alert_open_offline">Couldn\'t reach the server to open that. Try again when you\'re online.</string>
+    <string name="alert_dismiss_failed">Couldn\'t dismiss that alert</string>
+    <string name="alerts_dismiss_all_failed">Couldn\'t dismiss the alerts</string>
+    <plurals name="alerts_dismissed">
+        <item quantity="one">Dismissed %1$d alert</item>
+        <item quantity="other">Dismissed %1$d alerts</item>
+    </plurals>
+    <!-- Of the alerts the user asked to dismiss, this many weren't. -->
+    <plurals name="alerts_not_dismissed">
+        <item quantity="one">%1$d couldn\'t be dismissed</item>
+        <item quantity="other">%1$d couldn\'t be dismissed</item>
+    </plurals>
+    <!-- Dismissing all alerts worked for some and not others. %1$s is alerts_dismissed ("Dismissed 3 alerts"); %2$s is alerts_not_dismissed ("2 couldn't be dismissed"). -->
+    <string name="alerts_dismissed_partly">%1$s; %2$s</string>
+
+    <!-- Checking GitHub for a newer release, from Settings → About. -->
+    <string name="update_check_offline">Couldn\'t reach GitHub. Check your connection and try again.</string>
+    <!-- %1$s is a release tag from GitHub, such as v3.1.0. -->
+    <string name="update_check_bad_release_tag">Release tag \"%1$s\" doesn\'t look like a version.</string>
+    <!-- %1$s is this app's version, such as 3.1.0. -->
+    <string name="update_check_bad_build_version">This build\'s version (%1$s) doesn\'t look like a version.</string>
+
+    <!-- Trash: restoring, or deleting for good. -->
+    <string name="trash_page_restored">Page restored</string>
+    <string name="trash_page_deleted">Page permanently deleted</string>
+    <string name="trash_collective_restored">Collective restored</string>
+    <string name="trash_collective_deleted">Collective permanently deleted</string>
+
+    <!-- Sharing into the app from another app's Share menu. -->
+    <string name="share_pick_parent">Pick a parent page first</string>
+    <string name="share_pick_page">Pick a page to append to</string>
+    <!-- The title given to a page made from a share that had neither a subject nor text. -->
+    <string name="share_default_title">Shared note</string>
+    <!-- %1$s is the new page's title. -->
+    <string name="share_saved_as">Saved as \"%1$s\"</string>
+    <!-- %1$s is the new page's title; %2$s is one or more of the share_text_* and share_links_* notes, or share_images_unreadable. -->
+    <string name="share_saved_as_with_notes">Saved as \"%1$s\" — %2$s</string>
+    <!-- Nothing the share carried reached the page. %1$s is the new page's title; %2$s is share_images_unreadable. -->
+    <string name="share_created_but">Created \"%1$s\", but %2$s</string>
+    <!-- Two notes about a share, joined into one list. Longer lists join more pairs the same way. -->
+    <string name="share_notes_joined">%1$s; %2$s</string>
+    <string name="share_text_queued">the text will sync when online</string>
+    <string name="share_text_draft">the text is waiting as a draft</string>
+    <!-- %1$s is why, such as "Couldn't reach the server. Check your connection." -->
+    <string name="share_text_failed">the text didn\'t save (%1$s)</string>
+    <!-- "Image links" are the references to shared images in the page's text. -->
+    <string name="share_links_queued">the image links will sync when online</string>
+    <string name="share_links_draft">the image links are waiting as a draft</string>
+    <!-- %1$s is why, such as "Couldn't reach the server. Check your connection." -->
+    <string name="share_links_failed">the image links didn\'t save (%1$s)</string>
+    <plurals name="share_images_unreadable">
+        <item quantity="one">%1$d image couldn\'t be read</item>
+        <item quantity="other">%1$d images couldn\'t be read</item>
+    </plurals>
+    <string name="share_appended">Appended</string>
+    <string name="share_appended_queued">Appended (queued, will sync when online)</string>
+    <string name="share_appended_draft">Page changed on the server; appended as a draft</string>
+    <!-- %1$s is share_appended or share_appended_queued; %2$s is share_images_unreadable. -->
+    <string name="share_appended_with_note">%1$s — %2$s</string>
+    <!-- %1$s is share_images_unreadable. -->
+    <string name="share_nothing_to_save_because">Nothing to save — %1$s</string>
+    <string name="share_nothing_to_save_empty">Nothing to save — the share was empty</string>
+
+    <!-- Editing. -->
+    <!-- The preferred collaborative editor isn't available on this server, so the plain one opens instead. -->
+    <string name="edit_collaborative_unavailable">Collaborative editor unavailable. Opening the plain editor.</string>
+    <string name="edit_saved_as_draft">Page changed on the server. Your edits were saved as a draft you can resolve on the page.</string>
+    <string name="web_editor_open_failed">Couldn\'t open the collaborative editor</string>
+    <!-- The server's HTTPS certificate couldn't be checked, so the collaborative editor wasn't loaded. -->
+    <string name="web_editor_certificate_failed">Couldn\'t verify the server\'s TLS certificate. The editor was not opened.</string>
+
+    <!-- Browsing pages by tag. Shown under the tag's name when the list spans every collective. -->
+    <string name="tag_all_collectives">All collectives</string>
+
+    <!-- Members: the people a collective is shared with, through a Nextcloud team. -->
+    <string name="members_team_unknown">This device doesn\'t know which team backs this collective yet. Refreshing your collectives fills that in.</string>
+
+    <!-- Home's cards. %1$s is a person's name; %2$s is a relative time, such as "5 minutes ago". -->
+    <string name="home_card_editor_and_time">%1$s · %2$s</string>
+    <!-- %1$s is this app's version, such as 3.1.0. -->
+    <string name="update_check_up_to_date">You\'re on the latest version (%1$s).</string>
+    <string name="sync_complete">Sync complete</string>
 </resources>

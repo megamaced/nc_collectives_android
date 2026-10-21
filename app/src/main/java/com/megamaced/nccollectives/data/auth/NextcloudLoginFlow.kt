@@ -1,5 +1,8 @@
 package com.megamaced.nccollectives.data.auth
 
+import com.megamaced.nccollectives.R
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -48,7 +51,7 @@ sealed interface LoginFlowStatus {
     ) : LoginFlowStatus
 
     data class Error(
-        val message: String,
+        val message: UiText,
     ) : LoginFlowStatus
 }
 
@@ -96,17 +99,18 @@ class NextcloudLoginFlow
                     client.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) {
                             return@withContext Result.failure(
-                                LoginFlowException("Server returned ${response.code}"),
+                                LoginFlowException(uiText(R.string.error_http, response.code)),
                             )
                         }
                         val body = response.body?.string()
-                            ?: return@withContext Result.failure(LoginFlowException("Empty response"))
+                            ?: return@withContext Result.failure(LoginFlowException(uiText(R.string.error_empty_response)))
                         val initResponse = json.decodeFromString<LoginFlowInitResponse>(body)
                         Result.success(initResponse)
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Login flow initiation failed")
-                    Result.failure(LoginFlowException("Failed to connect: ${e.message}", e))
+                    val text = e.message?.let { uiText(R.string.login_error_connect_detail, it) } ?: uiText(R.string.login_error_connect)
+                    Result.failure(LoginFlowException(text, e))
                 }
             }
 
@@ -138,7 +142,7 @@ class NextcloudLoginFlow
                             when (response.code) {
                                 200 -> {
                                     val responseBody = response.body?.string()
-                                        ?: return@withContext LoginFlowStatus.Error("Empty response")
+                                        ?: return@withContext LoginFlowStatus.Error(uiText(R.string.error_empty_response))
                                     val result = json.decodeFromString<LoginFlowResult>(responseBody)
                                     // S-17: the server-returned `server` field
                                     // becomes the canonical host for every
@@ -151,9 +155,7 @@ class NextcloudLoginFlow
                                     // what the user entered.
                                     if (expectedHost != null && !hostMatches(result.server, expectedHost)) {
                                         return@withContext LoginFlowStatus.Error(
-                                            "Server returned a different host (${result.server}) " +
-                                                "than the one you entered ($expectedHost). " +
-                                                "Refusing to continue.",
+                                            uiText(R.string.login_error_other_host, result.server, expectedHost),
                                         )
                                     }
                                     return@withContext LoginFlowStatus.Success(result)
@@ -164,13 +166,11 @@ class NextcloudLoginFlow
                                 }
 
                                 in 300..399 -> {
-                                    return@withContext LoginFlowStatus.Error(
-                                        "The server redirected the sign-in check elsewhere. Refusing to follow it.",
-                                    )
+                                    return@withContext LoginFlowStatus.Error(uiText(R.string.login_error_redirected))
                                 }
 
                                 else -> {
-                                    return@withContext LoginFlowStatus.Error("Server returned ${response.code}")
+                                    return@withContext LoginFlowStatus.Error(uiText(R.string.error_http, response.code))
                                 }
                             }
                         }
@@ -181,11 +181,11 @@ class NextcloudLoginFlow
                     }
                     delay(POLL_INTERVAL_MS)
                 }
-                LoginFlowStatus.Error("Login timed out")
+                LoginFlowStatus.Error(uiText(R.string.login_error_timed_out))
             }
 
         companion object {
-            private const val USER_AGENT = "NC Collectives Android"
+            private const val USER_AGENT = "NC Collectives Android" // i18n-ignore: an HTTP header, not shown
             private const val POLL_INTERVAL_MS = 5_000L
             private const val MAX_POLL_ATTEMPTS = 60 // 5 minutes total
         }
@@ -246,7 +246,8 @@ internal fun isSameServerHttpsUrl(
     return hostMatches(url, expectedHost)
 }
 
+/** Sign-in couldn't start, for the reason [text] gives the user. */
 class LoginFlowException(
-    message: String,
+    val text: UiText,
     cause: Throwable? = null,
-) : Exception(message, cause)
+) : Exception(cause?.message, cause)

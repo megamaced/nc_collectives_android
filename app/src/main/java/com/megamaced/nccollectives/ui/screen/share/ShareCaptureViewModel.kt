@@ -3,6 +3,7 @@ package com.megamaced.nccollectives.ui.screen.share
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.domain.model.Collective
@@ -15,7 +16,9 @@ import com.megamaced.nccollectives.share.SharePayload
 import com.megamaced.nccollectives.share.SharePayloadHolder
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.attachmentMarkdown
+import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -69,7 +72,7 @@ internal data class StagedImages(
  * issue #31.
  */
 internal data class CaptureReport(
-    val message: String,
+    val message: UiText,
     val succeeded: Boolean,
     val resumable: Boolean,
 )
@@ -83,8 +86,8 @@ data class ShareCaptureUiState(
     val selectedAppendPageId: Long? = null,
     val isSaving: Boolean = false,
     val finished: Boolean = false,
-    val finishedMessage: String? = null,
-    val errorMessage: String? = null,
+    val finishedMessage: UiText? = null,
+    val errorMessage: UiText? = null,
     /** Set when a create got as far as the page but not its image refs. */
     val partialCreate: PartialCreate? = null,
 )
@@ -236,7 +239,7 @@ class ShareCaptureViewModel
                 return
             }
             if (parentId == null) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = "Pick a parent page first") }
+                _uiState.update { it.copy(isSaving = false, errorMessage = uiText(R.string.share_pick_parent)) }
                 return
             }
             val finalTitle = title.trim().ifEmpty { defaultTitle(payload) }
@@ -321,7 +324,7 @@ class ShareCaptureViewModel
             payload: SharePayload,
         ) {
             if (pageId == null) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = "Pick a page to append to") }
+                _uiState.update { it.copy(isSaving = false, errorMessage = uiText(R.string.share_pick_page)) }
                 return
             }
             val staged = queueImages(pageId, payload)
@@ -414,12 +417,12 @@ class ShareCaptureViewModel
             }
 
         private fun defaultTitle(payload: SharePayload?): String {
-            if (payload == null) return "Shared note"
+            if (payload == null) return context.getString(R.string.share_default_title)
             payload.subject?.takeIf { it.isNotBlank() }?.let { return it.take(60) }
             payload.text?.lineSequence()?.firstOrNull { it.isNotBlank() }?.let {
                 return it.take(60).trim()
             }
-            return "Shared note"
+            return context.getString(R.string.share_default_title)
         }
     }
 
@@ -443,18 +446,18 @@ internal fun captureReport(
     refsOutcome: SaveOutcome,
 ): CaptureReport {
     val title = created.pageTitle
-    val lost = buildList {
+    val lost = buildList<UiText> {
         when (val body = created.bodyOutcome) {
             SaveOutcome.Saved -> Unit
-            SaveOutcome.Queued -> add("the text will sync when online")
-            SaveOutcome.Conflict -> add("the text is waiting as a draft")
-            is SaveOutcome.Error -> add("the text didn't save (${body.message})")
+            SaveOutcome.Queued -> add(uiText(R.string.share_text_queued))
+            SaveOutcome.Conflict -> add(uiText(R.string.share_text_draft))
+            is SaveOutcome.Error -> add(uiText(R.string.share_text_failed, body.message))
         }
         when (refsOutcome) {
             SaveOutcome.Saved -> Unit
-            SaveOutcome.Queued -> add("the image links will sync when online")
-            SaveOutcome.Conflict -> add("the image links are waiting as a draft")
-            is SaveOutcome.Error -> add("the image links didn't save (${refsOutcome.message})")
+            SaveOutcome.Queued -> add(uiText(R.string.share_links_queued))
+            SaveOutcome.Conflict -> add(uiText(R.string.share_links_draft))
+            is SaveOutcome.Error -> add(uiText(R.string.share_links_failed, refsOutcome.message))
         }
         if (created.imagesDropped > 0) add(droppedImagesPhrase(created.imagesDropped))
     }
@@ -465,14 +468,17 @@ internal fun captureReport(
         !created.hasText
     return CaptureReport(
         message = when {
-            savedNothing -> "Created \"$title\", but ${droppedImagesPhrase(created.imagesDropped)}"
-            lost.isEmpty() -> "Saved as \"$title\""
-            else -> "Saved as \"$title\" — ${lost.joinToString("; ")}"
+            savedNothing -> uiText(R.string.share_created_but, title, droppedImagesPhrase(created.imagesDropped))
+            lost.isEmpty() -> uiText(R.string.share_saved_as, title)
+            else -> uiText(R.string.share_saved_as_with_notes, title, lost.joinedAsNotes())
         },
         succeeded = !savedNothing && refsOutcome !is SaveOutcome.Error,
         resumable = refsOutcome is SaveOutcome.Error,
     )
 }
+
+/** These notes as one list, joined the way the language joins them. */
+private fun List<UiText>.joinedAsNotes(): UiText = reduce { joined, next -> uiText(R.string.share_notes_joined, joined, next) }
 
 /** The append half of [captureReport]. */
 internal fun appendReport(
@@ -480,15 +486,15 @@ internal fun appendReport(
     imagesDropped: Int,
 ): CaptureReport {
     val base = when (outcome) {
-        SaveOutcome.Saved -> "Appended"
-        SaveOutcome.Queued -> "Appended (queued, will sync when online)"
-        SaveOutcome.Conflict -> "Page changed on the server; appended as a draft"
+        SaveOutcome.Saved -> uiText(R.string.share_appended)
+        SaveOutcome.Queued -> uiText(R.string.share_appended_queued)
+        SaveOutcome.Conflict -> uiText(R.string.share_appended_draft)
         is SaveOutcome.Error -> outcome.message
     }
     val succeeded = outcome !is SaveOutcome.Error
     return CaptureReport(
         message = if (succeeded && imagesDropped > 0) {
-            "$base — ${droppedImagesPhrase(imagesDropped)}"
+            uiText(R.string.share_appended_with_note, base, droppedImagesPhrase(imagesDropped))
         } else {
             base
         },
@@ -498,16 +504,11 @@ internal fun appendReport(
 }
 
 /** Nothing the share carried could be saved (issue #31). */
-internal fun nothingToSaveMessage(imagesDropped: Int): String =
+internal fun nothingToSaveMessage(imagesDropped: Int): UiText =
     if (imagesDropped > 0) {
-        "Nothing to save — ${droppedImagesPhrase(imagesDropped)}"
+        uiText(R.string.share_nothing_to_save_because, droppedImagesPhrase(imagesDropped))
     } else {
-        "Nothing to save — the share was empty"
+        uiText(R.string.share_nothing_to_save_empty)
     }
 
-private fun droppedImagesPhrase(count: Int): String =
-    if (count == 1) {
-        "1 image couldn't be read"
-    } else {
-        "$count images couldn't be read"
-    }
+private fun droppedImagesPhrase(count: Int): UiText = UiText.Plural(R.plurals.share_images_unreadable, count)

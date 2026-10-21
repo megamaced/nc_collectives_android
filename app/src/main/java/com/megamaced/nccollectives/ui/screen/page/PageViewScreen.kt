@@ -61,6 +61,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
@@ -71,6 +72,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.attachment.openAttachmentExternally
@@ -85,6 +87,8 @@ import com.megamaced.nccollectives.ui.components.SubpageChipRow
 import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.AttachmentRef
+import com.megamaced.nccollectives.util.resolve
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -147,6 +151,8 @@ internal fun PageViewScreen(
     // [automatic] is the trip into the editor a page takes on opening (see
     // `PageViewModel.openState`), which checks the page again once the route
     // is known: it may have been trashed, or turned up a conflict, meanwhile.
+    val resources by rememberUpdatedState(LocalResources.current)
+
     fun launchEdit(automatic: Boolean) {
         resolvingEditRoute = true
         editScope.launch {
@@ -156,7 +162,7 @@ internal fun PageViewScreen(
                 // lookup is effectively instant.
                 val decision = viewModel.resolveEditRoute()
                 decision.fallbackMessage?.let { msg ->
-                    snackbarHostState.showSnackbar(msg)
+                    snackbarHostState.showSnackbar(msg.resolve(resources))
                 }
                 if (automatic && !viewModel.stillOpensStraightIntoEditor()) {
                     viewModel.dropPendingEdit()
@@ -222,7 +228,7 @@ internal fun PageViewScreen(
         val attachment = ui.attachmentToOpen ?: return@LaunchedEffect
         val opened = openAttachmentExternally(context, attachment)
         viewModel.acknowledgeAttachmentOpened(
-            failureMessage = if (opened) null else "No app installed that can open ${attachment.fileName}",
+            failureMessage = if (opened) null else uiText(R.string.attachment_no_app, attachment.fileName),
         )
     }
 

@@ -1,7 +1,8 @@
 package com.megamaced.nccollectives.sync
 
 import com.megamaced.nccollectives.data.api.ApiResult
-import com.megamaced.nccollectives.data.api.userMessage
+import com.megamaced.nccollectives.data.api.Failure
+import com.megamaced.nccollectives.data.api.failure
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.auth.CurrentUser
 import com.megamaced.nccollectives.data.auth.bound
@@ -9,6 +10,7 @@ import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.repository.AlertRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
+import com.megamaced.nccollectives.util.UiText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -24,7 +26,7 @@ sealed interface SyncOutcome {
 
     /** The network dropped mid-run. Worth trying again unchanged. */
     data class Retryable(
-        val message: String,
+        val failure: Failure,
     ) : SyncOutcome
 
     /**
@@ -36,9 +38,18 @@ sealed interface SyncOutcome {
 
     /** The server answered and refused. Retrying the same call won't help. */
     data class Failed(
-        val message: String,
+        val failure: Failure,
     ) : SyncOutcome
 }
+
+/** What to tell the user about this outcome: nothing for a success, or why it failed. */
+fun SyncOutcome.failureText(): UiText? =
+    when (this) {
+        SyncOutcome.Success -> null
+        SyncOutcome.Unauthorised -> Failure.SessionExpired.toUiText()
+        is SyncOutcome.Retryable -> failure.toUiText()
+        is SyncOutcome.Failed -> failure.toUiText()
+    }
 
 /**
  * The pull half of syncing: refresh the collective list, then page metadata
@@ -89,16 +100,16 @@ class FullSync
                 // something the user can act on from the Settings screen.
                 SyncOutcome.Unauthorised -> Unit
 
-                is SyncOutcome.Retryable -> userPreferences.recordSyncFailure(now, outcome.message, stillCurrent)
+                is SyncOutcome.Retryable -> userPreferences.recordSyncFailure(now, outcome.failure, stillCurrent)
 
-                is SyncOutcome.Failed -> userPreferences.recordSyncFailure(now, outcome.message, stillCurrent)
+                is SyncOutcome.Failed -> userPreferences.recordSyncFailure(now, outcome.failure, stillCurrent)
             }
             return outcome
         }
 
         private suspend fun pull(): SyncOutcome {
-            var retryable: String? = null
-            var failure: String? = null
+            var retryable: Failure? = null
+            var failure: Failure? = null
 
             when (val listResult = collectiveRepository.refresh()) {
                 is ApiResult.Success -> {
@@ -107,7 +118,7 @@ class FullSync
 
                 is ApiResult.NetworkError -> {
                     Timber.w("Sync deferred: collective refresh hit network error")
-                    return SyncOutcome.Retryable(listResult.userMessage() ?: NETWORK_MESSAGE)
+                    return SyncOutcome.Retryable(Failure.Network)
                 }
 
                 ApiResult.Unauthorised -> {
@@ -122,7 +133,7 @@ class FullSync
                 // claim a full sync we didn't manage.
                 else -> {
                     Timber.w("Sync: collective refresh failed, continuing from cache")
-                    failure = listResult.userMessage() ?: "Couldn't refresh the collective list"
+                    failure = listResult.failure() ?: Failure.Unexpected(null)
                 }
             }
 
@@ -161,7 +172,7 @@ class FullSync
                     }
 
                     is ApiResult.NetworkError -> {
-                        retryable = pages.userMessage() ?: NETWORK_MESSAGE
+                        retryable = Failure.Network
                     }
 
                     is ApiResult.HttpError -> {
@@ -171,7 +182,7 @@ class FullSync
                             collectiveId,
                             pages.message,
                         )
-                        failure = pages.userMessage() ?: "Server error ${pages.code}"
+                        failure = Failure.Http(pages.code)
                     }
 
                     ApiResult.Unauthorised -> {
@@ -185,7 +196,7 @@ class FullSync
                     // not meaningful on a GET
                     is ApiResult.Unexpected -> {
                         Timber.w(pages.cause, "Sync unexpected error on collective %d", collectiveId)
-                        failure = pages.userMessage() ?: "Unexpected error"
+                        failure = pages.failure()
                     }
                 }
             }
@@ -197,8 +208,6 @@ class FullSync
         }
 
         private companion object {
-            const val NETWORK_MESSAGE = "Couldn't reach the server"
-
             /**
              * Four in-flight collectives, each of which issues two requests
              * (R-48) — enough to keep OkHttp's five-per-host dispatcher busy
