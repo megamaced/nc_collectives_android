@@ -1,5 +1,7 @@
 package com.megamaced.nccollectives.ui.screen.home
 
+import android.content.Context
+import androidx.annotation.StringRes
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -28,6 +31,10 @@ import org.robolectric.annotation.Config
 class HomeContentTest {
     @get:Rule
     val rule = createComposeRule()
+
+    private fun text(
+        @StringRes id: Int,
+    ): String = ApplicationProvider.getApplicationContext<Context>().getString(id)
 
     private val opened = mutableListOf<Long>()
     private val seeAll = mutableListOf<HomeSection>()
@@ -78,11 +85,11 @@ class HomeContentTest {
     fun onlySectionsWithSomethingInThemAreShown() {
         show(feed = HomeFeed(recentlyUpdated = pages(2), tags = listOf(TagCount("soup", 3))))
 
-        rule.onNodeWithText(HomeSection.RecentlyUpdated.title).assertExists()
+        rule.onNodeWithText(text(HomeSection.RecentlyUpdated.title)).assertExists()
         rule.onNodeWithText("Browse by tag").assertExists()
         rule.onNodeWithText("soup · 3").assertExists()
         listOf(HomeSection.Attention, HomeSection.JumpBackIn, HomeSection.UpdatedSinceRead, HomeSection.YourEdits)
-            .forEach { rule.onNodeWithText(it.title).assertDoesNotExist() }
+            .forEach { rule.onNodeWithText(text(it.title)).assertDoesNotExist() }
         rule.onNodeWithText("Nothing here yet").assertDoesNotExist()
     }
 
@@ -90,7 +97,7 @@ class HomeContentTest {
     fun unseenAlertsAreOfferedFirstInNeedsAttention_andLeadToTheAlertsTab() {
         show(feed = HomeFeed(unseenAlerts = 3))
 
-        rule.onNodeWithText(HomeSection.Attention.title).assertExists()
+        rule.onNodeWithText(text(HomeSection.Attention.title)).assertExists()
         rule.onNodeWithText("Nothing here yet").assertDoesNotExist()
         rule.onNodeWithText("3 new alerts").performClick()
         assertEquals(1, alertsOpened)
@@ -101,7 +108,7 @@ class HomeContentTest {
         show(feed = HomeFeed(updatedSinceRead = pages(1)))
 
         rule.onNodeWithText("new alert", substring = true).assertDoesNotExist()
-        rule.onNodeWithText(HomeSection.Attention.title).assertDoesNotExist()
+        rule.onNodeWithText(text(HomeSection.Attention.title)).assertDoesNotExist()
     }
 
     @Test

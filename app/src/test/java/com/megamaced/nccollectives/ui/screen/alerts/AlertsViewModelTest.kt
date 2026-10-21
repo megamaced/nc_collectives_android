@@ -1,6 +1,9 @@
 package com.megamaced.nccollectives.ui.screen.alerts
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.Failure
 import com.megamaced.nccollectives.data.auth.AccountBinding
@@ -16,7 +19,9 @@ import com.megamaced.nccollectives.domain.repository.CollectiveRepository
 import com.megamaced.nccollectives.domain.repository.PageRepository
 import com.megamaced.nccollectives.ui.navigation.AlertBadgeViewModel
 import com.megamaced.nccollectives.ui.navigation.badgeText
+import com.megamaced.nccollectives.util.FixtureResources
 import com.megamaced.nccollectives.util.english
+import com.megamaced.nccollectives.util.resolve
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -255,12 +260,80 @@ class AlertsViewModelTest {
     }
 
     @Test
-    fun aSubjectlessAlertIsDescribedFromItsParameters() {
-        assertEquals("Bob mentioned you in Page 1 in Wiki", fallbackSubject(alert(1, kind = AlertKind.Mention)))
+    fun dismissingAllSaysThisAlertForOne_andCountsMore() {
+        assertEquals("This alert will be dismissed on the server, for every device you use.", dismissAllConfirmation(1).english())
+        assertEquals("These 3 alerts will be dismissed on the server, for every device you use.", dismissAllConfirmation(3).english())
+    }
+
+    @Test
+    fun alertKindsAndNotifyLevelsHaveTheirOwnWords() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertEquals(listOf("Mention", "Page changed", "Page deleted"), AlertKind.entries.map { context.getString(it.label()) })
+        assertEquals(listOf("Off", "Mentions", "All"), NotifyLevel.entries.map { context.getString(it.label()) })
+    }
+
+    @Test
+    fun aSubjectlessAlertIsAWholeSentence_withOrWithoutTheTitleAndCollective() {
+        fun subject(
+            kind: AlertKind,
+            title: String?,
+            collective: String?,
+        ) = fallbackSubject(alert(1, kind = kind).copy(pageTitle = title, collectiveName = collective)).english()
+
+        assertEquals(
+            listOf(
+                "Bob mentioned you in Plans in Wiki",
+                "Bob mentioned you in Plans",
+                "Bob mentioned you in a page in Wiki",
+                "Bob mentioned you in a page",
+                "Bob changed Plans in Wiki",
+                "Bob changed Plans",
+                "Bob changed a page in Wiki",
+                "Bob changed a page",
+                "Bob deleted Plans in Wiki",
+                "Bob deleted Plans",
+                "Bob deleted a page in Wiki",
+                "Bob deleted a page",
+            ),
+            AlertKind.entries.flatMap { kind ->
+                listOf(
+                    subject(kind, "Plans", "Wiki"),
+                    subject(kind, "Plans", null),
+                    subject(kind, null, "Wiki"),
+                    subject(kind, null, null),
+                )
+            },
+        )
         assertEquals(
             "Someone deleted a page",
-            fallbackSubject(alert(1, kind = AlertKind.PageDeleted).copy(actorName = null, pageTitle = null, collectiveName = null)),
+            fallbackSubject(
+                alert(1, kind = AlertKind.PageDeleted).copy(actorName = null, pageTitle = null, collectiveName = null),
+            ).english(),
         )
+    }
+
+    @Test
+    fun aLanguageCanInflectAnUnnamedPageForEachSentence() {
+        // Polish puts "a page" in the locative after "mentioned you in" and
+        // in the accusative after "changed" and "deleted".
+        val polish = FixtureResources(
+            mapOf(
+                R.string.alert_mentioned_untitled to "%1\$s wspomniał o tobie na stronie",
+                R.string.alert_mentioned_untitled_in to "%1\$s wspomniał o tobie na stronie w %2\$s",
+                R.string.alert_changed_untitled to "%1\$s zmienił stronę",
+                R.string.alert_deleted_untitled_in to "%1\$s usunął stronę w %2\$s",
+            ),
+        )
+
+        fun subject(
+            kind: AlertKind,
+            collective: String?,
+        ) = fallbackSubject(alert(1, kind = kind).copy(pageTitle = null, collectiveName = collective)).resolve(polish)
+
+        assertEquals("Bob wspomniał o tobie na stronie", subject(AlertKind.Mention, null))
+        assertEquals("Bob wspomniał o tobie na stronie w Wiki", subject(AlertKind.Mention, "Wiki"))
+        assertEquals("Bob zmienił stronę", subject(AlertKind.PageUpdated, null))
+        assertEquals("Bob usunął stronę w Wiki", subject(AlertKind.PageDeleted, "Wiki"))
     }
 
     @Test

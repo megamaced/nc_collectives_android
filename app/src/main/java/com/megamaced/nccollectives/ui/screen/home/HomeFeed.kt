@@ -1,5 +1,7 @@
 package com.megamaced.nccollectives.ui.screen.home
 
+import androidx.annotation.StringRes
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -13,13 +15,13 @@ import kotlinx.coroutines.flow.Flow
  */
 enum class HomeSection(
     val key: String,
-    val title: String,
+    @param:StringRes val title: Int,
 ) {
-    Attention("attention", "Needs attention"),
-    JumpBackIn("jump-back-in", "Jump back in"),
-    UpdatedSinceRead("updated-since-read", "Updated since you read it"),
-    RecentlyUpdated("recently-updated", "Recently updated"),
-    YourEdits("your-edits", "Your recent edits"),
+    Attention("attention", R.string.home_section_attention),
+    JumpBackIn("jump-back-in", R.string.home_section_jump_back_in),
+    UpdatedSinceRead("updated-since-read", R.string.home_section_updated_since_read),
+    RecentlyUpdated("recently-updated", R.string.home_section_recently_updated),
+    YourEdits("your-edits", R.string.home_section_your_edits),
     ;
 
     companion object {

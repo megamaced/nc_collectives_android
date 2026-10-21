@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.ui.screen.home
 
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.TagCount
 import com.megamaced.nccollectives.util.english
@@ -73,6 +74,10 @@ class HomeFeedRulesTest {
 
         assertEquals(listOf(3L, 1L, 2L), rows.map { it.page.id })
         assertEquals(listOf(true, false, false), rows.map { it.hasConflict })
+        assertEquals(
+            listOf(R.string.home_attention_conflict, R.string.home_attention_queued, R.string.home_attention_queued),
+            rows.map { it.supporting },
+        )
     }
 
     @Test
@@ -84,7 +89,7 @@ class HomeFeedRulesTest {
 
         assertEquals(listOf(1L, 2L), rows.map { it.page.id })
         assertTrue(rows[0].hasConflict && rows[0].hasQueuedEdit)
-        assertTrue(rows[0].supporting.contains("waiting to sync"))
+        assertEquals(R.string.home_attention_conflict_and_queued, rows[0].supporting)
     }
 
     @Test

@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,6 +94,7 @@ internal fun HomeScreen(
     // composition, so coming back remembers afresh.
     val visit = remember(viewModel) { viewModel.beginVisit() }
     val currentOnOpenPage by rememberUpdatedState(onOpenPage)
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(viewModel, visit) {
         viewModel.createdPages.collect { created ->
             // Opened only from the visit that asked for it, and only while
@@ -105,8 +107,8 @@ internal fun HomeScreen(
             } else {
                 launch {
                     val result = snackbarHostState.showSnackbar(
-                        message = "Created “${created.title}”",
-                        actionLabel = "Open",
+                        message = resources.getString(R.string.home_page_created, created.title),
+                        actionLabel = resources.getString(R.string.action_open),
                         duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) currentOnOpenPage(created.pageId)
@@ -120,10 +122,10 @@ internal fun HomeScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Home", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.home_title), style = MaterialTheme.typography.titleMedium) },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -133,10 +135,10 @@ internal fun HomeScreen(
         floatingActionButton = {
             if (editable.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    text = { Text("New page") },
+                    text = { Text(stringResource(R.string.page_new)) },
                     // The label slot is hidden from accessibility services, so the
                     // icon carries the button's name, expanded or not.
-                    icon = { Icon(Icons.Filled.Add, contentDescription = "New page") },
+                    icon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.page_new)) },
                     onClick = {
                         viewModel.startNewPage(editable)
                         showNewPage = true
@@ -211,8 +213,8 @@ internal fun HomeContent(
     }
     if (feed.isEmpty(recentFiltered = recentFilter != null)) {
         EmptyState(
-            title = "Nothing here yet",
-            message = "Pages you open, and pages edited in your collectives, will show up here.",
+            title = stringResource(R.string.home_empty_title),
+            message = stringResource(R.string.home_empty_message),
         )
         return
     }
@@ -234,7 +236,7 @@ internal fun HomeContent(
         if (attention.isNotEmpty() || feed.unseenAlerts > 0) {
             item(key = "header-attention") {
                 HomeSectionHeader(
-                    title = HomeSection.Attention.title,
+                    title = stringResource(HomeSection.Attention.title),
                     onSeeAll = seeAll(HomeSection.Attention, attention.size, HOME_PREVIEW_ROWS),
                 )
             }
@@ -242,7 +244,7 @@ internal fun HomeContent(
                 item(key = "attention-alerts") { UnseenAlertsRow(feed.unseenAlerts, onClick = onOpenAlerts) }
             }
             items(attention.take(HOME_PREVIEW_ROWS), key = { "attention-${it.page.id}" }) { row ->
-                HomePageRow(row.page, labels[row.page.collectiveId], row.supporting, onClick = { onOpenPage(row.page.id) })
+                HomePageRow(row.page, labels[row.page.collectiveId], stringResource(row.supporting), onClick = { onOpenPage(row.page.id) })
             }
         }
 
@@ -267,7 +269,7 @@ internal fun HomeContent(
         if (feed.recentlyUpdated.isNotEmpty() || recentFilter != null) {
             item(key = "header-recent") {
                 HomeSectionHeader(
-                    title = HomeSection.RecentlyUpdated.title,
+                    title = stringResource(HomeSection.RecentlyUpdated.title),
                     onSeeAll = seeAll(HomeSection.RecentlyUpdated, feed.recentlyUpdated.size, HOME_PREVIEW_CARDS),
                 )
                 if (showsCollectiveFilter(collectives)) {
@@ -275,7 +277,7 @@ internal fun HomeContent(
                 }
                 if (feed.recentlyUpdated.isEmpty()) {
                     Text(
-                        text = "Nothing recent in this collective.",
+                        text = stringResource(R.string.home_nothing_recent),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -305,9 +307,9 @@ internal fun HomeContent(
             item(key = "tags") {
                 val more = feed.tags.size > HOME_PREVIEW_TAGS
                 HomeSectionHeader(
-                    title = "Browse by tag",
+                    title = stringResource(R.string.home_browse_by_tag),
                     onSeeAll = if (more) ({ showAllTags = !showAllTags }) else null,
-                    seeAllLabel = if (showAllTags) "Show fewer" else "Show all",
+                    seeAllLabel = stringResource(if (showAllTags) R.string.action_show_fewer else R.string.action_show_all),
                 )
                 TagChips(
                     tags = if (showAllTags) feed.tags else feed.tags.take(HOME_PREVIEW_TAGS),
@@ -333,7 +335,7 @@ private fun LazyListScope.cardSection(
 ) {
     if (pages.isEmpty()) return
     item(key = section.key) {
-        HomeSectionHeader(title = section.title, onSeeAll = onSeeAll)
+        HomeSectionHeader(title = stringResource(section.title), onSeeAll = onSeeAll)
         val resources = LocalResources.current
         PageCardGrid(
             pages = pages.take(HOME_PREVIEW_CARDS),

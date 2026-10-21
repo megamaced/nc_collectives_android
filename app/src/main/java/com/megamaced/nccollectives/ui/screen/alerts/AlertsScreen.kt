@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.alerts
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -68,6 +71,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Alert
 import com.megamaced.nccollectives.domain.model.AlertKind
 import com.megamaced.nccollectives.ui.components.EmptyState
@@ -75,8 +79,10 @@ import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
 import com.megamaced.nccollectives.ui.navigation.OnReselected
 import com.megamaced.nccollectives.ui.navigation.scrollToTop
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.relativeTimeAgo
 import com.megamaced.nccollectives.util.resolve
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -135,21 +141,21 @@ internal fun AlertsScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Alerts", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.alerts_title), style = MaterialTheme.typography.titleMedium) },
                 actions = {
                     if (!alerts.isNullOrEmpty()) {
                         IconButton(onClick = { confirmDismissAll = true }) {
-                            Icon(Icons.Outlined.ClearAll, contentDescription = "Dismiss all")
+                            Icon(Icons.Outlined.ClearAll, contentDescription = stringResource(R.string.alerts_dismiss_all))
                         }
                     }
                     if (notifyCollectives.isNotEmpty()) {
                         Box {
                             IconButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
+                                Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.action_more_options))
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Notification settings") },
+                                    text = { Text(stringResource(R.string.alerts_notification_settings)) },
                                     onClick = {
                                         showMenu = false
                                         showSettings = true
@@ -190,23 +196,17 @@ internal fun AlertsScreen(
         val count = alerts?.size ?: 0
         AlertDialog(
             onDismissRequest = { confirmDismissAll = false },
-            title = { Text("Dismiss all alerts?") },
+            title = { Text(stringResource(R.string.alerts_dismiss_all_confirm_title)) },
             text = {
-                Text(
-                    if (count == 1) {
-                        "This alert will be dismissed on the server, for every device you use."
-                    } else {
-                        "These $count alerts will be dismissed on the server, for every device you use."
-                    },
-                )
+                Text(dismissAllConfirmation(count).resolve())
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDismissAll = false
                     viewModel.dismissAll()
-                }) { Text("Dismiss all") }
+                }) { Text(stringResource(R.string.alerts_dismiss_all)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDismissAll = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDismissAll = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 
@@ -236,8 +236,8 @@ internal fun AlertsContent(
     when {
         supported == false -> {
             EmptyState(
-                title = "No notifications here",
-                message = "This server doesn't provide notifications.",
+                title = stringResource(R.string.alerts_unsupported_title),
+                message = stringResource(R.string.alerts_unsupported_message),
             )
         }
 
@@ -247,8 +247,8 @@ internal fun AlertsContent(
 
         alerts.isEmpty() -> {
             EmptyState(
-                title = "No alerts",
-                message = "Mentions, and changes in collectives set to notify you, will show up here.",
+                title = stringResource(R.string.alerts_empty_title),
+                message = stringResource(R.string.alerts_empty_message),
             )
         }
 
@@ -277,6 +277,7 @@ private fun DismissibleAlertRow(
     onDismiss: () -> Unit,
 ) {
     val state = rememberSwipeToDismissBoxState()
+    val dismissLabel = stringResource(R.string.action_dismiss)
     SwipeToDismissBox(
         state = state,
         onDismiss = { onDismiss() },
@@ -297,7 +298,7 @@ private fun DismissibleAlertRow(
         // offered to accessibility services by name.
         modifier = Modifier.semantics {
             customActions = listOf(
-                CustomAccessibilityAction("Dismiss") {
+                CustomAccessibilityAction(dismissLabel) {
                     onDismiss()
                     true
                 },
@@ -327,12 +328,12 @@ private fun AlertRow(
     ) {
         Icon(
             imageVector = alert.kind.icon(),
-            contentDescription = alert.kind.label(),
+            contentDescription = stringResource(alert.kind.label()),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = alert.subject.ifBlank { fallbackSubject(alert) },
+                text = alert.subject.ifBlank { fallbackSubject(alert).resolve() },
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
@@ -346,11 +347,12 @@ private fun AlertRow(
             }
         }
         if (isNew) {
+            val newLabel = stringResource(R.string.alert_new)
             Box(
                 modifier = Modifier
                     .size(8.dp)
                     .background(MaterialTheme.colorScheme.primary, CircleShape)
-                    .semantics { contentDescription = "New" },
+                    .semantics { contentDescription = newLabel },
             )
         }
     }
@@ -363,21 +365,68 @@ private fun AlertKind.icon(): ImageVector =
         AlertKind.PageDeleted -> Icons.Outlined.DeleteOutline
     }
 
-private fun AlertKind.label(): String =
+/** What dismissing every alert will do: "this alert" for one, a count for more. */
+internal fun dismissAllConfirmation(count: Int): UiText =
+    if (count == 1) uiText(R.string.alerts_dismiss_all_confirm_one) else UiText.Plural(R.plurals.alerts_dismiss_all_confirm, count)
+
+/** The alert's kind, for screen readers. */
+@StringRes
+internal fun AlertKind.label(): Int =
     when (this) {
-        AlertKind.Mention -> "Mention"
-        AlertKind.PageUpdated -> "Page changed"
-        AlertKind.PageDeleted -> "Page deleted"
+        AlertKind.Mention -> R.string.alert_kind_mention
+        AlertKind.PageUpdated -> R.string.alert_kind_page_updated
+        AlertKind.PageDeleted -> R.string.alert_kind_page_deleted
     }
 
-/** For a server that sends no subject: the same sentence, from the parameters. */
-internal fun fallbackSubject(alert: Alert): String {
-    val who = alert.actorName ?: "Someone"
-    val page = alert.pageTitle ?: "a page"
-    val where = alert.collectiveName?.let { " in $it" }.orEmpty()
-    return when (alert.kind) {
-        AlertKind.Mention -> "$who mentioned you in $page$where"
-        AlertKind.PageUpdated -> "$who changed $page$where"
-        AlertKind.PageDeleted -> "$who deleted $page$where"
+/**
+ * For a server that sends no subject: the same sentence, from the parameters.
+ * Each combination of a named or unnamed page, with or without its
+ * collective, is a whole sentence, so a language can inflect "a page" as
+ * each sentence needs.
+ */
+internal fun fallbackSubject(alert: Alert): UiText {
+    val who = alert.actorName?.let(UiText::Raw) ?: uiText(R.string.alert_someone)
+    val sentences = when (alert.kind) {
+        AlertKind.Mention -> {
+            AlertSentences(
+                titled = R.string.alert_mentioned,
+                titledIn = R.string.alert_mentioned_in,
+                untitled = R.string.alert_mentioned_untitled,
+                untitledIn = R.string.alert_mentioned_untitled_in,
+            )
+        }
+
+        AlertKind.PageUpdated -> {
+            AlertSentences(
+                titled = R.string.alert_changed,
+                titledIn = R.string.alert_changed_in,
+                untitled = R.string.alert_changed_untitled,
+                untitledIn = R.string.alert_changed_untitled_in,
+            )
+        }
+
+        AlertKind.PageDeleted -> {
+            AlertSentences(
+                titled = R.string.alert_deleted,
+                titledIn = R.string.alert_deleted_in,
+                untitled = R.string.alert_deleted_untitled,
+                untitledIn = R.string.alert_deleted_untitled_in,
+            )
+        }
+    }
+    val title = alert.pageTitle
+    val collective = alert.collectiveName
+    return when {
+        title != null && collective != null -> uiText(sentences.titledIn, who, title, collective)
+        title != null -> uiText(sentences.titled, who, title)
+        collective != null -> uiText(sentences.untitledIn, who, collective)
+        else -> uiText(sentences.untitled, who)
     }
 }
+
+private class AlertSentences(
+    @param:StringRes val titled: Int,
+    @param:StringRes val titledIn: Int,
+    @param:StringRes val untitled: Int,
+    @param:StringRes val untitledIn: Int,
+)

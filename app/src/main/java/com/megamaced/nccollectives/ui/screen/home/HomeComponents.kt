@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.home
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,12 +29,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.PageAttention
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -45,7 +49,7 @@ internal fun HomeSectionHeader(
     title: String,
     onSeeAll: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    seeAllLabel: String = "See all",
+    seeAllLabel: String = stringResource(R.string.action_see_all),
 ) {
     Row(
         modifier = modifier
@@ -129,11 +133,11 @@ internal fun UnseenAlertsRow(
         Text(text = "🔔", style = MaterialTheme.typography.titleMedium)
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (count == 1) "1 new alert" else "$count new alerts",
+                text = pluralStringResource(R.plurals.home_new_alerts, count, count),
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
-                text = "Mentions and changes in your collectives",
+                text = stringResource(R.string.home_new_alerts_detail),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -157,7 +161,7 @@ internal fun CollectiveFilterChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "all") {
-            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("All") })
+            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text(stringResource(R.string.filter_all)) })
         }
         items(collectives, key = { it.id }) { collective ->
             FilterChip(
@@ -183,7 +187,7 @@ internal fun TagChips(
         tags.forEach { tag ->
             AssistChip(
                 onClick = { onTag(tag.name) },
-                label = { Text("${tag.name} · ${tag.pageCount}") },
+                label = { Text(stringResource(R.string.home_tag_chip, tag.name, tag.pageCount)) },
             )
         }
     }
@@ -199,11 +203,12 @@ internal data class AttentionRow(
     val hasConflict: Boolean,
     val hasQueuedEdit: Boolean,
 ) {
-    val supporting: String
+    @get:StringRes
+    val supporting: Int
         get() = when {
-            hasConflict && hasQueuedEdit -> "Unsaved changes on this device · an edit waiting to sync"
-            hasConflict -> "Unsaved changes on this device"
-            else -> "Saved offline — waiting to sync"
+            hasConflict && hasQueuedEdit -> R.string.home_attention_conflict_and_queued
+            hasConflict -> R.string.home_attention_conflict
+            else -> R.string.home_attention_queued
         }
 }
 

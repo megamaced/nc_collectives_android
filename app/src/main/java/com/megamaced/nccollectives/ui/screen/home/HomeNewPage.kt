@@ -22,8 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.screen.collective.NewPageDialog
 import com.megamaced.nccollectives.ui.screen.collective.NewPageMode
@@ -61,7 +63,7 @@ internal fun HomeNewPageDialog(
         showParent = selected != null,
         busy = busy,
         header = {
-            Text("Which collective?", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.home_new_page_which_collective), style = MaterialTheme.typography.bodyMedium)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -70,7 +72,7 @@ internal fun HomeNewPageDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = selected?.label ?: "Pick a collective…",
+                    text = selected?.label ?: stringResource(R.string.home_new_page_pick_collective_hint),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (selected != null) {
                         MaterialTheme.colorScheme.onSurface
@@ -107,7 +109,7 @@ private fun CollectivePickerSheet(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Pick a collective", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.home_new_page_pick_collective), style = MaterialTheme.typography.titleMedium)
             LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                 items(collectives, key = { it.id }) { collective ->
                     Text(
@@ -121,7 +123,7 @@ private fun CollectivePickerSheet(
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     }

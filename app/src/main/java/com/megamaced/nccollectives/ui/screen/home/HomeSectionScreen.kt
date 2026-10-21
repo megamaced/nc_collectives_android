@@ -25,9 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.rememberNowMillis
 
@@ -51,10 +53,10 @@ internal fun HomeSectionScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text(section.title, style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(section.title), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -78,14 +80,17 @@ internal fun HomeSectionScreen(
 
                 is HomeSectionContent.Attention -> {
                     if (loaded.rows.isEmpty()) {
-                        EmptyState(title = "All caught up", message = "No conflicts to resolve and no edits waiting to sync.")
+                        EmptyState(
+                            title = stringResource(R.string.home_section_all_caught_up_title),
+                            message = stringResource(R.string.home_section_all_caught_up_message),
+                        )
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(loaded.rows, key = { it.page.id }) { row ->
                                 HomePageRow(
                                     page = row.page,
                                     caption = labels[row.page.collectiveId],
-                                    supporting = row.supporting,
+                                    supporting = stringResource(row.supporting),
                                     onClick = { onOpenPage(row.page.id) },
                                 )
                             }
@@ -95,7 +100,10 @@ internal fun HomeSectionScreen(
 
                 is HomeSectionContent.Pages -> {
                     if (loaded.pages.isEmpty()) {
-                        EmptyState(title = "Nothing here", message = "No pages to show here right now.")
+                        EmptyState(
+                            title = stringResource(R.string.home_section_empty_title),
+                            message = stringResource(R.string.home_section_empty_message),
+                        )
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             pageRows(section, loaded.pages, labels, nowMillis, onOpenPage)
@@ -104,7 +112,7 @@ internal fun HomeSectionScreen(
                                     TextButton(
                                         onClick = viewModel::loadMore,
                                         modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    ) { Text("Load more") }
+                                    ) { Text(stringResource(R.string.action_load_more)) }
                                 }
                             }
                         }

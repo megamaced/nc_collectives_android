@@ -54,6 +54,24 @@
     <!-- Title over an error message, when a screen couldn't load. -->
     <string name="state_error_title">Something went wrong</string>
     <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_done">Done</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_open">Open</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_back">Back</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_more_options">More options</string>
+    <!-- Opens the full list behind a short one. -->
+    <string name="action_see_all">See all</string>
+    <!-- Shows every item in a list cut short, and then shows fewer again. -->
+    <string name="action_show_all">Show all</string>
+    <string name="action_show_fewer">Show fewer</string>
+    <string name="action_load_more">Load more</string>
+    <!-- A filter chip that shows every collective rather than one. -->
+    <string name="filter_all">All</string>
+    <string name="page_new">New page</string>
+    <string name="settings_title">Settings</string>
 
     <!-- Relative times. Each stands on its own, after a label or separator, as in "Last synced: 5 minutes ago". -->
     <string name="time_just_now">just now</string>
@@ -86,6 +104,7 @@
     <string name="sync_not_synced_yet">Not synced yet</string>
     <!-- %1$s is a relative time, such as "5 minutes ago" or "just now". -->
     <string name="sync_last_synced">Last synced: %1$s</string>
+    <string name="sync_complete">Sync complete</string>
     <!-- %1$s is a relative time, such as "5 minutes ago"; %2$s is why the sync failed, such as "Couldn't reach the server. Check your connection." -->
     <string name="sync_last_attempt_failed">Last attempt failed (%1$s): %2$s</string>
 
@@ -154,6 +173,8 @@
     <string name="update_check_bad_release_tag">Release tag \"%1$s\" doesn\'t look like a version.</string>
     <!-- %1$s is this app's version, such as 3.1.0. -->
     <string name="update_check_bad_build_version">This build\'s version (%1$s) doesn\'t look like a version.</string>
+    <!-- %1$s is this app's version, such as 3.1.0. -->
+    <string name="update_check_up_to_date">You\'re on the latest version (%1$s).</string>
 
     <!-- Trash: restoring, or deleting for good. -->
     <string name="trash_page_restored">Page restored</string>
@@ -210,9 +231,110 @@
     <!-- Members: the people a collective is shared with, through a Nextcloud team. -->
     <string name="members_team_unknown">This device doesn\'t know which team backs this collective yet. Refreshing your collectives fills that in.</string>
 
-    <!-- Home's cards. %1$s is a person's name; %2$s is a relative time, such as "5 minutes ago". -->
+
+    <!-- Home: what's new and what needs doing, across collectives. -->
+    <string name="home_title">Home</string>
+    <string name="home_empty_title">Nothing here yet</string>
+    <string name="home_empty_message">Pages you open, and pages edited in your collectives, will show up here.</string>
+    <!-- Home's sections. Each is also the title of the full list behind its "See all". -->
+    <string name="home_section_attention">Needs attention</string>
+    <string name="home_section_jump_back_in">Jump back in</string>
+    <string name="home_section_updated_since_read">Updated since you read it</string>
+    <string name="home_section_recently_updated">Recently updated</string>
+    <string name="home_section_your_edits">Your recent edits</string>
+    <!-- A card's line. %1$s is a person's name; %2$s is a relative time, such as "5 minutes ago". -->
     <string name="home_card_editor_and_time">%1$s · %2$s</string>
-    <!-- %1$s is this app's version, such as 3.1.0. -->
-    <string name="update_check_up_to_date">You\'re on the latest version (%1$s).</string>
-    <string name="sync_complete">Sync complete</string>
+    <string name="home_nothing_recent">Nothing recent in this collective.</string>
+    <string name="home_browse_by_tag">Browse by tag</string>
+    <!-- A tag and how many pages have it. %1$s is the tag; %2$d is the number of pages. -->
+    <string name="home_tag_chip">%1$s · %2$d</string>
+    <!-- Under "Needs attention": unseen alerts, as one row that opens the Alerts tab. -->
+    <plurals name="home_new_alerts">
+        <item quantity="one">%1$d new alert</item>
+        <item quantity="other">%1$d new alerts</item>
+    </plurals>
+    <string name="home_new_alerts_detail">Mentions and changes in your collectives</string>
+    <!-- Why a page needs attention. "Unsaved changes" are edits the server's version conflicted with; "an edit waiting to sync" is an edit saved offline. -->
+    <string name="home_attention_conflict_and_queued">Unsaved changes on this device · an edit waiting to sync</string>
+    <string name="home_attention_conflict">Unsaved changes on this device</string>
+    <string name="home_attention_queued">Saved offline — waiting to sync</string>
+    <!-- %1$s is the new page's title. -->
+    <string name="home_page_created">Created “%1$s”</string>
+    <!-- Making a page from Home, which first asks which collective it goes in. -->
+    <string name="home_new_page_which_collective">Which collective?</string>
+    <string name="home_new_page_pick_collective_hint">Pick a collective…</string>
+    <string name="home_new_page_pick_collective">Pick a collective</string>
+    <!-- A section's full list, behind "See all". -->
+    <string name="home_section_all_caught_up_title">All caught up</string>
+    <string name="home_section_all_caught_up_message">No conflicts to resolve and no edits waiting to sync.</string>
+    <string name="home_section_empty_title">Nothing here</string>
+    <string name="home_section_empty_message">No pages to show here right now.</string>
+
+    <!-- Favorites: pages the user has starred. -->
+    <string name="favorites_title">Favorites</string>
+    <string name="favorites_empty_title">No favorites yet</string>
+    <string name="favorites_empty_message">Pages you favorite will appear here.</string>
+    <!-- %1$s is the page's title. -->
+    <string name="favorites_removed">Removed “%1$s” from favorites</string>
+    <!-- For screen readers, on a page's star. %1$s is the page's title. -->
+    <string name="favorites_remove">Remove %1$s from favorites</string>
+
+    <!-- Search. -->
+    <string name="search_title">Search</string>
+    <string name="search_field_label">Search pages</string>
+    <string name="search_field_placeholder">Title or content</string>
+    <string name="search_no_matches_title">No matches</string>
+    <!-- %1$s is what the user searched for. -->
+    <string name="search_no_matches_message">Nothing matches \"%1$s\".</string>
+    <!-- Searches the user made before. -->
+    <string name="search_recent">Recent</string>
+    <string name="search_tags">Tags</string>
+    <!-- A server search found a page this device hasn't downloaded. -->
+    <string name="search_not_cached">Not in your local cache — open the matching collective first.</string>
+
+    <!-- Alerts, continued: the Alerts tab. -->
+    <string name="alerts_title">Alerts</string>
+    <string name="alerts_dismiss_all">Dismiss all</string>
+    <string name="alerts_notification_settings">Notification settings</string>
+    <string name="alerts_dismiss_all_confirm_title">Dismiss all alerts?</string>
+    <!-- Confirming, when there is exactly one alert. -->
+    <string name="alerts_dismiss_all_confirm_one">This alert will be dismissed on the server, for every device you use.</string>
+    <!-- Confirming, when there is more than one alert. -->
+    <plurals name="alerts_dismiss_all_confirm">
+        <item quantity="one">%1$d alert will be dismissed on the server, for every device you use.</item>
+        <item quantity="other">These %1$d alerts will be dismissed on the server, for every device you use.</item>
+    </plurals>
+    <string name="alerts_unsupported_title">No notifications here</string>
+    <string name="alerts_unsupported_message">This server doesn\'t provide notifications.</string>
+    <string name="alerts_empty_title">No alerts</string>
+    <string name="alerts_empty_message">Mentions, and changes in collectives set to notify you, will show up here.</string>
+    <!-- For screen readers: the dot on an alert the user hasn't seen. -->
+    <string name="alert_new">New</string>
+    <!-- For screen readers: the icon saying what kind of alert it is. -->
+    <string name="alert_kind_mention">Mention</string>
+    <string name="alert_kind_page_updated">Page changed</string>
+    <string name="alert_kind_page_deleted">Page deleted</string>
+    <!-- An alert's sentence, for when the server sends none. %1$s is a person (or alert_someone); %2$s is a page's title; %3$s is a collective. -->
+    <string name="alert_mentioned">%1$s mentioned you in %2$s</string>
+    <string name="alert_mentioned_in">%1$s mentioned you in %2$s in %3$s</string>
+    <string name="alert_changed">%1$s changed %2$s</string>
+    <string name="alert_changed_in">%1$s changed %2$s in %3$s</string>
+    <string name="alert_deleted">%1$s deleted %2$s</string>
+    <string name="alert_deleted_in">%1$s deleted %2$s in %3$s</string>
+    <!-- As alert_mentioned and the others, when the server doesn't name the page. %1$s is a person (or alert_someone); %2$s is a collective. -->
+    <string name="alert_mentioned_untitled">%1$s mentioned you in a page</string>
+    <string name="alert_mentioned_untitled_in">%1$s mentioned you in a page in %2$s</string>
+    <string name="alert_changed_untitled">%1$s changed a page</string>
+    <string name="alert_changed_untitled_in">%1$s changed a page in %2$s</string>
+    <string name="alert_deleted_untitled">%1$s deleted a page</string>
+    <string name="alert_deleted_untitled_in">%1$s deleted a page in %2$s</string>
+    <!-- Stands in for the person in alert_mentioned and the others, when the server doesn't name them. -->
+    <string name="alert_someone">Someone</string>
+    <!-- How much a collective notifies the user. -->
+    <string name="notify_title">Notifications</string>
+    <string name="notify_explanation">Mentions: only when someone mentions you. All: whenever a page changes.</string>
+    <string name="notify_off">Off</string>
+    <string name="notify_mentions">Mentions</string>
+    <!-- Notify about every change, not only mentions. -->
+    <string name="notify_all">All</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.alerts
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,8 +19,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.NotifyLevel
 
@@ -41,7 +44,7 @@ internal fun NotificationSettingsSheet(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Notifications", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.notify_title), style = MaterialTheme.typography.titleMedium)
             NotifyLevelsExplained()
             LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                 items(collectives, key = { it.id }) { collective ->
@@ -53,7 +56,7 @@ internal fun NotificationSettingsSheet(
                     )
                 }
             }
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_done)) }
         }
     }
 }
@@ -62,7 +65,7 @@ internal fun NotificationSettingsSheet(
 @Composable
 internal fun NotifyLevelsExplained(modifier: Modifier = Modifier) {
     Text(
-        text = "Mentions: only when someone mentions you. All: whenever a page changes.",
+        text = stringResource(R.string.notify_explanation),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
@@ -91,15 +94,16 @@ internal fun NotifyLevelChooser(
                     selected = option == level,
                     onClick = { if (option != level) onSelect(option) },
                     shape = SegmentedButtonDefaults.itemShape(index, NotifyLevel.entries.size),
-                ) { Text(option.label(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                ) { Text(stringResource(option.label()), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
 }
 
-internal fun NotifyLevel.label(): String =
+@StringRes
+internal fun NotifyLevel.label(): Int =
     when (this) {
-        NotifyLevel.Off -> "Off"
-        NotifyLevel.Mentions -> "Mentions"
-        NotifyLevel.All -> "All"
+        NotifyLevel.Off -> R.string.notify_off
+        NotifyLevel.Mentions -> R.string.notify_mentions
+        NotifyLevel.All -> R.string.notify_all
     }

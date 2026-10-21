@@ -44,6 +44,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.domain.model.TagCount
@@ -103,7 +105,7 @@ internal fun SearchScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Search", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.search_title), style = MaterialTheme.typography.titleMedium) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
             )
@@ -117,8 +119,8 @@ internal fun SearchScreen(
             OutlinedTextField(
                 value = ui.query,
                 onValueChange = viewModel::onQueryChanged,
-                label = { Text("Search pages") },
-                placeholder = { Text("Title or content") },
+                label = { Text(stringResource(R.string.search_field_label)) },
+                placeholder = { Text(stringResource(R.string.search_field_placeholder)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     imeAction = ImeAction.Search,
@@ -186,7 +188,10 @@ internal fun SearchScreen(
                 }
 
                 filteredResults.isEmpty() && ui.query.isNotBlank() -> {
-                    EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
+                    EmptyState(
+                        title = stringResource(R.string.search_no_matches_title),
+                        message = stringResource(R.string.search_no_matches_message, ui.query),
+                    )
                 }
 
                 filteredResults.isNotEmpty() -> {
@@ -240,12 +245,12 @@ private fun RecentsSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Recent",
+                text = stringResource(R.string.search_recent),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.semantics { heading() },
             )
-            TextButton(onClick = onClear) { Text("Clear") }
+            TextButton(onClick = onClear) { Text(stringResource(R.string.action_clear)) }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             recents.forEach { term ->
@@ -273,13 +278,15 @@ private fun TagsSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Tags",
+                text = stringResource(R.string.search_tags),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.semantics { heading() },
             )
             if (tags.size > HOME_PREVIEW_TAGS) {
-                TextButton(onClick = onToggleShowAll) { Text(if (showAll) "Show fewer" else "Show all") }
+                TextButton(
+                    onClick = onToggleShowAll,
+                ) { Text(stringResource(if (showAll) R.string.action_show_fewer else R.string.action_show_all)) }
             }
         }
         TagChips(
@@ -335,7 +342,7 @@ private fun SearchHitRow(
         }
         if (hit.pageId == null) {
             Text(
-                text = "Not in your local cache — open the matching collective first.",
+                text = stringResource(R.string.search_not_cached),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

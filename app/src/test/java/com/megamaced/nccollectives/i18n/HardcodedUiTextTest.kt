@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.i18n
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -7,9 +8,11 @@ import java.io.File
 /**
  * Text the user reads belongs in string resources, where translators can
  * reach it. This scans the app's sources for the shapes hardcoded UI text
- * takes — a literal handed to `Text`, a label or content description, a
- * snackbar, an error, a `when` branch or `return` that yields a sentence —
- * and fails on any it finds that isn't either:
+ * takes — a literal handed to `Text`; a label, title, message or content
+ * description; a snackbar, a toast, an error, an icon button's name; a
+ * `when` branch, `else`, `?:` fallback or `return` that yields words; a
+ * sentence on a line of its own — and fails on any it finds that isn't
+ * either:
  *
  * - in [BASELINE], the hardcoded text that predates the translation work,
  *   which may only shrink: an entry that no longer matches anything fails
@@ -45,11 +48,40 @@ class HardcodedUiTextTest {
         )
     }
 
+    @Test
+    fun eachShapeOfUiTextIsCaught() {
+        listOf(
+            """Text("Save")""",
+            """text = "Nothing here yet",""",
+            """seeAllLabel = "See all",""",
+            """contentDescription = if (open) "Collapse" else "Expand",""",
+            """val who = alert.actorName ?: "Someone"""",
+            """val page = alert.pageTitle ?: "a page"""",
+            """"This alert will be dismissed on the server.",""",
+            """Attention("attention", "Needs attention"),""",
+            """ToolbarButton(Icons.Filled.FormatBold, "Bold") {""",
+            """.makeText(context, "Copied", Toast.LENGTH_SHORT)""",
+            """CustomAccessibilityAction("Dismiss") {""",
+        ).forEach { line -> assertTrue("Missed: $line", PATTERNS.any { it.containsMatchIn(line) }) }
+    }
+
+    @Test
+    fun codeThatIsNotUiTextPasses() {
+        listOf(
+            """items(pages, key = { "page-${'$'}{it.id}" }) { page ->""",
+            """val base = if (url.endsWith('/')) url else "${'$'}url/"""",
+            """"Sync HTTP %d on collective %d: %s",""",
+            """.header("Authorization", "Basic ${'$'}basic")""",
+            """"`pageId` INTEGER NOT NULL, " +""",
+        ).forEach { line -> assertFalse("Caught: $line", PATTERNS.any { it.containsMatchIn(line) }) }
+    }
+
     /** Every match in the sources, as `path<TAB>trimmed line`, once per matching line. */
     private fun findings(): List<String> =
         SOURCES
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
+            .filterNot { file -> NOT_UI.any { it in file.invariantSeparatorsPath } }
             .sortedBy { it.path }
             .flatMap { file ->
                 val path = file.relativeTo(SOURCES).invariantSeparatorsPath
@@ -88,13 +120,13 @@ class HardcodedUiTextTest {
         /** A string literal with at least one letter in it. */
         const val WORDS = "\"[^\"]*\\p{L}[^\"]*\""
 
+        /** A string literal that reads as words: a capitalised word first, or two words before any template. */
+        const val PHRASE = "\"(?:\\p{Lu}\\p{Ll}|[^\"$]*\\p{L} \\p{L})[^\"]*\""
+
         val PATTERNS =
             listOf(
                 Regex("""\bText\(\s*(text\s*=\s*)?$WORDS"""),
-                Regex(
-                    """\b(contentDescription|label|title|message|placeholder|supportingText|actionLabel|subtitle|caption)""" +
-                        """\s*=\s*$WORDS""",
-                ),
+                Regex("""\b(text|\w*([Ll]abel|[Tt]itle|[Mm]essage|[Dd]escription|[Pp]laceholder|Text|[Cc]aption))\s*=\s*$WORDS"""),
                 Regex("""showSnackbar\(\s*(message\s*=\s*)?$WORDS"""),
                 Regex("""UiText\.Raw\(\s*$WORDS"""),
                 Regex("""\b[A-Z]\w*Error\(\s*$WORDS"""),
@@ -103,7 +135,18 @@ class HardcodedUiTextTest {
                 Regex("""->\s*"[^"$]*\p{Lu}\p{Ll}[^"]*""""),
                 Regex("""\breturn\s+"[^"]*\p{L}+ \p{L}[^"]*""""),
                 Regex(""""[^"]*\$\{?\w+(\.\w+)*\}? \p{Ll}+[^"]*""""),
+                Regex("""\belse\s+$PHRASE"""),
+                Regex("""\?:\s*$PHRASE"""),
+                // A line that is only a literal: an argument, or part of a sentence joined with `+`.
+                Regex("""^"(?=[^"]*\p{Ll}{2})[^"$%`]* [^"$%`]*"[\s,)+]*$"""),
+                Regex(""",\s*"\p{Lu}\p{Ll}+( \p{L}+)+"\s*[,)]"""),
+                Regex("""\bIcons\.[\w.]+,\s*$WORDS"""),
+                Regex("""\bmakeText\(\s*\w+,\s*$WORDS"""),
+                Regex("""\bCustomAccessibilityAction\(\s*$WORDS"""),
             )
+
+        /** Sources with no UI text in them: the database layer's SQL. */
+        val NOT_UI = listOf("/data/db/")
 
         /** Lines that are about the code, not for the user: logs, SQL, preconditions. */
         val SKIP = listOf("Timber", "Log.", "@Query", "require(", "check(", "error(\"", "TODO(", "@SerialName")

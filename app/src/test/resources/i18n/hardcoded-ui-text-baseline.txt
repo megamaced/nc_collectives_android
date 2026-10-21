@@ -1,40 +1,32 @@
 com/megamaced/nccollectives/data/repository/DirectEditingRepositoryImpl.kt	"Page ${page.id} has a path segment that failed validation; refusing to open session",
+com/megamaced/nccollectives/data/repository/DirectEditingRepositoryImpl.kt	"Editor session URL is not an https URL on your Nextcloud host " +
 com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	PageChipSection(label = "Linked from", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
 com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	PageChipSection(label = "Subpages", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
+com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	text = "$label (${chips.size})",
+com/megamaced/nccollectives/ui/components/BacklinkChipRow.kt	contentDescription = if (expanded) "Collapse" else "Expand",
+com/megamaced/nccollectives/ui/components/ConflictBanner.kt	text = "Unsaved changes on this device",
+com/megamaced/nccollectives/ui/components/ConflictBanner.kt	text = "The server's version changed after you started editing. Your local edits are kept as a draft.",
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = { clipboard.setText(AnnotatedString(draft)) }) { Text("Copy") }
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = { confirmDiscard = true }) { Text("Discard") }
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = onReplace) { Text("Replace page") }
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	title = { Text("Discard your draft?") },
+com/megamaced/nccollectives/ui/components/ConflictBanner.kt	"Your unsaved edits will be deleted and the server's version kept. " +
+com/megamaced/nccollectives/ui/components/ConflictBanner.kt	"This can't be undone — use Copy first if you want to keep them.",
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	}) { Text("Discard") }
 com/megamaced/nccollectives/ui/components/ConflictBanner.kt	TextButton(onClick = { confirmDiscard = false }) { Text("Keep draft") }
+com/megamaced/nccollectives/ui/components/MarkdownView.kt	.makeText(context, "No browser app to open this link", Toast.LENGTH_SHORT)
 com/megamaced/nccollectives/ui/components/SortHeader.kt	contentDescription = "Sort order",
 com/megamaced/nccollectives/ui/components/SortHeader.kt	Icon(Icons.Filled.Check, contentDescription = "Selected")
+com/megamaced/nccollectives/ui/navigation/NcCollectivesScaffold.kt	text = "Switching account…",
 com/megamaced/nccollectives/ui/navigation/NcCollectivesScaffold.kt	contentDescription = "$unseenAlerts new"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	title = { Text("Alerts", style = MaterialTheme.typography.titleMedium) },
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	Icon(Icons.Outlined.ClearAll, contentDescription = "Dismiss all")
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	text = { Text("Notification settings") },
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	title = { Text("Dismiss all alerts?") },
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	"These $count alerts will be dismissed on the server, for every device you use."
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	}) { Text("Dismiss all") }
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	dismissButton = { TextButton(onClick = { confirmDismissAll = false }) { Text("Cancel") } },
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	title = "No notifications here",
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	message = "This server doesn't provide notifications.",
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	title = "No alerts",
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	message = "Mentions, and changes in collectives set to notify you, will show up here.",
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	.semantics { contentDescription = "New" },
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.Mention -> "Mention"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageUpdated -> "Page changed"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageDeleted -> "Page deleted"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.Mention -> "$who mentioned you in $page$where"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageUpdated -> "$who changed $page$where"
-com/megamaced/nccollectives/ui/screen/alerts/AlertsScreen.kt	AlertKind.PageDeleted -> "$who deleted $page$where"
-com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	Text("Notifications", style = MaterialTheme.typography.titleMedium)
-com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
-com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	NotifyLevel.Off -> "Off"
-com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	NotifyLevel.Mentions -> "Mentions"
-com/megamaced/nccollectives/ui/screen/alerts/NotificationSettingsSheet.kt	NotifyLevel.All -> "All"
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	text = "Welcome to $displayName",
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	text = "Tap to open",
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	text = "Members",
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	contentDescription = if (expanded) "Collapse members" else "Expand members",
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	text = "No members to show.",
+com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	contentDescription = if (state.canManage) "Manage members" else "Show members",
 com/megamaced/nccollectives/ui/screen/collective/CollectiveHeader.kt	Text("Retry")
+com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = "Collectives",
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	Icon(Icons.Filled.Delete, contentDescription = "Trash")
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("New collective") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	icon = { Icon(Icons.Filled.Add, contentDescription = "New collective") },
@@ -44,6 +36,8 @@ com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	title =
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	title = { Text("Notifications") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text("Done") } },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	title = { Text("Move \"${target.name}\" to trash?") },
+com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	"The collective and all its pages will be moved to the collectives trash. " +
+com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	"You can restore it from there until you delete it permanently.",
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	}) { Text("Move to trash") }
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	TextButton(onClick = { pendingTrash = null }) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	CollectiveSort.NewestFirst -> "Newest first"
@@ -52,16 +46,19 @@ com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	Icon(Ic
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Set emoji…") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Notifications…") },
 com/megamaced/nccollectives/ui/screen/collective/CollectiveListScreen.kt	text = { Text("Move to trash") },
+com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	text = "New collective",
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	label = { Text("Name") },
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	placeholder = { Text("Cannot be changed later") },
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	TextButton(onClick = onDismiss, enabled = !isCreating) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/collective/CreateCollectiveSheet.kt	) { Text("Create") }
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	title = { Text("New page") },
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	Text("Where should this page go?", style = MaterialTheme.typography.bodyMedium)
+com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	text = parent?.title ?: "Pick a parent…",
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	label = { Text("Title") },
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	) { Text("Create") }
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	TextButton(onClick = onDismiss) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	Text("Pick a parent page", style = MaterialTheme.typography.titleMedium)
+com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	text = "No folder pages available.",
 com/megamaced/nccollectives/ui/screen/collective/NewPageDialog.kt	Text("Cancel")
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	Icon(Icons.Filled.Delete, contentDescription = "Trash")
@@ -73,38 +70,15 @@ com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	PageOrder.Cus
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	PageOrder.NewestFirst -> "Newest first"
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	PageOrder.OldestFirst -> "Oldest first"
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	title = "Pages",
+com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	contentDescription = if (isExpanded) "Collapse" else "Expand",
+com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	contentDescription = if (node.isFavorite) "Unfavorite" else "Favorite",
 com/megamaced/nccollectives/ui/screen/collective/PageTreeScreen.kt	contentDescription = "New subpage",
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	message = "Removed “${page.title}” from favorites",
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	actionLabel = "Undo",
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	title = { Text("Favorites", style = MaterialTheme.typography.titleMedium) },
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	title = "No favorites yet",
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	message = "Pages you favorite will appear here.",
-com/megamaced/nccollectives/ui/screen/favorites/FavoritesScreen.kt	contentDescription = "Remove ${page.title} from favorites",
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	text = if (count == 1) "1 new alert" else "$count new alerts",
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("All") })
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	label = { Text("${tag.name} · ${tag.pageCount}") },
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	hasConflict && hasQueuedEdit -> "Unsaved changes on this device · an edit waiting to sync"
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	hasConflict -> "Unsaved changes on this device"
-com/megamaced/nccollectives/ui/screen/home/HomeComponents.kt	else -> "Saved offline — waiting to sync"
-com/megamaced/nccollectives/ui/screen/home/HomeNewPage.kt	Text("Which collective?", style = MaterialTheme.typography.bodyMedium)
-com/megamaced/nccollectives/ui/screen/home/HomeNewPage.kt	Text("Pick a collective", style = MaterialTheme.typography.titleMedium)
-com/megamaced/nccollectives/ui/screen/home/HomeNewPage.kt	Text("Cancel")
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	message = "Created “${created.title}”",
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	actionLabel = "Open",
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	title = { Text("Home", style = MaterialTheme.typography.titleMedium) },
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	Icon(Icons.Outlined.Settings, contentDescription = "Settings")
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	text = { Text("New page") },
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	icon = { Icon(Icons.Filled.Add, contentDescription = "New page") },
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	title = "Nothing here yet",
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	message = "Pages you open, and pages edited in your collectives, will show up here.",
-com/megamaced/nccollectives/ui/screen/home/HomeScreen.kt	title = "Browse by tag",
-com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	EmptyState(title = "All caught up", message = "No conflicts to resolve and no edits waiting to sync.")
-com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	EmptyState(title = "Nothing here", message = "No pages to show here right now.")
-com/megamaced/nccollectives/ui/screen/home/HomeSectionScreen.kt	) { Text("Load more") }
+com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	text = "NC Collectives",
+com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	text = "Connect to your Nextcloud server",
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	label = { Text("Server URL") },
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	placeholder = { Text("cloud.example.com") },
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	Text("Log in")
+com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	text = "Waiting for authorisation…",
 com/megamaced/nccollectives/ui/screen/login/LoginScreen.kt	Text("Cancel")
 com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	CollectiveMemberLevel.Owner -> "Owner"
 com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	CollectiveMemberLevel.Admin -> "Admin"
@@ -122,9 +96,11 @@ com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	Icon(Icons.AutoMi
 com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	title = "No members listed",
 com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	message = "The server returned no members for this collective's team.",
 com/megamaced/nccollectives/ui/screen/members/MembersScreen.kt	text = "Showing the first $shown members. The server doesn't say how many more there are.",
+com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	text = "Insert attachment",
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	label = "Camera",
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	label = "Gallery",
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	label = "File",
+com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	text = "No attachments yet. Capture or pick one above.",
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	Text("Cancel")
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	Attachment.Status.REMOTE -> "Tap to insert"
 com/megamaced/nccollectives/ui/screen/page/AttachmentPickerSheet.kt	Attachment.Status.PENDING -> "Waiting to upload"
@@ -142,21 +118,34 @@ com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	TextButton(onCli
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	contentDescription = "Upload failed",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	Icon(Icons.Filled.Refresh, contentDescription = "Retry upload of ${attachment.fileName}")
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	Icon(Icons.Filled.Delete, contentDescription = "Delete")
+com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	text = "Add attachment",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Take photo",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Pick from gallery",
 com/megamaced/nccollectives/ui/screen/page/AttachmentsScreen.kt	label = "Pick a file",
+com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	text = "Set page emoji",
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	label = { Text("Custom emoji") },
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	placeholder = { Text("Paste or type any emoji") },
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	TextButton(onClick = { onPick("") }) { Text("Clear") }
 com/megamaced/nccollectives/ui/screen/page/EmojiPickerSheet.kt	) { Text("Apply") }
 com/megamaced/nccollectives/ui/screen/page/MovePageSheet.kt	Text("Move page to…", style = MaterialTheme.typography.titleMedium)
+com/megamaced/nccollectives/ui/screen/page/MovePageSheet.kt	text = "No other pages in this collective.",
 com/megamaced/nccollectives/ui/screen/page/MovePageSheet.kt	Text("Cancel")
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	title = { Text("Discard changes?") },
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	text = { Text("You have unsaved edits to this page.") },
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	}) { Text("Discard") }
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	TextButton(onClick = { showDiscardPrompt = false }) { Text("Keep editing") }
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	contentDescription = if (previewing) "Edit" else "Preview",
 com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	Icon(Icons.Filled.Save, contentDescription = "Save")
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.Title, "Heading") { onAction(MarkdownToolbarActions::heading) }
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.FormatBold, "Bold") { onAction(MarkdownToolbarActions::bold) }
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.FormatItalic, "Italic") { onAction(MarkdownToolbarActions::italic) }
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Bullet list") {
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.FormatListNumbered, "Numbered list") {
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.CheckBox, "Checklist") { onAction(MarkdownToolbarActions::checklist) }
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.Link, "Link") { onAction(MarkdownToolbarActions::link) }
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.Image, "Insert image", onClick = onInsertImage)
+com/megamaced/nccollectives/ui/screen/page/PageEditScreen.kt	ToolbarButton(Icons.Filled.Code, "Inline code") { onAction(MarkdownToolbarActions::inlineCode) }
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	message = "Editor is taking a long time to load",
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	actionLabel = "Cancel",
 com/megamaced/nccollectives/ui/screen/page/PageEditWebScreen.kt	title = { Text("Edit (collaborative)", style = MaterialTheme.typography.titleMedium) },
@@ -170,6 +159,7 @@ com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	actionLabel = "Open
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	message = "Moved to trash",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	actionLabel = "Undo",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	contentDescription = if (isFavorite) "Unfavorite" else "Favorite",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	contentDescription = "Page index",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	Icon(Icons.Filled.MoreVert, contentDescription = "More")
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	text = { Text("Refresh") },
@@ -181,6 +171,7 @@ com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	text = { Text("Move
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	text = { Text("Duplicate") },
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	text = { Text("Move to trash") },
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	title = { Text("Move to trash?") },
+com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	"You can restore it from Trash.",
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	}) { Text("Move to trash") }
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	androidx.compose.material3.TextButton(onClick = { showTrashConfirm = false }) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/page/PageViewScreen.kt	text = { Text("Edit") },
@@ -190,20 +181,34 @@ com/megamaced/nccollectives/ui/screen/page/RenameDialog.kt	label = { Text("Title
 com/megamaced/nccollectives/ui/screen/page/RenameDialog.kt	) { Text("Rename") }
 com/megamaced/nccollectives/ui/screen/page/RenameDialog.kt	TextButton(onClick = onDismiss) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	Text("Tags", style = MaterialTheme.typography.titleMedium)
+com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	text = "No tags defined for this collective yet. Create one below.",
 com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	contentDescription = "Browse pages tagged \"${tag.name}\"",
 com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	label = { Text("Create tag…") },
 com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	Icon(Icons.Filled.Add, contentDescription = "Create tag")
 com/megamaced/nccollectives/ui/screen/page/TagPickerSheet.kt	Text("Done")
-com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	title = { Text("Search", style = MaterialTheme.typography.titleMedium) },
-com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	label = { Text("Search pages") },
-com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	placeholder = { Text("Title or content") },
-com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	EmptyState(title = "No matches", message = "Nothing matches \"${ui.query}\".")
-com/megamaced/nccollectives/ui/screen/search/SearchScreen.kt	TextButton(onClick = onClear) { Text("Clear") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	linkScope.launch { snackbarHostState.showSnackbar("No browser app to open $url") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	snackbarHostState.showSnackbar("A newer version is out, but there's no browser app to open ${state.htmlUrl}")
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	title = { Text("Settings", style = MaterialTheme.typography.titleMedium) },
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Not signed in.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	text = "Only the account you're signed in to is stored on this device. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Switching downloads the other one's pages again.",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	Box(modifier = Modifier.padding(start = 8.dp)) { Text("Add account") }
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Text size applies to page content and both editors. It multiplies " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"your device's font size setting rather than replacing it, so " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"if pages are still too small, raise it under Android " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Settings → Display → Display size and text.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Where the app opens. A collective opens in the Collectives tab, " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"so Back from it still reaches the collective list.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"How often the app refreshes pages and metadata in the background. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Page lists also refresh when you pull down on them, and a page " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"checks for changes each time you open it.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Plain markdown works offline and is the reliable default. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"The collaborative editor (Nextcloud Text) is in beta and " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"only available when online with a supported server.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Open pages in",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"The default follows each collective's page mode on the web. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Choose Read mode or Edit mode to override it on this device.",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	LinkRow(label = "Source code") { openLink(SOURCE_URL) }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	LinkRow(label = "Licence (AGPL-3.0)") { openLink(LICENCE_URL) }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	Box(modifier = Modifier.padding(start = 8.dp)) { Text("Sign out") }
@@ -214,13 +219,19 @@ com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	title = { Text(
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	}) { Text("Remove") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	title = { Text("Sign out?") },
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Cached pages, attachments, and queued edits will be removed from this device. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Anything not yet synced will be lost.",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	}) { Text("Sign out") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextButton(onClick = { showSignOutConfirm = false }) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	contentDescription = "Signed in",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	contentDescription = "Remove ${account.loginName}",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"downloaded instead. Your other account stays signed in."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"${account.loginName} will be signed out on this device. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"Nothing you have cached is affected — this isn't the account you're using."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"${account.loginName} will be signed out and their cached pages removed. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"You'll be switched to your other account."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"${account.loginName} will be signed out and their cached pages removed. " +
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"This is your last account, so you'll be returned to the login screen."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	pendingEdits == 1 -> " One edit hasn't reached the server yet and will be lost."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	else -> " $pendingEdits edits haven't reached the server yet and will be lost."
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	ThemeMode.System -> "Follow system"
@@ -230,6 +241,7 @@ com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextScale.Small
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextScale.Default -> "Default"
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextScale.Large -> "Large"
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	TextScale.Larger -> "Larger"
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	text = "Sample page text at this size.",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	SyncCadence.Off -> "Off — manual refresh only"
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	SyncCadence.Hourly -> "Every hour"
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	SyncCadence.SixHourly -> "Every 6 hours (default)"
@@ -242,22 +254,35 @@ com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	PageOpenMode.Re
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	PageOpenMode.Edit -> "Edit mode"
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	label = "Home (default)",
 com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	label = "Collective list",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	"No collectives cached yet — open the collective list once and they'll appear here.",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	text = if (syncing) "Syncing…" else "Sync now",
+com/megamaced/nccollectives/ui/screen/settings/SettingsScreen.kt	text = if (checking) "Checking for updates…" else "Check for updates",
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	title = { Text("Share to collective", style = MaterialTheme.typography.titleMedium) },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
+com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	text = "Nothing to share — return to the previous app and try again.",
+com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text(if (ui.mode == ShareMode.NEW_PAGE) "Create page" else "Append")
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text("From the share sheet", style = MaterialTheme.typography.labelMedium)
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text("Collective") },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text("New page") },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text("Append to existing") },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	label = { Text("Page title") },
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text("Parent page", style = MaterialTheme.typography.labelMedium)
+com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	text = "No pages in this collective yet.",
 com/megamaced/nccollectives/ui/screen/share/ShareCaptureScreen.kt	Text("Append to", style = MaterialTheme.typography.labelMedium)
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	title = "No pages tagged",
 com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	message = "No pages tagged with \"${ui.tagName}\".",
+com/megamaced/nccollectives/ui/screen/tag/TagBrowseScreen.kt	contentDescription = if (row.isFavorite) "Unfavorite" else "Favorite",
 com/megamaced/nccollectives/ui/screen/trash/CollectiveTrashScreen.kt	title = "Collective trash",
+com/megamaced/nccollectives/ui/screen/trash/CollectiveTrashScreen.kt	emptyTitle = "Trash is empty",
+com/megamaced/nccollectives/ui/screen/trash/CollectiveTrashScreen.kt	emptyMessage = "Collectives you move to trash will appear here.",
+com/megamaced/nccollectives/ui/screen/trash/CollectiveTrashScreen.kt	"This will permanently delete the collective and tear down the underlying Team. " +
+com/megamaced/nccollectives/ui/screen/trash/CollectiveTrashScreen.kt	"All pages will be lost forever. This can't be undone."
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	}) { Text("Delete forever") }
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	TextButton(onClick = { pendingPurge = null }) { Text("Cancel") }
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	Icon(Icons.Filled.RestoreFromTrash, contentDescription = "Restore")
 com/megamaced/nccollectives/ui/screen/trash/TrashListScaffold.kt	contentDescription = "Delete forever",
 com/megamaced/nccollectives/ui/screen/trash/TrashScreen.kt	title = "Trash",
+com/megamaced/nccollectives/ui/screen/trash/TrashScreen.kt	emptyTitle = "Trash is empty",
+com/megamaced/nccollectives/ui/screen/trash/TrashScreen.kt	emptyMessage = "Pages you delete from this collective will appear here.",

@@ -32,9 +32,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarMessageEffect
@@ -65,6 +69,7 @@ internal fun FavoritesScreen(
     OnReselected(reselected) { listState.scrollToTop() }
 
     SnackbarMessageEffect(viewModel.messages, snackbarHostState)
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(viewModel, snackbarHostState) {
         viewModel.removed.collect { page ->
             // The latest removal is the one offered. It replaces an offer
@@ -74,8 +79,8 @@ internal fun FavoritesScreen(
             snackbarHostState.currentSnackbarData?.dismiss()
             launch {
                 val result = snackbarHostState.showSnackbar(
-                    message = "Removed “${page.title}” from favorites",
-                    actionLabel = "Undo",
+                    message = resources.getString(R.string.favorites_removed, page.title),
+                    actionLabel = resources.getString(R.string.action_undo),
                     duration = SnackbarDuration.Short,
                 )
                 if (result == SnackbarResult.ActionPerformed) viewModel.restore(page)
@@ -88,7 +93,7 @@ internal fun FavoritesScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Favorites", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.favorites_title), style = MaterialTheme.typography.titleMedium) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 windowInsets = WindowInsets(0, 0, 0, 0),
             )
@@ -116,8 +121,8 @@ internal fun FavoritesContent(
 ) {
     if (groups.isEmpty()) {
         EmptyState(
-            title = "No favorites yet",
-            message = "Pages you favorite will appear here.",
+            title = stringResource(R.string.favorites_empty_title),
+            message = stringResource(R.string.favorites_empty_message),
         )
         return
     }
@@ -177,7 +182,7 @@ private fun FavoriteRow(
         IconButton(onClick = onUnfavorite) {
             Icon(
                 imageVector = Icons.Filled.Star,
-                contentDescription = "Remove ${page.title} from favorites",
+                contentDescription = stringResource(R.string.favorites_remove, page.title),
                 tint = MaterialTheme.colorScheme.primary,
             )
         }

@@ -67,7 +67,7 @@ class HostInterceptor
             if (!isKnownHost(original.url, target)) {
                 throw IOException(
                     "Refusing to send a request to an unrecognised host (${original.url.host}); " +
-                        "only the app's own base URL and the stored Nextcloud host are routed here",
+                        "only the app's own base URL and the stored Nextcloud host are routed here", // i18n-ignore: never shown
                 )
             }
             val builder = original
