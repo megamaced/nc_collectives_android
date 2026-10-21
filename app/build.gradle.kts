@@ -106,6 +106,24 @@ android {
         buildConfig = true
     }
 
+    androidResources {
+        // The languages the app ships: the publication gate. A catalogue
+        // Weblate adds (values-<lang>) stays out of the APK, and out of
+        // Android 13+'s per-app language setting, until its language is added
+        // here. Dependencies' translations are kept to the same languages, so
+        // a screen is never half in one language. verifyLocales checks this
+        // list against the catalogues and the generated language lists.
+        localeFilters += listOf("en")
+        generateLocaleConfig = true
+    }
+
+    lint {
+        // Weblate adds a language before every string in it is translated,
+        // and an untranslated string falls back to English. Format-argument
+        // and plural checks stay errors.
+        informational += "MissingTranslation"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -161,6 +179,17 @@ android {
     }
 }
 
+androidComponents {
+    // UiTextTest proves text resolves in another language through Polish
+    // fixtures in the debug source set (i18n_fixture.xml). localeFilters
+    // strips every language but English from the linked resources, the unit
+    // tests' included, so debug keeps Polish too. Debug only, and the
+    // generated language list still comes from localeFilters alone.
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.androidResources.aaptAdditionalParameters.addAll("-c", "pl")
+    }
+}
+
 // Prism4j (Batch 24) drags in the legacy `annotations-java5` artifact;
 // the modern `annotations` (transitive from Kotlin stdlib) ships the
 // same FQCNs, so the two collide at the dex step. Exclude globally so
@@ -171,6 +200,39 @@ configurations.all {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// Android 13+'s per-app language list is generated from localeFilters. It must
+// name only languages the app has strings for, and every language the app
+// ships must have them: each localeFilters entry needs its own
+// values-<qualifier>/strings.xml, and the generated list, for debug and for
+// release alike, is exactly English plus those. A qualifier maps to the
+// list's BCP 47 tag: `pt-rBR` is `pt-BR`, `b+sr+Latn` is `sr-Latn`.
+val verifyLocales by tasks.registering {
+    val shipped = android.androidResources.localeFilters.toSet() - "en"
+    val catalogues = shipped.associateWith { layout.projectDirectory.file("src/main/res/values-$it/strings.xml").asFile }
+    val expected =
+        setOf("en-US") +
+            shipped.map { if (it.startsWith("b+")) it.removePrefix("b+").replace('+', '-') else it.replace("-r", "-") }
+    val generated =
+        listOf("debug", "release").map {
+            layout.buildDirectory.file("generated/res/localeConfig/$it/xml/_generated_res_locale_config.xml")
+        }
+    dependsOn("generateDebugLocaleConfig", "generateReleaseLocaleConfig")
+    generated.forEach { inputs.file(it) }
+    doLast {
+        val missing = catalogues.filterValues { !it.isFile }.keys
+        check(missing.isEmpty()) { "localeFilters ships $missing, which have no strings.xml" }
+        generated.forEach { config ->
+            val file = config.get().asFile
+            val listed =
+                Regex("""android:name="([^"]+)"""")
+                    .findAll(file.readText())
+                    .map { it.groupValues[1] }
+                    .toSet()
+            check(listed == expected) { "$file lists $listed, expected $expected" }
+        }
+    }
 }
 
 dependencies {

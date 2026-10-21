@@ -214,6 +214,7 @@ jobs:
           ./gradlew --no-daemon
           ktlintCheck
           lintDebug lintRelease
+          verifyLocales
           testDebugUnitTest
           assembleDebug assembleRelease
 

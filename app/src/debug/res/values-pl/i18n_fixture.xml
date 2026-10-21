@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Polish for UiTextTest: its four plural forms, and arguments in another order. -->
+<resources>
+    <string name="i18n_fixture_greeting">Pozdrowienia z %2$s dla %1$s</string>
+    <string name="i18n_fixture_wrapped">Uwaga: %1$s</string>
+    <plurals name="i18n_fixture_files">
+        <item quantity="one">%1$d plik</item>
+        <item quantity="few">%1$d pliki</item>
+        <item quantity="many">%1$d plików</item>
+        <item quantity="other">%1$d pliku</item>
+    </plurals>
+</resources>

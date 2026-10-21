@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Test-only strings for UiTextTest, in the debug source set so they never
+    reach a release build: English here, Polish in values-pl.
+-->
+<resources>
+    <string name="i18n_fixture_greeting">Hello %1$s, from %2$s</string>
+    <string name="i18n_fixture_only_in_english">Only in English</string>
+    <string name="i18n_fixture_wrapped">Note: %1$s</string>
+    <plurals name="i18n_fixture_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+</resources>
