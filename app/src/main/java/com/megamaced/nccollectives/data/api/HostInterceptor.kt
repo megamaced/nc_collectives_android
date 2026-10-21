@@ -60,13 +60,13 @@ class HostInterceptor
             // every authenticated request to cleartext. Failing the call
             // here makes the regression loud rather than a slow leak.
             if (target.scheme != "https") {
-                throw IOException("Refusing non-https Nextcloud host: ${target.scheme}")
+                throw IOException("Refusing non-https Nextcloud host: ${target.scheme}") // i18n-ignore: shown as a network failure
             }
 
             val original = chain.request()
             if (!isKnownHost(original.url, target)) {
                 throw IOException(
-                    "Refusing to send a request to an unrecognised host (${original.url.host}); " +
+                    "Refusing to send a request to an unrecognised host (${original.url.host}); " + // i18n-ignore: never shown
                         "only the app's own base URL and the stored Nextcloud host are routed here", // i18n-ignore: never shown
                 )
             }

@@ -110,7 +110,7 @@ suspend fun <T> AccountGeneration.bound(block: suspend (generation: Long) -> T):
  * network.
  */
 class AccountChangedException(
-    message: String = "The account changed before this request was sent",
+    message: String = "The account changed before this request was sent", // i18n-ignore: never shown
 ) : IOException(message)
 
 /**

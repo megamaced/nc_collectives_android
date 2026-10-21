@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.collective
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,11 +46,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.prefs.CollectiveSort
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.components.EmptyState
@@ -122,13 +125,13 @@ internal fun CollectiveListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Collectives",
+                        text = stringResource(R.string.collectives_title),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 },
                 actions = {
                     IconButton(onClick = onOpenTrash) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Trash")
+                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.trash_title))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -137,10 +140,10 @@ internal fun CollectiveListScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                text = { Text("New collective") },
+                text = { Text(stringResource(R.string.collective_new)) },
                 // The label slot is hidden from accessibility services, so the
                 // icon carries the button's name, expanded or not.
-                icon = { Icon(Icons.Filled.Add, contentDescription = "New collective") },
+                icon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.collective_new)) },
                 onClick = { showCreateSheet = true },
                 expanded = fabExpanded,
             )
@@ -159,8 +162,8 @@ internal fun CollectiveListScreen(
                 onRetry = viewModel::refresh,
                 empty = {
                     EmptyState(
-                        title = "No collectives",
-                        message = "Tap New collective to create one.",
+                        title = stringResource(R.string.collectives_empty_title),
+                        message = stringResource(R.string.collectives_empty_message),
                     )
                 },
             ) {
@@ -171,7 +174,7 @@ internal fun CollectiveListScreen(
                 ) {
                     item(key = "header-sort") {
                         SortHeader(
-                            title = "Collectives",
+                            title = stringResource(R.string.collectives_title),
                             selected = collectiveSort,
                             options = CollectiveSort.entries,
                             label = ::collectiveSortLabel,
@@ -213,7 +216,7 @@ internal fun CollectiveListScreen(
     collectives.firstOrNull { it.id == notifyTarget }?.let { target ->
         AlertDialog(
             onDismissRequest = { notifyTarget = null },
-            title = { Text("Notifications") },
+            title = { Text(stringResource(R.string.notify_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     NotifyLevelsExplained()
@@ -224,40 +227,38 @@ internal fun CollectiveListScreen(
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text("Done") } },
+            confirmButton = { TextButton(onClick = { notifyTarget = null }) { Text(stringResource(R.string.action_done)) } },
         )
     }
 
     pendingTrash?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingTrash = null },
-            title = { Text("Move \"${target.name}\" to trash?") },
+            title = { Text(stringResource(R.string.collective_trash_confirm_title, target.name)) },
             text = {
-                Text(
-                    "The collective and all its pages will be moved to the collectives trash. " +
-                        "You can restore it from there until you delete it permanently.",
-                )
+                Text(stringResource(R.string.collective_trash_confirm_message))
             },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.trash(target.id)
                     pendingTrash = null
-                }) { Text("Move to trash") }
+                }) { Text(stringResource(R.string.action_move_to_trash)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingTrash = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingTrash = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
 }
 
 /** Menu labels, worded as a collective's page order menu is so the two read alike. */
-private fun collectiveSortLabel(sort: CollectiveSort): String =
+@StringRes
+internal fun collectiveSortLabel(sort: CollectiveSort): Int =
     when (sort) {
-        CollectiveSort.NameAscending -> "A–Z"
-        CollectiveSort.NameDescending -> "Z–A"
-        CollectiveSort.NewestFirst -> "Newest first"
-        CollectiveSort.OldestFirst -> "Oldest first"
+        CollectiveSort.NameAscending -> R.string.sort_name_ascending
+        CollectiveSort.NameDescending -> R.string.sort_name_descending
+        CollectiveSort.NewestFirst -> R.string.sort_newest_first
+        CollectiveSort.OldestFirst -> R.string.sort_oldest_first
     }
 
 @Composable
@@ -293,14 +294,14 @@ private fun CollectiveRow(
         )
         Box {
             IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more_options))
             }
             DropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
             ) {
                 DropdownMenuItem(
-                    text = { Text("Set emoji…") },
+                    text = { Text(stringResource(R.string.collective_set_emoji)) },
                     onClick = {
                         menuExpanded = false
                         onSetEmoji()
@@ -308,7 +309,7 @@ private fun CollectiveRow(
                 )
                 if (onNotifications != null) {
                     DropdownMenuItem(
-                        text = { Text("Notifications…") },
+                        text = { Text(stringResource(R.string.collective_notifications)) },
                         onClick = {
                             menuExpanded = false
                             onNotifications()
@@ -316,7 +317,7 @@ private fun CollectiveRow(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text("Move to trash") },
+                    text = { Text(stringResource(R.string.action_move_to_trash)) },
                     onClick = {
                         menuExpanded = false
                         onTrash()

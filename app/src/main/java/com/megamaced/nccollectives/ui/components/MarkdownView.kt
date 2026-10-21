@@ -372,7 +372,7 @@ internal class PageDirectorySchemeHandler(
     ): ImageItem {
         if (!withinPageDirectory(boundary, raw)) {
             Timber.w("Refusing an image fetch outside the page directory: %s", uri.host ?: "<unparsable>")
-            throw IOException("Image reference outside the page directory")
+            throw IOException("Image reference outside the page directory") // i18n-ignore: the image just fails to load
         }
         return delegate.handle(raw, uri)
     }

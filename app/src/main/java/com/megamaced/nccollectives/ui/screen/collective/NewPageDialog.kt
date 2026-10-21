@@ -26,9 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageListItem
 
 internal sealed interface NewPageMode {
@@ -95,12 +97,12 @@ internal fun NewPageDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New page") },
+        title = { Text(stringResource(R.string.page_new)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 header?.invoke()
                 if (mode is NewPageMode.PickParent && showParent) {
-                    Text("Where should this page go?", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.page_new_where), style = MaterialTheme.typography.bodyMedium)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -114,7 +116,7 @@ internal fun NewPageDialog(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = parent?.title ?: "Pick a parent…",
+                            text = parent?.title ?: stringResource(R.string.page_new_pick_parent_hint),
                             style = MaterialTheme.typography.bodyLarge,
                             color = if (parent != null) {
                                 MaterialTheme.colorScheme.onSurface
@@ -128,7 +130,7 @@ internal fun NewPageDialog(
                     value = title,
                     onValueChange = { title = it },
                     singleLine = true,
-                    label = { Text("Title") },
+                    label = { Text(stringResource(R.string.page_title_label)) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         if (canCreate) onCreate(parentId!!, title.trim())
@@ -140,10 +142,10 @@ internal fun NewPageDialog(
             TextButton(
                 enabled = canCreate,
                 onClick = { onCreate(parentId!!, title.trim()) },
-            ) { Text("Create") }
+            ) { Text(stringResource(R.string.action_create)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 
@@ -172,10 +174,10 @@ private fun ParentPickerSheet(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Pick a parent page", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.page_new_pick_parent), style = MaterialTheme.typography.titleMedium)
             if (choices.isEmpty()) {
                 Text(
-                    text = "No folder pages available.",
+                    text = stringResource(R.string.page_new_no_parents),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -200,7 +202,7 @@ private fun ParentPickerSheet(
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     }

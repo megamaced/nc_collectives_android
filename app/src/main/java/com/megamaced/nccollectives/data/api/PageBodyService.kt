@@ -340,7 +340,7 @@ class PageBodyService
                 // try/catches it into "no remote url". The other two callers
                 // there (`urlFor`, `attachmentsBaseUrl`) return `String?`
                 // and would be the natural place to absorb it too.
-                ?: throw IllegalStateException("Refusing to build a WebDAV URL from unvalidated inputs")
+                ?: throw IllegalStateException("Refusing to build a WebDAV URL from unvalidated inputs") // i18n-ignore: caught
 
         /**
          * B-68: every WebDAV entry point maps an unbuildable URL to this

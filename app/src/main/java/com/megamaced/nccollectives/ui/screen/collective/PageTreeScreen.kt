@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.collective
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,12 +57,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageOrder
 import com.megamaced.nccollectives.ui.components.EmptyState
@@ -121,18 +124,18 @@ internal fun PageTreeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = ui.collectiveName.ifBlank { "Pages" },
+                        text = ui.collectiveName.ifBlank { stringResource(R.string.pages_title) },
                         style = MaterialTheme.typography.titleMedium,
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Trash")
+                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.trash_title))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -141,10 +144,10 @@ internal fun PageTreeScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                text = { Text("New page") },
+                text = { Text(stringResource(R.string.page_new)) },
                 // The label slot is hidden from accessibility services, so the
                 // icon carries the button's name, expanded or not.
-                icon = { Icon(Icons.Filled.Add, contentDescription = "New page") },
+                icon = { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.page_new)) },
                 onClick = { newPageMode = NewPageMode.PickParent },
                 expanded = fabExpanded,
             )
@@ -168,8 +171,8 @@ internal fun PageTreeScreen(
                 onRetry = viewModel::refresh,
                 empty = {
                     EmptyState(
-                        title = "No pages",
-                        message = "This collective doesn't have any pages yet.",
+                        title = stringResource(R.string.pages_empty_title),
+                        message = stringResource(R.string.pages_empty_message),
                     )
                 },
             ) {
@@ -211,13 +214,14 @@ internal fun PageTreeScreen(
 }
 
 /** Menu labels, worded as the collective list's sort menu is so the two read alike. */
-private fun pageOrderLabel(order: PageOrder): String =
+@StringRes
+internal fun pageOrderLabel(order: PageOrder): Int =
     when (order) {
-        PageOrder.Custom -> "Custom order"
-        PageOrder.TitleAscending -> "A–Z"
-        PageOrder.TitleDescending -> "Z–A"
-        PageOrder.NewestFirst -> "Newest first"
-        PageOrder.OldestFirst -> "Oldest first"
+        PageOrder.Custom -> R.string.sort_custom
+        PageOrder.TitleAscending -> R.string.sort_name_ascending
+        PageOrder.TitleDescending -> R.string.sort_name_descending
+        PageOrder.NewestFirst -> R.string.sort_newest_first
+        PageOrder.OldestFirst -> R.string.sort_oldest_first
     }
 
 @Composable
@@ -303,7 +307,7 @@ private fun PageTreeList(
         if (localNodes.isNotEmpty()) {
             item(key = "header-sort") {
                 SortHeader(
-                    title = "Pages",
+                    title = stringResource(R.string.pages_title),
                     selected = pageOrder,
                     options = PageOrder.entries,
                     label = ::pageOrderLabel,
@@ -384,7 +388,7 @@ private fun PageTreeItem(
                     } else {
                         Icons.AutoMirrored.Filled.KeyboardArrowRight
                     },
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    contentDescription = stringResource(if (isExpanded) R.string.action_collapse else R.string.action_expand),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -418,7 +422,7 @@ private fun PageTreeItem(
         IconButton(onClick = onToggleFavorite) {
             Icon(
                 imageVector = if (node.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                contentDescription = if (node.isFavorite) "Unfavorite" else "Favorite",
+                contentDescription = stringResource(if (node.isFavorite) R.string.action_unfavorite else R.string.action_favorite),
                 tint = if (node.isFavorite) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -429,7 +433,7 @@ private fun PageTreeItem(
         IconButton(onClick = onAddSubpage) {
             Icon(
                 imageVector = Icons.Filled.Add,
-                contentDescription = "New subpage",
+                contentDescription = stringResource(R.string.page_new_subpage),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

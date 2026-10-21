@@ -33,10 +33,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import com.megamaced.nccollectives.util.resolve
@@ -77,7 +79,7 @@ internal fun TagBrowseScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -91,8 +93,8 @@ internal fun TagBrowseScreen(
         Box(modifier = Modifier.padding(scaffoldPadding).fillMaxSize()) {
             if (rows.isEmpty()) {
                 EmptyState(
-                    title = "No pages tagged",
-                    message = "No pages tagged with \"${ui.tagName}\".",
+                    title = stringResource(R.string.tag_empty_title),
+                    message = stringResource(R.string.tag_empty_message, ui.tagName),
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -136,7 +138,7 @@ private fun TagBrowseRowItem(
                 row.collectiveLabel,
                 row.page.lastUserDisplayName
                     .takeIf { it.isNotEmpty() }
-                    ?.let { "Edited by $it" },
+                    ?.let { stringResource(R.string.page_edited_by, it) },
             ).joinToString(" · ")
             if (subtitle.isNotEmpty()) {
                 Text(
@@ -149,7 +151,7 @@ private fun TagBrowseRowItem(
         IconButton(onClick = onToggleFavorite) {
             Icon(
                 imageVector = if (row.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                contentDescription = if (row.isFavorite) "Unfavorite" else "Favorite",
+                contentDescription = stringResource(if (row.isFavorite) R.string.action_unfavorite else R.string.action_favorite),
                 tint = if (row.isFavorite) {
                     MaterialTheme.colorScheme.primary
                 } else {

@@ -54,10 +54,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.domain.model.CollectiveMember
@@ -122,7 +124,7 @@ internal fun LandingPageCard(
             Text(text = displayEmoji, style = MaterialTheme.typography.headlineSmall)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Welcome to $displayName",
+                    text = stringResource(R.string.collective_welcome, displayName),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (snippet.isNotBlank()) {
@@ -137,7 +139,7 @@ internal fun LandingPageCard(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Tap to open",
+                    text = stringResource(R.string.collective_tap_to_open),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -193,7 +195,7 @@ internal fun MembersStrip(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Members",
+                text = stringResource(R.string.members_title),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -203,7 +205,7 @@ internal fun MembersStrip(
                 // Deliberately not "Show members" — that phrase belongs to
                 // the action that opens the members screen, and two
                 // controls a finger apart must not announce the same thing.
-                contentDescription = if (expanded) "Collapse members" else "Expand members",
+                contentDescription = stringResource(if (expanded) R.string.members_collapse else R.string.members_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -271,7 +273,7 @@ private fun MembersStripBody(
                         // identically for "you're not in this Team" and "no
                         // such Team", so no copy on this screen may assert
                         // either (B-84).
-                        text = "No members to show.",
+                        text = stringResource(R.string.members_none_to_show),
                         onRetry = null,
                     )
 
@@ -293,7 +295,7 @@ private fun MembersStripBody(
                     } else {
                         Icons.Outlined.Groups
                     },
-                    contentDescription = if (state.canManage) "Manage members" else "Show members",
+                    contentDescription = stringResource(if (state.canManage) R.string.members_manage else R.string.members_show),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -441,7 +443,7 @@ private fun MembersNotice(
                 onClick = onRetry,
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
-                Text("Retry")
+                Text(stringResource(R.string.action_retry))
             }
         }
     }

@@ -23,11 +23,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 
 /**
  * A list header: [title] on the left, and on the right a button naming the
- * current order that opens a menu of [options]. Sits inside the list rather
+ * current order that opens a menu of [options], each named by the string
+ * resource [label] gives it. Sits inside the list rather
  * than in the top bar, which on the collective list and the page tree is
  * already full — the same place the web app puts its sort control, above
  * the page list.
@@ -37,7 +40,7 @@ fun <T> SortHeader(
     title: String,
     selected: T,
     options: List<T>,
-    label: (T) -> String,
+    label: (T) -> Int,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -60,23 +63,23 @@ fun <T> SortHeader(
                     imageVector = Icons.AutoMirrored.Filled.Sort,
                     // Read before the label, so a screen reader hears
                     // "Sort order, Name" rather than a bare "Name".
-                    contentDescription = "Sort order",
+                    contentDescription = stringResource(R.string.sort_order),
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(label(selected))
+                Text(stringResource(label(selected)))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 options.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(label(option)) },
+                        text = { Text(stringResource(label(option))) },
                         onClick = {
                             menuOpen = false
                             onSelect(option)
                         },
                         trailingIcon = {
                             if (option == selected) {
-                                Icon(Icons.Filled.Check, contentDescription = "Selected")
+                                Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.sort_selected))
                             }
                         },
                     )

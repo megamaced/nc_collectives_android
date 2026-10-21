@@ -24,8 +24,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
 
@@ -41,7 +43,7 @@ fun BacklinkChipRow(
     modifier: Modifier = Modifier,
 ) {
     val chips = remember(pages) { pages.map { PageChip(it.id, it.emoji, it.title) } }
-    PageChipSection(label = "Linked from", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
+    PageChipSection(label = stringResource(R.string.page_linked_from), chips = chips, onOpenPage = onOpenPage, modifier = modifier)
 }
 
 /**
@@ -57,7 +59,7 @@ fun SubpageChipRow(
     modifier: Modifier = Modifier,
 ) {
     val chips = remember(pages) { pages.map { PageChip(it.id, it.emoji, it.title) } }
-    PageChipSection(label = "Subpages", chips = chips, onOpenPage = onOpenPage, modifier = modifier)
+    PageChipSection(label = stringResource(R.string.page_subpages), chips = chips, onOpenPage = onOpenPage, modifier = modifier)
 }
 
 /** What a chip draws: both page models reduce to this. */
@@ -90,13 +92,13 @@ private fun PageChipSection(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "$label (${chips.size})",
+                text = stringResource(R.string.page_chip_section, label, chips.size),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Icon(
                 imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) "Collapse" else "Expand",
+                contentDescription = stringResource(if (expanded) R.string.action_collapse else R.string.action_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

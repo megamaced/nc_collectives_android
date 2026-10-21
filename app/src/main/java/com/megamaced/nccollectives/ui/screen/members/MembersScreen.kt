@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.ui.screen.members
 
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,10 +41,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
@@ -52,6 +56,9 @@ import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.memberAvatarUrl
 import com.megamaced.nccollectives.ui.components.monogramOf
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.resolve
+import com.megamaced.nccollectives.util.uiText
 
 /**
  * What a Circles level is called on screen.
@@ -61,13 +68,14 @@ import com.megamaced.nccollectives.ui.components.monogramOf
  * doesn't recognise), which is not the same as the member having no role.
  * "Member" would be a guess, and a guess that reads as a fact.
  */
-internal fun memberRoleLabel(level: CollectiveMemberLevel): String =
+@StringRes
+internal fun memberRoleLabel(level: CollectiveMemberLevel): Int =
     when (level) {
-        CollectiveMemberLevel.Owner -> "Owner"
-        CollectiveMemberLevel.Admin -> "Admin"
-        CollectiveMemberLevel.Moderator -> "Moderator"
-        CollectiveMemberLevel.Member -> "Member"
-        CollectiveMemberLevel.Unknown -> "Role not reported"
+        CollectiveMemberLevel.Owner -> R.string.member_role_owner
+        CollectiveMemberLevel.Admin -> R.string.member_role_admin
+        CollectiveMemberLevel.Moderator -> R.string.member_role_moderator
+        CollectiveMemberLevel.Member -> R.string.member_role_member
+        CollectiveMemberLevel.Unknown -> R.string.member_role_unknown
     }
 
 /**
@@ -81,26 +89,27 @@ internal fun memberRoleLabel(level: CollectiveMemberLevel): String =
  * app-owned principals, and none of those have a face, a profile, or a
  * person behind them who can be asked anything.
  */
-internal fun memberKindLabel(type: CollectiveMemberType): String? =
+@StringRes
+internal fun memberKindLabel(type: CollectiveMemberType): Int? =
     when (type) {
         CollectiveMemberType.User -> null
 
-        CollectiveMemberType.Group -> "Group"
+        CollectiveMemberType.Group -> R.string.member_kind_group
 
-        CollectiveMemberType.Circle -> "Team"
+        CollectiveMemberType.Circle -> R.string.member_kind_team
 
-        CollectiveMemberType.Mail -> "Email address"
+        CollectiveMemberType.Mail -> R.string.member_kind_email
 
-        CollectiveMemberType.Contact -> "Contact"
+        CollectiveMemberType.Contact -> R.string.member_kind_contact
 
-        CollectiveMemberType.App -> "App"
+        CollectiveMemberType.App -> R.string.member_kind_app
 
         // `CircleMemberDto.userType` defaults to 0, which is also the real
         // wire value for a single — so an absent field and a genuine single
         // are the same thing by the time they reach here, and naming either
         // specifically would be a guess. Both get the one fact a reader
         // needs from the row.
-        CollectiveMemberType.Single, CollectiveMemberType.Unknown -> "Not a user account"
+        CollectiveMemberType.Single, CollectiveMemberType.Unknown -> R.string.member_kind_not_user
     }
 
 /**
@@ -108,10 +117,10 @@ internal fun memberKindLabel(type: CollectiveMemberType): String? =
  * isn't a user account. "Group · Moderator" says both of the things that row
  * needs to say, in the order they matter.
  */
-internal fun memberSubtitle(member: CollectiveMember): String {
-    val role = memberRoleLabel(member.level)
-    val kind = memberKindLabel(member.type)
-    return if (kind == null) role else "$kind · $role"
+internal fun memberSubtitle(member: CollectiveMember): UiText {
+    val role = uiText(memberRoleLabel(member.level))
+    val kind = memberKindLabel(member.type) ?: return role
+    return uiText(R.string.member_kind_and_role, uiText(kind), role)
 }
 
 /**
@@ -139,7 +148,7 @@ internal fun MembersScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(text = "Members", style = MaterialTheme.typography.titleMedium)
+                        Text(text = stringResource(R.string.members_title), style = MaterialTheme.typography.titleMedium)
                         if (ui.collectiveName.isNotEmpty()) {
                             Text(
                                 text = ui.collectiveName,
@@ -151,7 +160,7 @@ internal fun MembersScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -172,8 +181,8 @@ internal fun MembersScreen(
                 onRetry = if (ui.canRetry) viewModel::refresh else null,
                 empty = {
                     EmptyState(
-                        title = "No members listed",
-                        message = "The server returned no members for this collective's team.",
+                        title = stringResource(R.string.members_empty_title),
+                        message = stringResource(R.string.members_empty_message),
                     )
                 },
             ) {
@@ -212,7 +221,7 @@ private fun MemberRow(member: CollectiveMember) {
             // space reads as a bug rather than as missing data.
             Text(text = member.label, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = memberSubtitle(member),
+                text = memberSubtitle(member).resolve(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -283,9 +292,9 @@ private fun MemberAvatar(member: CollectiveMember) {
  * wording therefore claims a floor and not a number.
  */
 @Composable
-private fun TruncationNotice(shown: Int) {
+internal fun TruncationNotice(shown: Int) {
     Text(
-        text = "Showing the first $shown members. The server doesn't say how many more there are.",
+        text = pluralStringResource(R.plurals.members_truncated, shown, shown),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier

@@ -174,6 +174,13 @@ android {
                 // with "Failed to interact with raw FileDescriptor
                 // internals; perhaps JRE has changed?".
                 it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+                // HardcodedUiTextTest reads the sources, not the classes, so
+                // a change that compiles to the same classes, such as an
+                // i18n-ignore marker, must still run it again.
+                it.inputs
+                    .dir("src/main/java")
+                    .withPathSensitivity(PathSensitivity.RELATIVE)
+                    .withPropertyName("hardcodedUiTextSources")
             }
         }
     }

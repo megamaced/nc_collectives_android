@@ -37,10 +37,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.components.EmptyState
 import com.megamaced.nccollectives.ui.components.ListStateSwitch
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
+import com.megamaced.nccollectives.util.UiText
+import com.megamaced.nccollectives.util.resolve
 
 /**
  * The chrome both trash screens wear: a back-only top bar, the four-arm list
@@ -61,8 +65,8 @@ internal fun <T> TrashListScaffold(
     emptyMessage: String,
     state: RemoteListUiState<T>,
     keyOf: (T) -> Any,
-    purgeTitle: (T) -> String,
-    purgeMessage: (T) -> String,
+    purgeTitle: (T) -> UiText,
+    purgeMessage: (T) -> UiText,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onRestore: (T) -> Unit,
@@ -87,7 +91,7 @@ internal fun <T> TrashListScaffold(
                 title = { Text(title, style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -124,16 +128,16 @@ internal fun <T> TrashListScaffold(
     pendingPurge?.let { item ->
         AlertDialog(
             onDismissRequest = { pendingPurge = null },
-            title = { Text(purgeTitle(item)) },
-            text = { Text(purgeMessage(item)) },
+            title = { Text(purgeTitle(item).resolve()) },
+            text = { Text(purgeMessage(item).resolve()) },
             confirmButton = {
                 TextButton(onClick = {
                     onPurge(item)
                     pendingPurge = null
-                }) { Text("Delete forever") }
+                }) { Text(stringResource(R.string.action_delete_forever)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingPurge = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingPurge = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -167,12 +171,12 @@ internal fun TrashRow(
             }
         }
         IconButton(onClick = onRestore) {
-            Icon(Icons.Filled.RestoreFromTrash, contentDescription = "Restore")
+            Icon(Icons.Filled.RestoreFromTrash, contentDescription = stringResource(R.string.action_restore))
         }
         IconButton(onClick = onPurge) {
             Icon(
                 Icons.Filled.DeleteForever,
-                contentDescription = "Delete forever",
+                contentDescription = stringResource(R.string.action_delete_forever),
                 tint = MaterialTheme.colorScheme.error,
             )
         }

@@ -62,7 +62,12 @@ class HardcodedUiTextTest {
             """ToolbarButton(Icons.Filled.FormatBold, "Bold") {""",
             """.makeText(context, "Copied", Toast.LENGTH_SHORT)""",
             """CustomAccessibilityAction("Dismiss") {""",
-        ).forEach { line -> assertTrue("Missed: $line", PATTERNS.any { it.containsMatchIn(line) }) }
+            """text = ui.collectiveName.ifBlank { "Pages" },""",
+            """subtitle = name?.let { "By ${'$'}it" },""",
+            """val base = "Pages cached on this device will be removed and ${'$'}{account.loginName}'s " +""",
+            """return if (kind == null) role else "${'$'}kind · ${'$'}role"""",
+            """return ApiResult.Unexpected(IllegalStateException("Page ${'$'}pageId not cached"))""",
+        ).forEach { line -> assertTrue("Missed: $line", line.isUiText()) }
     }
 
     @Test
@@ -71,9 +76,11 @@ class HardcodedUiTextTest {
             """items(pages, key = { "page-${'$'}{it.id}" }) { page ->""",
             """val base = if (url.endsWith('/')) url else "${'$'}url/"""",
             """"Sync HTTP %d on collective %d: %s",""",
-            """.header("Authorization", "Basic ${'$'}basic")""",
+            """"Server sent a weak ETag (%s); If-Match cannot guarantee it",""",
+            """throw IOException("Unable to open ${'$'}uri") // i18n-ignore: shown as a network failure""",
+            """.d("Edit route: plain (preference=PreferCollaborative, server=unavailable)")""",
             """"`pageId` INTEGER NOT NULL, " +""",
-        ).forEach { line -> assertFalse("Caught: $line", PATTERNS.any { it.containsMatchIn(line) }) }
+        ).forEach { line -> assertFalse("Caught: $line", line.isUiText()) }
     }
 
     /** Every match in the sources, as `path<TAB>trimmed line`, once per matching line. */
@@ -88,15 +95,18 @@ class HardcodedUiTextTest {
                 file
                     .readLines()
                     .map { it.trim() }
-                    .filter { line -> line.isCode() && PATTERNS.any { it.containsMatchIn(line) } }
+                    .filter { it.isUiText() }
                     .map { "$path\t$it" }
             }.toList()
+
+    private fun String.isUiText(): Boolean = isCode() && PATTERNS.any { it.containsMatchIn(this) }
 
     private fun String.isCode(): Boolean =
         !startsWith("//") &&
             !startsWith("*") &&
             !startsWith("/*") &&
             "i18n-ignore" !in this &&
+            !LOG_LEVEL.containsMatchIn(this) &&
             SKIP.none { it in this }
 
     /** This list less [other], one occurrence at a time. */
@@ -143,12 +153,26 @@ class HardcodedUiTextTest {
                 Regex("""\bIcons\.[\w.]+,\s*$WORDS"""),
                 Regex("""\bmakeText\(\s*\w+,\s*$WORDS"""),
                 Regex("""\bCustomAccessibilityAction\(\s*$WORDS"""),
+                // A capitalised phrase anywhere; a literal with a % format is a log's.
+                Regex(""""\p{Lu}\p{Ll}+ [^"%]*""""),
+                // A lambda that yields words: a fallback, or text built per item.
+                Regex("""\{\s*"\p{Lu}\p{Ll}[^"]*"\s*\}"""),
+                // Two values joined by a separator, whose order a language may change.
+                Regex(""""\$\{?\w+(\.\w+)*\}? [·•—–-] \$"""),
             )
+
+        /** A line that is the level of a log call chained under `Timber.tag(…)`. */
+        val LOG_LEVEL = Regex("""^\.[vdiwe]\(""")
 
         /** Sources with no UI text in them: the database layer's SQL. */
         val NOT_UI = listOf("/data/db/")
 
-        /** Lines that are about the code, not for the user: logs, SQL, preconditions. */
+        /**
+         * Lines that are about the code, not for the user: logs, SQL,
+         * preconditions. An exception's message is not among them: one
+         * carried by `ApiResult.Unexpected` is shown, inside "Something went
+         * wrong: …". One that never is says so with `i18n-ignore`.
+         */
         val SKIP = listOf("Timber", "Log.", "@Query", "require(", "check(", "error(\"", "TODO(", "@SerialName")
     }
 }

@@ -26,9 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.screen.page.EmojiPickerSheet
 
 /**
@@ -61,7 +63,7 @@ fun CreateCollectiveSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "New collective",
+                text = stringResource(R.string.collective_new),
                 style = MaterialTheme.typography.titleMedium,
             )
 
@@ -77,8 +79,8 @@ fun CreateCollectiveSheet(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
-                    placeholder = { Text("Cannot be changed later") },
+                    label = { Text(stringResource(R.string.collective_name)) },
+                    placeholder = { Text(stringResource(R.string.collective_name_hint)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
@@ -98,11 +100,11 @@ fun CreateCollectiveSheet(
                         strokeWidth = 2.dp,
                     )
                 }
-                TextButton(onClick = onDismiss, enabled = !isCreating) { Text("Cancel") }
+                TextButton(onClick = onDismiss, enabled = !isCreating) { Text(stringResource(R.string.action_cancel)) }
                 TextButton(
                     enabled = !isCreating && name.isNotBlank(),
                     onClick = { onCreate(name.trim(), emoji) },
-                ) { Text("Create") }
+                ) { Text(stringResource(R.string.action_create)) }
             }
         }
     }

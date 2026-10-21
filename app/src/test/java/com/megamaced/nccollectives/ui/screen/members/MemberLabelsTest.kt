@@ -1,13 +1,18 @@
 package com.megamaced.nccollectives.ui.screen.members
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.CollectiveMemberType
+import com.megamaced.nccollectives.util.english
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /**
  * The strings a members row puts on screen.
@@ -21,18 +26,25 @@ import org.junit.Test
  * than silently falling through to a default — these tests cover the values
  * the entries map *to*.
  */
+@RunWith(AndroidJUnit4::class)
 class MemberLabelsTest {
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    private fun role(level: CollectiveMemberLevel): String = context.getString(memberRoleLabel(level))
+
+    private fun kind(type: CollectiveMemberType): String? = memberKindLabel(type)?.let(context::getString)
+
     @Test
     fun `each real level has its own label`() {
-        assertEquals("Owner", memberRoleLabel(CollectiveMemberLevel.Owner))
-        assertEquals("Admin", memberRoleLabel(CollectiveMemberLevel.Admin))
-        assertEquals("Moderator", memberRoleLabel(CollectiveMemberLevel.Moderator))
-        assertEquals("Member", memberRoleLabel(CollectiveMemberLevel.Member))
+        assertEquals("Owner", role(CollectiveMemberLevel.Owner))
+        assertEquals("Admin", role(CollectiveMemberLevel.Admin))
+        assertEquals("Moderator", role(CollectiveMemberLevel.Moderator))
+        assertEquals("Member", role(CollectiveMemberLevel.Member))
     }
 
     @Test
     fun `an unknown level does not borrow the name of a real role`() {
-        val label = memberRoleLabel(CollectiveMemberLevel.Unknown)
+        val label = role(CollectiveMemberLevel.Unknown)
 
         assertEquals("Role not reported", label)
         // The failure mode being guarded: level 0 means the payload carried
@@ -44,14 +56,14 @@ class MemberLabelsTest {
     fun `a user account carries no kind label`() {
         // Null, not "User": prefixing every ordinary row would bury the one
         // signal the label exists to carry.
-        assertNull(memberKindLabel(CollectiveMemberType.User))
+        assertNull(kind(CollectiveMemberType.User))
     }
 
     @Test
     fun `every non-user kind is labelled`() {
         val labelled = CollectiveMemberType.entries
             .filter { it != CollectiveMemberType.User }
-            .associateWith { memberKindLabel(it) }
+            .associateWith { kind(it) }
 
         labelled.forEach { (type, label) ->
             assertNotNull("$type must be marked as not a person", label)
@@ -64,8 +76,8 @@ class MemberLabelsTest {
         // value for a single — so naming either specifically would be a
         // guess dressed as a fact.
         assertEquals(
-            memberKindLabel(CollectiveMemberType.Single),
-            memberKindLabel(CollectiveMemberType.Unknown),
+            kind(CollectiveMemberType.Single),
+            kind(CollectiveMemberType.Unknown),
         )
     }
 
@@ -73,7 +85,7 @@ class MemberLabelsTest {
     fun `a user subtitle is just the role`() {
         val subtitle = memberSubtitle(
             member(level = CollectiveMemberLevel.Admin, type = CollectiveMemberType.User),
-        )
+        ).english()
 
         assertEquals("Admin", subtitle)
     }
@@ -82,7 +94,7 @@ class MemberLabelsTest {
     fun `a non-user subtitle names the kind before the role`() {
         val subtitle = memberSubtitle(
             member(level = CollectiveMemberLevel.Moderator, type = CollectiveMemberType.Group),
-        )
+        ).english()
 
         assertEquals("Group · Moderator", subtitle)
     }
@@ -91,7 +103,7 @@ class MemberLabelsTest {
     fun `a non-user with an unknown level says so twice over`() {
         val subtitle = memberSubtitle(
             member(level = CollectiveMemberLevel.Unknown, type = CollectiveMemberType.Mail),
-        )
+        ).english()
 
         assertEquals("Email address · Role not reported", subtitle)
     }

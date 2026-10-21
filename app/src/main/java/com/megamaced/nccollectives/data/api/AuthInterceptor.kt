@@ -53,7 +53,7 @@ class AuthInterceptor
                     .base64()
                 val builder = original
                     .newBuilder()
-                    .header("Authorization", "Basic $basic")
+                    .header("Authorization", "Basic $basic") // i18n-ignore: an HTTP header
                 // Issue #21: the OCS headers go on OCS calls only. This one
                 // used to be unconditional while the `Accept` below was
                 // already path-conditional, which meant every WebDAV request

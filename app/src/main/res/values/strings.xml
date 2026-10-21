@@ -72,6 +72,28 @@
     <string name="filter_all">All</string>
     <string name="page_new">New page</string>
     <string name="settings_title">Settings</string>
+    <string name="action_create">Create</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_move_to_trash">Move to trash</string>
+    <string name="action_delete_forever">Delete forever</string>
+    <!-- Opens or closes a section or a branch of the page tree. -->
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
+    <!-- Stars a page, or unstars it. -->
+    <string name="action_favorite">Favorite</string>
+    <string name="action_unfavorite">Unfavorite</string>
+    <string name="trash_title">Trash</string>
+    <!-- Sorting a list. -->
+    <string name="sort_order">Sort order</string>
+    <!-- For screen readers: the tick beside the order in use. -->
+    <string name="sort_selected">Selected</string>
+    <!-- Alphabetical order, and its reverse. Use your alphabet's first and last letters. -->
+    <string name="sort_name_ascending">A–Z</string>
+    <string name="sort_name_descending">Z–A</string>
+    <string name="sort_newest_first">Newest first</string>
+    <string name="sort_oldest_first">Oldest first</string>
+    <!-- The order the collective's members arranged by hand. -->
+    <string name="sort_custom">Custom order</string>
 
     <!-- Relative times. Each stands on its own, after a label or separator, as in "Last synced: 5 minutes ago". -->
     <string name="time_just_now">just now</string>
@@ -337,4 +359,94 @@
     <string name="notify_mentions">Mentions</string>
     <!-- Notify about every change, not only mentions. -->
     <string name="notify_all">All</string>
+
+    <!-- Collectives: the list of the user's collectives. -->
+    <string name="collectives_title">Collectives</string>
+    <string name="collective_new">New collective</string>
+    <string name="collectives_empty_title">No collectives</string>
+    <!-- "New collective" is the button's label (collective_new). -->
+    <string name="collectives_empty_message">Tap New collective to create one.</string>
+    <string name="collective_set_emoji">Set emoji…</string>
+    <string name="collective_notifications">Notifications…</string>
+    <!-- %1$s is the collective's name. -->
+    <string name="collective_trash_confirm_title">Move \"%1$s\" to trash?</string>
+    <string name="collective_trash_confirm_message">The collective and all its pages will be moved to the collectives trash. You can restore it from there until you delete it permanently.</string>
+    <!-- Creating a collective. Its name can't be changed afterwards. -->
+    <string name="collective_name">Name</string>
+    <string name="collective_name_hint">Cannot be changed later</string>
+    <!-- The card for a collective's landing page, at the top of its page list. %1$s is the collective's name. -->
+    <string name="collective_welcome">Welcome to %1$s</string>
+    <string name="collective_tap_to_open">Tap to open</string>
+
+    <!-- A collective's pages. -->
+    <string name="pages_title">Pages</string>
+    <string name="pages_empty_title">No pages</string>
+    <string name="pages_empty_message">This collective doesn\'t have any pages yet.</string>
+    <string name="page_new_subpage">New subpage</string>
+    <!-- Making a page: where it goes, and its title. -->
+    <string name="page_new_where">Where should this page go?</string>
+    <string name="page_new_pick_parent_hint">Pick a parent…</string>
+    <string name="page_new_pick_parent">Pick a parent page</string>
+    <!-- Only pages that can hold subpages are offered as parents. -->
+    <string name="page_new_no_parents">No folder pages available.</string>
+    <string name="page_title_label">Title</string>
+    <!-- Sections on a page: the pages that link to it, and its subpages. -->
+    <string name="page_linked_from">Linked from</string>
+    <string name="page_subpages">Subpages</string>
+    <!-- A section's name and how many pages are in it. %1$s is page_linked_from or page_subpages; %2$d is the number of pages. -->
+    <string name="page_chip_section">%1$s (%2$d)</string>
+
+    <!-- Members, continued. -->
+    <string name="members_title">Members</string>
+    <!-- For screen readers: the arrow that opens or closes the members strip. -->
+    <string name="members_expand">Expand members</string>
+    <string name="members_collapse">Collapse members</string>
+    <string name="members_none_to_show">No members to show.</string>
+    <!-- Opens the members screen; worded by what the user may do there. -->
+    <string name="members_manage">Manage members</string>
+    <string name="members_show">Show members</string>
+    <string name="members_empty_title">No members listed</string>
+    <string name="members_empty_message">The server returned no members for this collective\'s team.</string>
+    <!-- The server lists members a page at a time and doesn't say how many there are. -->
+    <plurals name="members_truncated">
+        <item quantity="one">Showing the first %1$d member. The server doesn\'t say how many more there are.</item>
+        <item quantity="other">Showing the first %1$d members. The server doesn\'t say how many more there are.</item>
+    </plurals>
+    <!-- A member's role in the collective's team. -->
+    <string name="member_role_owner">Owner</string>
+    <string name="member_role_admin">Admin</string>
+    <string name="member_role_moderator">Moderator</string>
+    <string name="member_role_member">Member</string>
+    <!-- The server didn't say what the member's role is. -->
+    <string name="member_role_unknown">Role not reported</string>
+    <!-- What a member is, when not a person's account. -->
+    <string name="member_kind_group">Group</string>
+    <!-- A Nextcloud team (formerly circle) that is itself a member. -->
+    <string name="member_kind_team">Team</string>
+    <string name="member_kind_email">Email address</string>
+    <string name="member_kind_contact">Contact</string>
+    <string name="member_kind_app">App</string>
+    <string name="member_kind_not_user">Not a user account</string>
+    <!-- %1$s is one of the member_kind_* strings; %2$s is one of the member_role_* strings. -->
+    <string name="member_kind_and_role">%1$s · %2$s</string>
+
+    <!-- Pages with a tag. -->
+    <string name="tag_empty_title">No pages tagged</string>
+    <!-- %1$s is the tag. -->
+    <string name="tag_empty_message">No pages tagged with \"%1$s\".</string>
+
+    <!-- Trash, continued: the trash screens. -->
+    <string name="trash_collectives_title">Collective trash</string>
+    <string name="trash_empty_title">Trash is empty</string>
+    <string name="trash_pages_empty_message">Pages you delete from this collective will appear here.</string>
+    <string name="trash_collectives_empty_message">Collectives you move to trash will appear here.</string>
+    <!-- %1$s is the person who last changed the page. -->
+    <string name="trash_page_by">By %1$s</string>
+    <string name="trash_page_purge_title">Permanently delete?</string>
+    <!-- %1$s is the page's title. -->
+    <string name="trash_page_purge_message">\"%1$s\" will be deleted forever. This can\'t be undone.</string>
+    <!-- %1$s is the collective's name. -->
+    <string name="trash_collective_purge_title">Permanently delete \"%1$s\"?</string>
+    <!-- The "Team" is the Nextcloud team that holds the collective's members. -->
+    <string name="trash_collective_purge_message">This will permanently delete the collective and tear down the underlying Team. All pages will be lost forever. This can\'t be undone.</string>
 </resources>

@@ -368,7 +368,7 @@ class AttachmentUploadWorker
 
                     override fun writeTo(sink: BufferedSink) {
                         val input = resolver.openInputStream(uri)
-                            ?: throw java.io.IOException("Unable to open $uri")
+                            ?: throw java.io.IOException("Unable to open $uri") // i18n-ignore: shown as a network failure
                         input.use { sink.writeAll(it.source()) }
                     }
                 }
