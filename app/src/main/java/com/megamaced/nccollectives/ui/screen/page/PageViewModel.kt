@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -70,7 +71,7 @@ enum class PageOpenState {
     /** Showing the page for reading. */
     Reading,
 
-    /** Edit mode, on a page that opens straight into the editor: the screen opens it once it is in front. */
+    /** The page opens straight into the editor: the screen opens it once it is in front. */
     EditPending,
 
     /** The editor was opened for this visit. The next time the page is in front, it is there to be read. */
@@ -171,11 +172,13 @@ class PageViewModel
 
         /**
          * How this visit opened, or null until it is decided. Decided once,
-         * from [PageOpenMode] and the page as it first arrives, and kept in
-         * saved state: Back from the editor, a return through a saved tab
-         * stack and a restored process all see the same answer, and a
-         * setting changed later, or a conflict resolved later, leaves an
-         * open page as it is.
+         * from [PageOpenMode], the page as it first arrives and the cached
+         * collectives, and kept in saved state: Back from the editor, a
+         * return through a saved tab stack and a restored process all see
+         * the same answer, and a setting changed later — this device's, or
+         * the collective's page mode refreshed from the server — or a
+         * conflict resolved later, leaves an open page as it is. The next
+         * visit uses whatever they say then.
          */
         val openState: StateFlow<PageOpenState?> = savedStateHandle
             .getStateFlow<String?>(KEY_OPEN_STATE, null)
@@ -191,15 +194,16 @@ class PageViewModel
 
         private suspend fun decideOpenState() {
             if (currentOpenState() != null) return
-            val state = if (userPreferences.flow.first().pageOpenMode == PageOpenMode.Edit) {
+            val mode = userPreferences.flow.first().pageOpenMode
+            val state = if (mode == PageOpenMode.Read) {
+                PageOpenState.Reading
+            } else {
                 val arrived = pageRepository.observePage(pageId).filterNotNull().first()
-                if (opensStraightIntoEditor(arrived, collectiveRepository.observeCollectives().first())) {
+                if (opensIntoEditor(mode, arrived, collectiveRepository.observeCollectives().first())) {
                     PageOpenState.EditPending
                 } else {
                     PageOpenState.Reading
                 }
-            } else {
-                PageOpenState.Reading
             }
             if (currentOpenState() == null) setOpenState(state)
         }
@@ -231,7 +235,7 @@ class PageViewModel
         /**
          * The user tapped Edit. Settles the visit as one for reading — even
          * before [openState] is decided, which [decideOpenState] then leaves
-         * alone — so Edit mode's trip into the editor never follows theirs,
+         * alone — so the trip into the editor on opening never follows theirs,
          * such as on the way back from the editor they opened.
          */
         fun editTapped() {
@@ -781,8 +785,27 @@ private data class SubpageParent(
 )
 
 /**
- * Whether Edit mode takes [page] straight into the editor. Not when the
- * page is trashed, or its collective is gone or can't be edited, and not
+ * Whether opening [page] takes it straight into the editor: when [mode]
+ * says so — [PageOpenMode.Edit], or [PageOpenMode.AsCollective] with its
+ * collective's page mode set to edit — and [opensStraightIntoEditor] allows
+ * it.
+ */
+internal fun opensIntoEditor(
+    mode: PageOpenMode,
+    page: Page,
+    collectives: List<Collective>,
+): Boolean {
+    val wanted = when (mode) {
+        PageOpenMode.Read -> false
+        PageOpenMode.Edit -> true
+        PageOpenMode.AsCollective -> collectives.any { it.id == page.collectiveId && it.pageMode == CollectivePageMode.Edit }
+    }
+    return wanted && opensStraightIntoEditor(page, collectives)
+}
+
+/**
+ * Whether [page] can go straight into the editor. Not when the page is
+ * trashed, or its collective is gone or can't be edited, and not
  * while it has an unresolved conflict: the conflict banner has to be seen,
  * and the editor starts from the server's text rather than the user's
  * draft, so opening it would show different text from what the user left.

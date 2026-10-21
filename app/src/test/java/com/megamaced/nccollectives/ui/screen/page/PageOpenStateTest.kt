@@ -6,6 +6,7 @@ import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -202,6 +203,45 @@ class PageOpenStateTest {
             assertEquals(VERSION, recorded.last())
             recording.cancel()
         }
+
+    @Test
+    fun aCollectiveSetToEditLaterLeavesADecidedVisitAlone_andTheNextVisitUsesIt() {
+        prefs.value = UserPrefs(pageOpenMode = PageOpenMode.AsCollective)
+        val visit = viewModel()
+        assertEquals(PageOpenState.Reading, visit.openState.value)
+
+        collectives.value = listOf(collective(COLLECTIVE, pageMode = CollectivePageMode.Edit))
+
+        assertEquals(PageOpenState.Reading, visit.openState.value)
+        assertFalse(visit.claimPendingEdit())
+        assertEquals(PageOpenState.EditPending, viewModel().openState.value)
+    }
+
+    @Test
+    fun theCollectivesPageModeDecides_unlessThisDeviceSaysReadOrEdit() {
+        val viewing = listOf(collective(COLLECTIVE))
+        val editing = listOf(collective(COLLECTIVE, pageMode = CollectivePageMode.Edit))
+
+        assertFalse("as a collective set to view", opensIntoEditor(PageOpenMode.AsCollective, page(), viewing))
+        assertTrue("as a collective set to edit", opensIntoEditor(PageOpenMode.AsCollective, page(), editing))
+        assertFalse("Read over a collective set to edit", opensIntoEditor(PageOpenMode.Read, page(), editing))
+        assertFalse("Read over a collective set to view", opensIntoEditor(PageOpenMode.Read, page(), viewing))
+        assertTrue("Edit over a collective set to view", opensIntoEditor(PageOpenMode.Edit, page(), viewing))
+        assertTrue("Edit over a collective set to edit", opensIntoEditor(PageOpenMode.Edit, page(), editing))
+        assertFalse(
+            "its own set to view, another set to edit",
+            opensIntoEditor(PageOpenMode.AsCollective, page(), viewing + collective(COLLECTIVE + 1, pageMode = CollectivePageMode.Edit)),
+        )
+        assertFalse("set to edit, with a conflict", opensIntoEditor(PageOpenMode.AsCollective, page(draft = "mine"), editing))
+        assertFalse(
+            "set to edit, but read-only",
+            opensIntoEditor(
+                PageOpenMode.AsCollective,
+                page(),
+                listOf(collective(COLLECTIVE, canEdit = false, pageMode = CollectivePageMode.Edit)),
+            ),
+        )
+    }
 
     @Test
     fun onlyALivePageInALiveCollectiveTheUserCanEditOpensStraightIntoTheEditor() {

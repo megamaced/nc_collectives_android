@@ -149,7 +149,7 @@ class SettingsViewModel
                     textScale = TextScale.Default,
                     syncCadence = SyncCadence.SixHourly,
                     editorPreference = EditorPreference.PreferPlain,
-                    pageOpenMode = PageOpenMode.Read,
+                    pageOpenMode = PageOpenMode.AsCollective,
                     collectives = emptyList(),
                     startScreen = StartScreen.Home,
                     defaultCollectiveId = null,

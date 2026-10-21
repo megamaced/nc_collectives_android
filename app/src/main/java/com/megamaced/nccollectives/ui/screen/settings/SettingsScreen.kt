@@ -294,6 +294,12 @@ internal fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            Text(
+                "The default follows each collective's page mode on the web. " +
+                    "Choose Read mode or Edit mode to override it on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             PageOpenModeOptions(
                 selected = ui.pageOpenMode,
                 onSelect = viewModel::setPageOpenMode,
@@ -606,8 +612,9 @@ private fun EditorPreferenceOptions(
 }
 
 /**
- * Whether a page opens for reading or straight into the editor. Edit mode
- * still opens for reading when the page has an unresolved conflict, or its
+ * Whether a page opens for reading or straight into the editor: as its
+ * collective's page mode says, or always one or the other on this device.
+ * A page still opens for reading when it has an unresolved conflict, or its
  * collective can't be edited.
  */
 @Composable
@@ -619,7 +626,8 @@ internal fun PageOpenModeOptions(
         PageOpenMode.entries.forEach { mode ->
             RadioRow(
                 label = when (mode) {
-                    PageOpenMode.Read -> "Read mode (default)"
+                    PageOpenMode.AsCollective -> "As each collective is set (default)"
+                    PageOpenMode.Read -> "Read mode"
                     PageOpenMode.Edit -> "Edit mode"
                 },
                 selected = selected == mode,

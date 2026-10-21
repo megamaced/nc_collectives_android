@@ -24,7 +24,7 @@ import com.megamaced.nccollectives.data.db.entity.PageViewEntity
         PageViewEntity::class,
         AlertEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class NcCollectivesDatabase : RoomDatabase() {

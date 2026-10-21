@@ -144,7 +144,7 @@ internal fun PageViewScreen(
     // entry, which for the web editor means a second `directediting` session
     // on the same page.
     //
-    // [automatic] is Edit mode's own trip into the editor (see
+    // [automatic] is the trip into the editor a page takes on opening (see
     // `PageViewModel.openState`), which checks the page again once the route
     // is known: it may have been trashed, or turned up a conflict, meanwhile.
     fun launchEdit(automatic: Boolean) {
@@ -192,7 +192,7 @@ internal fun PageViewScreen(
     // Views are recorded while the screen is in front, including a return to
     // it through a saved tab stack. See `PageViewModel.recordViewsWhileShown`.
     //
-    // Edit mode's trip into the editor also waits for the screen to be in
+    // The trip into the editor on opening also waits for the screen to be in
     // front: the nav host drops a navigation from an entry that isn't
     // resumed, as this one isn't while it animates in, and the trip is taken
     // once per visit. A manual Edit already under way takes its place.

@@ -272,6 +272,17 @@ internal val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+/**
+ * `collectives.pageMode`: how the collective's pages open for its members,
+ * as set on the web. Pre-v14 rows take 0, view, until the next collective
+ * refresh fills it in.
+ */
+internal val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `collectives` ADD COLUMN `pageMode` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -285,4 +296,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_10_11,
     MIGRATION_11_12,
     MIGRATION_12_13,
+    MIGRATION_13_14,
 )

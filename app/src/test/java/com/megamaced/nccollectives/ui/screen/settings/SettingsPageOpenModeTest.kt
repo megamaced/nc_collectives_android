@@ -22,7 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Settings offers how pages open, under Editor: Read mode unless the user picks Edit mode. */
+/** Settings offers how pages open, under Editor: as each collective is set, unless the user picks Read mode or Edit mode. */
 @RunWith(AndroidJUnit4::class)
 class SettingsPageOpenModeTest {
     @get:Rule
@@ -39,7 +39,7 @@ class SettingsPageOpenModeTest {
                         textScale = TextScale.Default,
                         syncCadence = SyncCadence.SixHourly,
                         editorPreference = EditorPreference.PreferPlain,
-                        pageOpenMode = PageOpenMode.Read,
+                        pageOpenMode = PageOpenMode.AsCollective,
                         collectives = emptyList(),
                         startScreen = StartScreen.Home,
                         defaultCollectiveId = null,
@@ -52,12 +52,14 @@ class SettingsPageOpenModeTest {
         }
 
     @Test
-    fun readModeIsChosenUntilEditModeIsPicked() {
+    fun eachCollectivesOwnModeIsChosenUntilReadModeOrEditModeIsPicked() {
         rule.setContent { SettingsScreen(innerPadding = PaddingValues(), onBack = {}, onAddAccount = {}, viewModel = viewModel) }
 
-        rule.onNodeWithText("Read mode (default)").performScrollTo().assertIsSelected()
+        rule.onNodeWithText("As each collective is set (default)").performScrollTo().assertIsSelected()
+        rule.onNodeWithText("Read mode").performScrollTo().performClick()
         rule.onNodeWithText("Edit mode").performScrollTo().performClick()
 
+        verify { viewModel.setPageOpenMode(PageOpenMode.Read) }
         verify { viewModel.setPageOpenMode(PageOpenMode.Edit) }
     }
 }

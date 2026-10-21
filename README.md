@@ -25,7 +25,7 @@ The app's screens, rendered with sample data.
 
 - **Home** shows what's new: pages you opened recently, pages changed since you last read them, recently updated pages, your own edits, and edits still to sync or resolve.
 - **Read** pages with images, tables, task lists, code, callouts and highlights. Links to other pages open in the app, and each page lists its subpages, the pages linking to it, and its headings.
-- **Edit** in the built-in markdown editor, which works offline, or in Nextcloud Text's collaborative editor to write alongside others (beta). Pages open for reading, or straight into the editor if you prefer; choose both under **Settings → Editor**.
+- **Edit** in the built-in markdown editor, which works offline, or in Nextcloud Text's collaborative editor to write alongside others (beta). Pages open for reading or straight into the editor, as each collective is set on the web; choose the editor, or override that, under **Settings → Editor**.
 - **Work offline.** Read cached pages and queue edits, which sync when you're back online. When a conflict is detected, your edits are kept as a draft for you to resolve.
 - **Organise** pages: create, rename, move, duplicate, tag and star them, and trash and restore them, with Undo for trash. Sort them, or drag them into the web app's order. Create, trash and restore collectives too.
 - **Search** every collective or just one, with your recent searches and tags ready before you type.

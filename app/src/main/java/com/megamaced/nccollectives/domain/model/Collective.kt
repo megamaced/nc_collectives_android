@@ -37,6 +37,8 @@ data class Collective(
     val pageOrder: PageOrder,
     /** Null when the server doesn't report it, and the app then offers no control for it. */
     val notifyLevel: NotifyLevel? = null,
+    /** How its pages open for its members, as set on the web. */
+    val pageMode: CollectivePageMode = CollectivePageMode.View,
     val isPageShare: Boolean,
     val trashed: Boolean,
     val favoritePageIds: Set<Long>,

@@ -23,6 +23,7 @@ import com.megamaced.nccollectives.data.prefs.EditorPreference
 import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.prefs.UserPrefs
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.domain.repository.CollectiveRepository
@@ -49,12 +50,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Edit mode's trip into the editor, through a real NavController: the real
- * page and editor routes, the nav host's own [navigateFrom] and
+ * The trip into the editor on opening, through a real NavController: the
+ * real page and editor routes, the nav host's own [navigateFrom] and
  * [popBackStackFrom] — which drop a navigation from an entry that isn't
  * resumed — and the real screen and view model over fakes. The page is
  * cached from the start, so the decision is ready while the page is still
  * animating in, which is when a trip taken too eagerly would be dropped.
+ * Most cases set Edit mode over a collective set to view, so Edit mode
+ * overriding it is exercised throughout.
  */
 @RunWith(AndroidJUnit4::class)
 class PageOpenModeNavigationTest {
@@ -207,6 +210,37 @@ class PageOpenModeNavigationTest {
         assertEquals(Destination.PageView.pattern(tab), here())
         assertEquals(PageOpenState.Reading, viewModel!!.openState.value)
         assertTrue(VERSION in recorded)
+    }
+
+    @Test
+    fun byDefaultAPageInACollectiveSetToEditOpensTheEditor() {
+        prefs.value = UserPrefs()
+        collectives.value = listOf(collective(COLLECTIVE, pageMode = CollectivePageMode.Edit))
+
+        openPage()
+
+        assertEquals(Destination.PageEdit.pattern(tab), here())
+        assertEquals(1, editors())
+    }
+
+    @Test
+    fun byDefaultAPageInACollectiveSetToViewOpensForReading() {
+        prefs.value = UserPrefs()
+
+        openPage()
+
+        assertEquals(Destination.PageView.pattern(tab), here())
+        assertEquals(PageOpenState.Reading, viewModel!!.openState.value)
+    }
+
+    @Test
+    fun readModeOverridesACollectiveSetToEdit() {
+        prefs.value = UserPrefs(pageOpenMode = PageOpenMode.Read)
+        collectives.value = listOf(collective(COLLECTIVE, pageMode = CollectivePageMode.Edit))
+
+        openPage()
+
+        assertEquals(Destination.PageView.pattern(tab), here())
     }
 
     @Test

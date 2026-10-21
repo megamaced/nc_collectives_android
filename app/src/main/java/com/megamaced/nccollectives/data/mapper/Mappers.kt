@@ -16,6 +16,7 @@ import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.CollectiveMember
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
 import com.megamaced.nccollectives.domain.model.CollectiveMemberType
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.NotifyLevel
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -44,6 +45,7 @@ internal fun CollectiveDto.toEntity(now: Long): CollectiveEntity =
         userShowMembers = userShowMembers,
         userPageOrder = userPageOrder,
         userNotify = userNotify,
+        pageMode = pageMode,
         isPageShare = isPageShare,
         trashTimestamp = trashTimestamp,
         userFavoritePagesCsv = userFavoritePages.toLongCsv(),
@@ -63,6 +65,7 @@ internal fun CollectiveEntity.toDomain(): Collective =
         userShowMembers = userShowMembers,
         pageOrder = PageOrder.fromWire(userPageOrder),
         notifyLevel = NotifyLevel.fromWire(userNotify),
+        pageMode = CollectivePageMode.fromWire(pageMode),
         isPageShare = isPageShare,
         trashed = trashTimestamp != null,
         favoritePageIds = userFavoritePagesCsv.toLongCsvSet(),

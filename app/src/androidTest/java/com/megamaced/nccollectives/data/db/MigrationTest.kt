@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 13
+private const val LATEST_VERSION = 14
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -443,6 +443,24 @@ class MigrationTest {
             assertTrue(cursor.moveToFirst())
             assertEquals("Mention", cursor.stringAt("kind"))
             assertEquals(2L, cursor.longAt("userNotify"))
+        }
+        db.close()
+    }
+
+    @Test
+    fun migrate13To14_addsThePageModeAsView_keepsCollectives() {
+        helper.createDatabase(TEST_DB, 13).use { db ->
+            db.insertCollective(id = 7L, name = "Field Guide", level = 9, userShowMembers = true, userPageOrder = 2)
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 14, true, MIGRATION_13_14)
+
+        db.query("SELECT * FROM `collectives` WHERE `id` = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Field Guide", cursor.stringAt("name"))
+            assertEquals(2L, cursor.longAt("userPageOrder"))
+            // View until the next collective refresh says otherwise.
+            assertEquals(0L, cursor.longAt("pageMode"))
         }
         db.close()
     }

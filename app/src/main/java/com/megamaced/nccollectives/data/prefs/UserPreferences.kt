@@ -70,12 +70,14 @@ enum class TextScale(
 enum class EditorPreference { PreferPlain, PreferCollaborative }
 
 /**
- * What opening a page shows first: the rendered page ([Read]), or the
- * editor the Edit button would open ([Edit]). Edit applies only to pages
- * that can go straight into the editor — see `opensStraightIntoEditor`, by
+ * What opening a page shows first: the rendered page, or the editor the
+ * Edit button would open. [AsCollective] follows the page's collective,
+ * whose page mode is set on the web for all its members; [Read] and [Edit]
+ * override it on this device. Editing applies only to pages that can go
+ * straight into the editor — see `opensStraightIntoEditor`, by
  * `PageViewModel`, for the ones that still open for reading.
  */
-enum class PageOpenMode { Read, Edit }
+enum class PageOpenMode { AsCollective, Read, Edit }
 
 /**
  * Tab the app opens on when no startup collective is set.
@@ -154,7 +156,7 @@ data class UserPrefs(
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
-    val pageOpenMode: PageOpenMode = PageOpenMode.Read,
+    val pageOpenMode: PageOpenMode = PageOpenMode.AsCollective,
     val collectiveSort: CollectiveSort = CollectiveSort.NameAscending,
     /** Tab to open on launch when [defaultCollectiveId] is null. */
     val startScreen: StartScreen = StartScreen.Home,
@@ -409,7 +411,7 @@ class UserPreferences
                 }
                 ?: EditorPreference.PreferPlain
             val pageOpenMode = this[KEY_PAGE_OPEN_MODE]?.let { runCatching { PageOpenMode.valueOf(it) }.getOrNull() }
-                ?: PageOpenMode.Read
+                ?: PageOpenMode.AsCollective
             val collectiveSort = CollectiveSort.fromStored(this[KEY_COLLECTIVE_SORT])
             val startScreen = this[KEY_START_SCREEN]?.let { runCatching { StartScreen.valueOf(it) }.getOrNull() }
                 ?: StartScreen.Home

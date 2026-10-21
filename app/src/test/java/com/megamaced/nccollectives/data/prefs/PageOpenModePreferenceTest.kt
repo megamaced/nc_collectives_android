@@ -9,7 +9,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** How pages open is a device setting: Read mode until changed, kept across an account switch, reset by signing out. */
+/**
+ * How pages open is a device setting: as each collective is set until
+ * changed, kept across an account switch, reset by signing out.
+ */
 @RunWith(AndroidJUnit4::class)
 class PageOpenModePreferenceTest {
     private val prefs = UserPreferences(ApplicationProvider.getApplicationContext())
@@ -20,14 +23,16 @@ class PageOpenModePreferenceTest {
     private fun mode(): PageOpenMode = runBlocking { prefs.flow.first().pageOpenMode }
 
     @Test
-    fun pagesOpenForReadingUntilToldOtherwise() {
-        assertEquals(PageOpenMode.Read, mode())
+    fun pagesOpenAsEachCollectiveIsSetUntilToldOtherwise() {
+        assertEquals(PageOpenMode.AsCollective, mode())
     }
 
     @Test
-    fun editModeIsKept() {
-        runBlocking { prefs.setPageOpenMode(PageOpenMode.Edit) }
+    fun readModeAndEditModeAreKept() {
+        runBlocking { prefs.setPageOpenMode(PageOpenMode.Read) }
+        assertEquals(PageOpenMode.Read, mode())
 
+        runBlocking { prefs.setPageOpenMode(PageOpenMode.Edit) }
         assertEquals(PageOpenMode.Edit, mode())
     }
 
@@ -39,6 +44,6 @@ class PageOpenModePreferenceTest {
         assertEquals(PageOpenMode.Edit, mode())
 
         runBlocking { prefs.clearAll() }
-        assertEquals(PageOpenMode.Read, mode())
+        assertEquals(PageOpenMode.AsCollective, mode())
     }
 }

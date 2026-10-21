@@ -65,6 +65,12 @@ data class CollectiveDto(
      * the app offers no control for it.
      */
     val userNotify: Int? = null,
+    /**
+     * How the collective's pages open for its members: 0 view, 1 edit
+     * (`CollectivePageMode`). Absent on a server that predates the setting,
+     * where pages open for reading, which 0 says.
+     */
+    val pageMode: Int = 0,
 )
 
 @Serializable

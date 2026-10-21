@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -37,6 +38,13 @@ data class CollectiveEntity(
     val userPageOrder: Int,
     /** The server's `userNotify`; null when it didn't send one. See `NotifyLevel`. */
     val userNotify: Int?,
+    /**
+     * Raw `pageMode` wire value (see `CollectivePageMode`), kept as the
+     * server's integer like [userPageOrder]. `MIGRATION_13_14` back-fills 0,
+     * view, until the next collective refresh.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val pageMode: Int = 0,
     val isPageShare: Boolean,
     val trashTimestamp: Long?,
     /** CSV of favorite-page ids; tiny lists, no need for a join table. */

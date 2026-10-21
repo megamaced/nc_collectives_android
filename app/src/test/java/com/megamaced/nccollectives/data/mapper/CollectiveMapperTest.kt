@@ -5,6 +5,7 @@ import com.megamaced.nccollectives.data.api.dto.CollectiveDto
 import com.megamaced.nccollectives.data.api.dto.CollectivesEnvelopeData
 import com.megamaced.nccollectives.di.NetworkModule
 import com.megamaced.nccollectives.domain.model.CollectiveMemberLevel
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.PageOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -133,6 +134,43 @@ class CollectiveMapperTest {
 
         assertEquals(2, dto.userPageOrder)
         assertEquals(PageOrder.TitleAscending, dto.toEntity(now = 0L).toDomain().pageOrder)
+    }
+
+    @Test
+    fun `the page mode parses from pageMode and reaches the domain`() {
+        val payload =
+            """
+            {"ocs":{"meta":{"status":"ok","statuscode":200},"data":{"collectives":[
+             {"id":3,"name":"Field Guide","pageMode":1}]}}}
+            """.trimIndent()
+
+        val dto = json
+            .decodeFromString<Envelope<CollectivesEnvelopeData>>(payload)
+            .ocs
+            .data
+            .collectives
+            .single()
+
+        assertEquals(1, dto.pageMode)
+        val entity = dto.toEntity(now = 0L)
+        assertEquals(1, entity.pageMode)
+        assertEquals(CollectivePageMode.Edit, entity.toDomain().pageMode)
+    }
+
+    @Test
+    fun `an absent page mode is view`() {
+        val entity = CollectiveDto(id = 3, name = "Field Guide").toEntity(now = 0L)
+
+        assertEquals(0, entity.pageMode)
+        assertEquals(CollectivePageMode.View, entity.toDomain().pageMode)
+    }
+
+    @Test
+    fun `an unknown page mode is kept as sent, and reads as view`() {
+        val entity = CollectiveDto(id = 3, name = "Field Guide", pageMode = 7).toEntity(now = 0L)
+
+        assertEquals(7, entity.pageMode)
+        assertEquals(CollectivePageMode.View, entity.toDomain().pageMode)
     }
 
     @Test

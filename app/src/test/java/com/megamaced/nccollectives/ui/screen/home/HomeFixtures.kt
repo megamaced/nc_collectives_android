@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.ui.screen.home
 
 import com.megamaced.nccollectives.domain.model.Collective
+import com.megamaced.nccollectives.domain.model.CollectivePageMode
 import com.megamaced.nccollectives.domain.model.PageListItem
 import com.megamaced.nccollectives.domain.model.PageOrder
 
@@ -33,6 +34,7 @@ internal fun collective(
     emoji: String? = null,
     canEdit: Boolean = true,
     favoritePageIds: Set<Long> = emptySet(),
+    pageMode: CollectivePageMode = CollectivePageMode.View,
 ) = Collective(
     id = id,
     name = name,
@@ -47,4 +49,5 @@ internal fun collective(
     isPageShare = false,
     trashed = false,
     favoritePageIds = favoritePageIds,
+    pageMode = pageMode,
 )
