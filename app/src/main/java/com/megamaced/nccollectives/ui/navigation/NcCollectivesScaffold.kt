@@ -5,9 +5,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.text.modifiers.TextAutoSizeLayoutScope
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,9 +31,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -235,34 +244,12 @@ private fun AuthenticatedHost(
 
     NavigationSuiteScaffold(
         navigationItems = {
-            TopLevelTab.entries.forEach { tab ->
-                val selected = tab == currentTab
-                NavigationSuiteItem(
-                    selected = selected,
-                    onClick = {
-                        navController.onTabClicked(tab, selected, reselections)
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                            contentDescription = null,
-                        )
-                    },
-                    label = { Text(tab.label) },
-                    badge = if (tab == TopLevelTab.Alerts && unseenAlerts > 0) {
-                        {
-                            Badge(
-                                modifier = Modifier.semantics {
-                                    contentDescription = "$unseenAlerts new"
-                                },
-                            ) { Text(badgeText(unseenAlerts)) }
-                        }
-                    } else {
-                        null
-                    },
-                    navigationSuiteType = adaptiveType,
-                )
-            }
+            TopLevelTabItems(
+                currentTab = currentTab,
+                unseenAlerts = unseenAlerts,
+                navigationSuiteType = adaptiveType,
+                onTabClick = { tab, selected -> navController.onTabClicked(tab, selected, reselections) },
+            )
         },
         navigationSuiteType = navigationType,
         state = navigationState,
@@ -272,5 +259,100 @@ private fun AuthenticatedHost(
                 NcCollectivesNavHost(navController = navController, innerPadding = innerPadding, reselections = reselections)
             }
         }
+    }
+}
+
+/** The navigation bar's items, one per tab, with the unseen-alerts badge on Alerts. */
+@Composable
+internal fun TopLevelTabItems(
+    currentTab: TopLevelTab?,
+    unseenAlerts: Int,
+    navigationSuiteType: NavigationSuiteType,
+    onTabClick: (tab: TopLevelTab, selected: Boolean) -> Unit,
+) {
+    TopLevelTab.entries.forEach { tab ->
+        val selected = tab == currentTab
+        NavigationSuiteItem(
+            selected = selected,
+            onClick = { onTabClick(tab, selected) },
+            icon = {
+                Icon(
+                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                    contentDescription = null,
+                )
+            },
+            label = { TabLabel(tab.label) },
+            badge = if (tab == TopLevelTab.Alerts && unseenAlerts > 0) {
+                {
+                    Badge(
+                        modifier = Modifier.semantics {
+                            contentDescription = "$unseenAlerts new"
+                        },
+                    ) { Text(badgeText(unseenAlerts)) }
+                }
+            } else {
+                null
+            },
+            navigationSuiteType = navigationSuiteType,
+        )
+    }
+}
+
+/**
+ * A tab's label, on one line. A label too wide for its slot — "Collectives"
+ * on a narrow phone, or with the font enlarged — shrinks to fit rather than
+ * breaking mid-word, to no less than [SMALLEST_TAB_LABEL] of its size at
+ * the default font size; a label still too wide is cut short with an
+ * ellipsis.
+ */
+@Composable
+internal fun TabLabel(text: String) {
+    val size = LocalTextStyle.current.fontSize
+    val fontScale = LocalDensity.current.fontScale
+    Text(
+        text = text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        autoSize = if (size.isSp) {
+            ShrinkToFit(smallest = size * (SMALLEST_TAB_LABEL / fontScale).coerceAtMost(1f), largest = size)
+        } else {
+            null
+        },
+    )
+}
+
+/** The smallest a tab label shrinks to, as a share of its size at the default font size. */
+internal const val SMALLEST_TAB_LABEL = 0.8f
+
+/**
+ * The largest size, in [step]s down from [largest] to no less than
+ * [smallest], at which the text fits without an ellipsis — so text that
+ * fits is drawn at exactly [largest]. `TextAutoSize.StepBased` counts its
+ * steps up from the smallest size, and its top step can fall short of the
+ * largest.
+ */
+private data class ShrinkToFit(
+    val smallest: TextUnit,
+    val largest: TextUnit,
+    val step: TextUnit = 0.25.sp,
+) : TextAutoSize {
+    override fun TextAutoSizeLayoutScope.getFontSize(
+        constraints: Constraints,
+        text: AnnotatedString,
+    ): TextUnit {
+        fun size(steps: Int): TextUnit = (largest.value - steps * step.value).sp
+
+        fun fits(steps: Int): Boolean = performLayout(constraints, text, size(steps)).let { !it.isLineEllipsized(it.lineCount - 1) }
+
+        if (fits(0)) return largest
+        val most = ((largest.value - smallest.value) / step.value).toInt().coerceAtLeast(0)
+        if (!fits(most)) return size(most)
+        var tooFew = 0
+        var enough = most
+        while (enough - tooFew > 1) {
+            val steps = (tooFew + enough) / 2
+            if (fits(steps)) enough = steps else tooFew = steps
+        }
+        return size(enough)
     }
 }
