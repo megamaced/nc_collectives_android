@@ -34,6 +34,8 @@
     <string name="error_reserved_title">A page can\'t be called \".\" or \"..\".</string>
     <!-- "Members" are the people a collective is shared with, through a Nextcloud team. -->
     <string name="error_no_members_list">This collective\'s members can\'t be listed.</string>
+    <!-- The server offered the collaborative editor at an address that isn't the user's Nextcloud server over https. -->
+    <string name="error_editor_address">The editor\'s address isn\'t on your Nextcloud server, so it wasn\'t opened.</string>
     <string name="error_empty_response">The server sent an empty answer.</string>
 
     <!-- Signing in. -->
@@ -73,6 +75,17 @@
     <string name="page_new">New page</string>
     <string name="settings_title">Settings</string>
     <string name="action_create">Create</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_preview">Preview</string>
+    <string name="action_save">Save</string>
+    <string name="action_discard">Discard</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_add">Add</string>
+    <string name="action_close">Close</string>
+    <string name="action_refresh">Refresh</string>
     <string name="action_restore">Restore</string>
     <string name="action_move_to_trash">Move to trash</string>
     <string name="action_delete_forever">Delete forever</string>
@@ -449,4 +462,96 @@
     <string name="trash_collective_purge_title">Permanently delete \"%1$s\"?</string>
     <!-- The "Team" is the Nextcloud team that holds the collective's members. -->
     <string name="trash_collective_purge_message">This will permanently delete the collective and tear down the underlying Team. All pages will be lost forever. This can\'t be undone.</string>
+
+    <!-- A page: viewing it, and its menu. -->
+    <string name="page_duplicated">Page duplicated</string>
+    <string name="page_moved_to_trash">Moved to trash</string>
+    <string name="page_attachments_menu">Attachments…</string>
+    <string name="page_tags_menu">Tags…</string>
+    <string name="page_rename_menu">Rename…</string>
+    <string name="page_move_menu">Move…</string>
+    <string name="page_duplicate">Duplicate</string>
+    <string name="page_trash_confirm_title">Move to trash?</string>
+    <!-- %1$s is the page's title. "Trash" is the trash screen (trash_title). -->
+    <string name="page_trash_confirm_message">\"%1$s\" will be moved to the collective\'s trash. You can restore it from Trash.</string>
+    <!-- Under a page's title. %1$s is a person's name; %2$s is when, such as "5 min. ago" or a date. -->
+    <string name="page_last_changed_by_when">Last changed by %1$s · %2$s</string>
+    <string name="page_last_changed_by">Last changed by %1$s</string>
+    <string name="page_last_changed_when">Last changed · %1$s</string>
+    <!-- A page's table of contents, from its headings. -->
+    <string name="page_index">Page index</string>
+    <string name="page_index_top">Top of page</string>
+    <string name="page_rename_title">Rename page</string>
+    <string name="page_move_title">Move page to…</string>
+    <string name="page_move_none">No other pages in this collective.</string>
+    <string name="page_emoji_title">Set page emoji</string>
+    <string name="page_emoji_custom">Custom emoji</string>
+    <string name="page_emoji_custom_hint">Paste or type any emoji</string>
+    <string name="page_tags_title">Tags</string>
+    <string name="page_tags_none">No tags defined for this collective yet. Create one below.</string>
+    <!-- For screen readers. %1$s is the tag. -->
+    <string name="page_tag_browse">Browse pages tagged \"%1$s\"</string>
+    <string name="page_tag_create_hint">Create tag…</string>
+    <string name="page_tag_create">Create tag</string>
+    <!-- Opening a link in a page when the phone has no web browser. -->
+    <string name="link_no_browser">No browser app to open this link</string>
+
+    <!-- Editing, continued: the plain editor. -->
+    <string name="edit_discard_title">Discard changes?</string>
+    <string name="edit_discard_message">You have unsaved edits to this page.</string>
+    <string name="edit_keep_editing">Keep editing</string>
+    <!-- The formatting toolbar's buttons, for screen readers. -->
+    <string name="edit_heading">Heading</string>
+    <string name="edit_bold">Bold</string>
+    <string name="edit_italic">Italic</string>
+    <string name="edit_bullet_list">Bullet list</string>
+    <string name="edit_numbered_list">Numbered list</string>
+    <string name="edit_checklist">Checklist</string>
+    <string name="edit_link">Link</string>
+    <string name="edit_insert_image">Insert image</string>
+    <string name="edit_inline_code">Inline code</string>
+    <!-- Written into the page as a new link's text when nothing is selected, as in [link](https://). -->
+    <string name="edit_link_placeholder">link</string>
+    <!-- The collaborative editor, Nextcloud Text, shown inside the app. -->
+    <string name="web_editor_title">Edit (collaborative)</string>
+    <string name="web_editor_slow">Editor is taking a long time to load</string>
+    <string name="web_editor_closing">Saving and closing…</string>
+
+    <!-- A draft the server's version conflicted with, shown above the page. -->
+    <string name="conflict_title">Unsaved changes on this device</string>
+    <string name="conflict_message">The server\'s version changed after you started editing. Your local edits are kept as a draft.</string>
+    <!-- Replaces the server's page with the draft. -->
+    <string name="conflict_replace">Replace page</string>
+    <string name="conflict_discard_title">Discard your draft?</string>
+    <!-- "Copy" is the banner's Copy button (action_copy). -->
+    <string name="conflict_discard_message">Your unsaved edits will be deleted and the server\'s version kept. This can\'t be undone — use Copy first if you want to keep them.</string>
+    <string name="conflict_keep_draft">Keep draft</string>
+
+    <!-- Attachments, continued. -->
+    <string name="attachments_title">Attachments</string>
+    <string name="attachments_empty_title">No attachments yet</string>
+    <!-- "Add" is the button's label (action_add). -->
+    <string name="attachments_empty_message">Tap Add to upload a photo or file.</string>
+    <!-- %1$s is a file name. -->
+    <string name="attachment_downloading">Downloading %1$s…</string>
+    <string name="attachment_delete_title">Delete attachment?</string>
+    <!-- %1$s is a file name. -->
+    <string name="attachment_delete_message">\"%1$s\" will be removed from the page.</string>
+    <!-- For screen readers. %1$s is a file name. -->
+    <string name="attachment_retry_upload">Retry upload of %1$s</string>
+    <string name="attachment_add_title">Add attachment</string>
+    <string name="attachment_take_photo">Take photo</string>
+    <string name="attachment_pick_gallery">Pick from gallery</string>
+    <string name="attachment_pick_file">Pick a file</string>
+    <string name="attachment_insert_title">Insert attachment</string>
+    <!-- Where a new attachment comes from. -->
+    <string name="attachment_source_camera">Camera</string>
+    <string name="attachment_source_gallery">Gallery</string>
+    <string name="attachment_source_file">File</string>
+    <string name="attachment_picker_empty">No attachments yet. Capture or pick one above.</string>
+    <!-- An attachment's state, under its name. -->
+    <string name="attachment_status_tap_to_insert">Tap to insert</string>
+    <string name="attachment_status_pending">Waiting to upload</string>
+    <string name="attachment_status_uploading">Uploading…</string>
+    <string name="attachment_status_failed">Upload failed</string>
 </resources>

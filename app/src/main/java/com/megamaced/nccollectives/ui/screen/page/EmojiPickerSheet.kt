@@ -29,9 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 
 /**
  * Minimal emoji picker: a grid of popular pages-relevant emojis plus a free
@@ -61,7 +63,7 @@ fun EmojiPickerSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Set page emoji",
+                text = stringResource(R.string.page_emoji_title),
                 style = MaterialTheme.typography.titleMedium,
             )
 
@@ -88,8 +90,8 @@ fun EmojiPickerSheet(
                 // page header would still render the leading emoji and
                 // the rest is silently ignored.
                 onValueChange = { custom = it },
-                label = { Text("Custom emoji") },
-                placeholder = { Text("Paste or type any emoji") },
+                label = { Text(stringResource(R.string.page_emoji_custom)) },
+                placeholder = { Text(stringResource(R.string.page_emoji_custom_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 modifier = Modifier.fillMaxWidth(),
@@ -99,11 +101,11 @@ fun EmojiPickerSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                TextButton(onClick = { onPick("") }) { Text("Clear") }
+                TextButton(onClick = { onPick("") }) { Text(stringResource(R.string.action_clear)) }
                 TextButton(
                     enabled = custom.isNotBlank(),
                     onClick = { onPick(custom.trim()) },
-                ) { Text("Apply") }
+                ) { Text(stringResource(R.string.action_apply)) }
             }
         }
     }

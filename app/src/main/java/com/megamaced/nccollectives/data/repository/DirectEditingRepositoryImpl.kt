@@ -67,12 +67,7 @@ class DirectEditingRepositoryImpl
         }
 
         override suspend fun openSession(page: Page): ApiResult<String> {
-            val path = serverPathFor(page)
-                ?: return ApiResult.Unexpected(
-                    IllegalStateException(
-                        "Page ${page.id} has a path segment that failed validation; refusing to open session",
-                    ),
-                )
+            val path = serverPathFor(page) ?: return appFailure(AppFailure.UnsafePath)
             val expectedHost = tokenStore.getCredentials()?.host
                 ?: return appFailure(AppFailure.NoAccount)
             // `editorId = "text"` is the upstream id Text registers itself
@@ -131,12 +126,7 @@ class DirectEditingRepositoryImpl
                 if (isSameServerHttpsUrl(url, expectedHost)) {
                     ApiResult.Success(url)
                 } else {
-                    ApiResult.Unexpected(
-                        IllegalStateException(
-                            "Editor session URL is not an https URL on your Nextcloud host " +
-                                "($expectedHost); refusing to open it",
-                        ),
-                    )
+                    appFailure(AppFailure.EditorAddress)
                 }
 
             internal fun serverPathFor(page: Page): String? {

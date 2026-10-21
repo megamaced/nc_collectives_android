@@ -15,9 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.components.PageHeading
 
 /**
@@ -46,11 +48,11 @@ internal fun PageOutlineSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Page index", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.page_index), style = MaterialTheme.typography.titleMedium)
             LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                 item {
                     OutlineRow(
-                        title = "Top of page",
+                        title = stringResource(R.string.page_index_top),
                         indentLevel = 0,
                         emphasised = true,
                         onClick = { onSelect(null) },

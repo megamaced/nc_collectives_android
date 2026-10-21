@@ -11,7 +11,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import com.megamaced.nccollectives.R
 
 @Composable
 fun RenameDialog(
@@ -22,13 +24,13 @@ fun RenameDialog(
     var value by remember { mutableStateOf(currentTitle) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename page") },
+        title = { Text(stringResource(R.string.page_rename_title)) },
         text = {
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
                 singleLine = true,
-                label = { Text("Title") },
+                label = { Text(stringResource(R.string.page_title_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     if (value.isNotBlank()) onRename(value.trim())
@@ -39,10 +41,10 @@ fun RenameDialog(
             TextButton(
                 enabled = value.isNotBlank() && value.trim() != currentTitle,
                 onClick = { onRename(value.trim()) },
-            ) { Text("Rename") }
+            ) { Text(stringResource(R.string.action_rename)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }

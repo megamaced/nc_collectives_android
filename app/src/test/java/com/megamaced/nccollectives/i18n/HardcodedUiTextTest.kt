@@ -67,6 +67,7 @@ class HardcodedUiTextTest {
             """val base = "Pages cached on this device will be removed and ${'$'}{account.loginName}'s " +""",
             """return if (kind == null) role else "${'$'}kind · ${'$'}role"""",
             """return ApiResult.Unexpected(IllegalStateException("Page ${'$'}pageId not cached"))""",
+            """text = { Text("\"${'$'}name\" will be removed from the page.") },""",
         ).forEach { line -> assertTrue("Missed: $line", line.isUiText()) }
     }
 
@@ -159,6 +160,8 @@ class HardcodedUiTextTest {
                 Regex("""\{\s*"\p{Lu}\p{Ll}[^"]*"\s*\}"""),
                 // Two values joined by a separator, whose order a language may change.
                 Regex(""""\$\{?\w+(\.\w+)*\}? [·•—–-] \$"""),
+                // A sentence that opens with a quoted name.
+                Regex(""""\\"[^\\]*\\" \p{Ll}"""),
             )
 
         /** A line that is the level of a log call chained under `Timber.tag(…)`. */

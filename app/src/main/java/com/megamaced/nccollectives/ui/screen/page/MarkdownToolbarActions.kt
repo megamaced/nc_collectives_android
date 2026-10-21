@@ -29,11 +29,15 @@ internal object MarkdownToolbarActions {
 
     fun inlineCode(value: TextFieldValue): TextFieldValue = wrap(value, "`")
 
-    fun link(value: TextFieldValue): TextFieldValue {
+    /** A link around the selection, or around [placeholder] when nothing is selected. */
+    fun link(
+        value: TextFieldValue,
+        placeholder: String,
+    ): TextFieldValue {
         val text = value.text
         val (min, max) = value.clampedSelection()
         val selected = text.substring(min, max)
-        val replacement = "[${selected.ifEmpty { "link" }}](https://)"
+        val replacement = "[${selected.ifEmpty { placeholder }}](https://)"
         val newText = text.replaceRange(min, max, replacement)
         val cursor = min + replacement.length - 1 // place cursor inside the URL parens
         return value.copy(text = newText, selection = TextRange(cursor))

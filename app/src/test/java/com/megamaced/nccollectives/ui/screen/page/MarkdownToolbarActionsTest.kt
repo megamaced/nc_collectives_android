@@ -223,18 +223,19 @@ class MarkdownToolbarActionsTest {
     }
 
     @Test
-    fun link_withNoSelection_insertsAPlaceholderAndParksTheCaretInsideTheUrl() {
-        val result = MarkdownToolbarActions.link(editor(""))
-        assertEquals("[link](https://)", result.text)
+    fun link_withNoSelection_insertsThePlaceholderAndParksTheCaretInsideTheUrl() {
+        // The placeholder is the user's language's word for a link.
+        val result = MarkdownToolbarActions.link(editor(""), "lien")
+        assertEquals("[lien](https://)", result.text)
         // Immediately before the closing paren, ready for typing the URL.
-        assertEquals(TextRange("[link](https://".length), result.selection)
+        assertEquals(TextRange("[lien](https://".length), result.selection)
     }
 
     @Test
     fun link_withASelection_keepsTheSelectedTextAsTheLabel() {
         assertEquals(
             "[abc](https://)",
-            MarkdownToolbarActions.link(editor("abc", start = 0, end = 3)).text,
+            MarkdownToolbarActions.link(editor("abc", start = 0, end = 3), "link").text,
         )
     }
 
@@ -271,7 +272,7 @@ class MarkdownToolbarActionsTest {
         // of these may throw.
         val stale = TextFieldValue(text = "ab", selection = TextRange(40, 60))
         assertEquals("ab****", MarkdownToolbarActions.bold(stale).text)
-        assertEquals("ab[link](https://)", MarkdownToolbarActions.link(stale).text)
+        assertEquals("ab[link](https://)", MarkdownToolbarActions.link(stale, "link").text)
         assertEquals("# ab", MarkdownToolbarActions.heading(stale).text)
         assertEquals("- ab", MarkdownToolbarActions.bullet(stale).text)
         assertEquals("1. ab", MarkdownToolbarActions.numbered(stale).text)

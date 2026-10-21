@@ -29,8 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.PageTag
 
 /**
@@ -62,12 +64,12 @@ fun TagPickerSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Tags", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.page_tags_title), style = MaterialTheme.typography.titleMedium)
             when {
                 isLoading -> CircularProgressIndicator()
 
                 available.isEmpty() -> Text(
-                    text = "No tags defined for this collective yet. Create one below.",
+                    text = stringResource(R.string.page_tags_none),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -94,7 +96,7 @@ fun TagPickerSheet(
                             IconButton(onClick = { onBrowse(tag) }) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "Browse pages tagged \"${tag.name}\"",
+                                    contentDescription = stringResource(R.string.page_tag_browse, tag.name),
                                 )
                             }
                         }
@@ -109,7 +111,7 @@ fun TagPickerSheet(
                 OutlinedTextField(
                     value = newTagName,
                     onValueChange = { newTagName = it },
-                    label = { Text("Create tag…") },
+                    label = { Text(stringResource(R.string.page_tag_create_hint)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -129,11 +131,11 @@ fun TagPickerSheet(
                     },
                     enabled = newTagName.isNotBlank(),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Create tag")
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.page_tag_create))
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Done")
+                Text(stringResource(R.string.action_done))
             }
         }
     }

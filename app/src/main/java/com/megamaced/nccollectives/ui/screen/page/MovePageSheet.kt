@@ -18,8 +18,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Page
 
 /**
@@ -44,10 +46,10 @@ fun MovePageSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Move page to…", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.page_move_title), style = MaterialTheme.typography.titleMedium)
             if (targets.isEmpty()) {
                 Text(
-                    text = "No other pages in this collective.",
+                    text = stringResource(R.string.page_move_none),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -72,7 +74,7 @@ fun MovePageSheet(
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     }

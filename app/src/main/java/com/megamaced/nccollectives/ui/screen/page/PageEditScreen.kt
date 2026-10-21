@@ -62,11 +62,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.attachment.rememberCameraCapture
 import com.megamaced.nccollectives.ui.attachment.uriDisplayName
 import com.megamaced.nccollectives.ui.components.LoadingState
@@ -213,16 +215,16 @@ internal fun PageEditScreen(
     if (showDiscardPrompt) {
         AlertDialog(
             onDismissRequest = { showDiscardPrompt = false },
-            title = { Text("Discard changes?") },
-            text = { Text("You have unsaved edits to this page.") },
+            title = { Text(stringResource(R.string.edit_discard_title)) },
+            text = { Text(stringResource(R.string.edit_discard_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDiscardPrompt = false
                     onClose()
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.action_discard)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardPrompt = false }) { Text("Keep editing") }
+                TextButton(onClick = { showDiscardPrompt = false }) { Text(stringResource(R.string.edit_keep_editing)) }
             },
         )
     }
@@ -248,14 +250,14 @@ internal fun PageEditScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = tryClose) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { previewing = !previewing }) {
                         Icon(
                             imageVector = if (previewing) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = if (previewing) "Edit" else "Preview",
+                            contentDescription = stringResource(if (previewing) R.string.action_edit else R.string.action_preview),
                         )
                     }
                     IconButton(
@@ -268,7 +270,7 @@ internal fun PageEditScreen(
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Icon(Icons.Filled.Save, contentDescription = "Save")
+                            Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.action_save))
                         }
                     }
                 },
@@ -332,6 +334,7 @@ private fun MarkdownToolbar(
     onAction: ((TextFieldValue) -> TextFieldValue) -> Unit,
     onInsertImage: () -> Unit,
 ) {
+    val linkPlaceholder = stringResource(R.string.edit_link_placeholder)
     // Nine 48dp buttons are 432dp, wider than most phones, so the row
     // scrolls rather than clipping the last few off the edge. The tonal
     // container sets the toolbar apart from the text it sits under; it is
@@ -344,19 +347,22 @@ private fun MarkdownToolbar(
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        ToolbarButton(Icons.Filled.Title, "Heading") { onAction(MarkdownToolbarActions::heading) }
-        ToolbarButton(Icons.Filled.FormatBold, "Bold") { onAction(MarkdownToolbarActions::bold) }
-        ToolbarButton(Icons.Filled.FormatItalic, "Italic") { onAction(MarkdownToolbarActions::italic) }
-        ToolbarButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Bullet list") {
+        ToolbarButton(Icons.Filled.Title, stringResource(R.string.edit_heading)) { onAction(MarkdownToolbarActions::heading) }
+        ToolbarButton(Icons.Filled.FormatBold, stringResource(R.string.edit_bold)) { onAction(MarkdownToolbarActions::bold) }
+        ToolbarButton(Icons.Filled.FormatItalic, stringResource(R.string.edit_italic)) { onAction(MarkdownToolbarActions::italic) }
+        ToolbarButton(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.edit_bullet_list)) {
             onAction(MarkdownToolbarActions::bullet)
         }
-        ToolbarButton(Icons.Filled.FormatListNumbered, "Numbered list") {
+        ToolbarButton(Icons.Filled.FormatListNumbered, stringResource(R.string.edit_numbered_list)) {
             onAction(MarkdownToolbarActions::numbered)
         }
-        ToolbarButton(Icons.Filled.CheckBox, "Checklist") { onAction(MarkdownToolbarActions::checklist) }
-        ToolbarButton(Icons.Filled.Link, "Link") { onAction(MarkdownToolbarActions::link) }
-        ToolbarButton(Icons.Filled.Image, "Insert image", onClick = onInsertImage)
-        ToolbarButton(Icons.Filled.Code, "Inline code") { onAction(MarkdownToolbarActions::inlineCode) }
+        ToolbarButton(Icons.Filled.CheckBox, stringResource(R.string.edit_checklist)) { onAction(MarkdownToolbarActions::checklist) }
+        ToolbarButton(
+            Icons.Filled.Link,
+            stringResource(R.string.edit_link),
+        ) { onAction { MarkdownToolbarActions.link(it, linkPlaceholder) } }
+        ToolbarButton(Icons.Filled.Image, stringResource(R.string.edit_insert_image), onClick = onInsertImage)
+        ToolbarButton(Icons.Filled.Code, stringResource(R.string.edit_inline_code)) { onAction(MarkdownToolbarActions::inlineCode) }
     }
 }
 

@@ -1,7 +1,12 @@
 package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.Failure
+import com.megamaced.nccollectives.data.api.failure
 import com.megamaced.nccollectives.domain.model.Page
+import io.mockk.mockk
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -39,6 +44,14 @@ class DirectEditingRepositoryImplTest {
         )
         assertEquals(".Collectives/Wiki/Some Folder/Page.md", path)
     }
+
+    @Test
+    fun openSession_onAPathThatFailsValidation_isAnUnsafePath() =
+        runTest {
+            val repository = DirectEditingRepositoryImpl(mockk(), mockk())
+            val result = repository.openSession(pageOf(collectivePath = "../..", filePath = "x", fileName = "Page.md"))
+            assertEquals(Failure.App(AppFailure.UnsafePath), result.failure())
+        }
 
     @Test
     fun serverPathFor_traversalInCollectivePath_returnsNull() {

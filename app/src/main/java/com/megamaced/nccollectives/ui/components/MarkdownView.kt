@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.viewinterop.AndroidView
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.ui.theme.LocalTextScale
 import com.megamaced.nccollectives.util.AttachmentRef
@@ -269,7 +270,7 @@ fun MarkdownView(
                                 // the attachment path exists to remove.
                                 onNoBrowser = {
                                     Toast
-                                        .makeText(context, "No browser app to open this link", Toast.LENGTH_SHORT)
+                                        .makeText(context, resources.getString(R.string.link_no_browser), Toast.LENGTH_SHORT)
                                         .show()
                                 },
                             )

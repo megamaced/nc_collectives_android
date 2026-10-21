@@ -1,6 +1,9 @@
 package com.megamaced.nccollectives.data.repository
 
 import com.megamaced.nccollectives.data.api.ApiResult
+import com.megamaced.nccollectives.data.api.AppFailure
+import com.megamaced.nccollectives.data.api.Failure
+import com.megamaced.nccollectives.data.api.failure
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,6 +63,6 @@ class DirectEditingSessionUrlTest {
 
     private fun assertRefused(url: String) {
         val result = DirectEditingRepositoryImpl.validatedSessionUrl(url, host)
-        assertTrue("expected refusal for $url but got $result", result is ApiResult.Unexpected)
+        assertEquals("expected refusal for $url", Failure.App(AppFailure.EditorAddress), result.failure())
     }
 }

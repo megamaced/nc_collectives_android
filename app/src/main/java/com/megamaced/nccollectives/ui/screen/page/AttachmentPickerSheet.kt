@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.page
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -31,11 +32,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Attachment
 
 /**
@@ -77,26 +80,26 @@ internal fun AttachmentPickerSheet(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         ) {
             Text(
-                text = "Insert attachment",
+                text = stringResource(R.string.attachment_insert_title),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
             Row(modifier = Modifier.fillMaxWidth()) {
                 UploadChip(
                     icon = Icons.Filled.PhotoCamera,
-                    label = "Camera",
+                    label = stringResource(R.string.attachment_source_camera),
                     onClick = onCamera,
                     modifier = Modifier.weight(1f),
                 )
                 UploadChip(
                     icon = Icons.Filled.PhotoLibrary,
-                    label = "Gallery",
+                    label = stringResource(R.string.attachment_source_gallery),
                     onClick = onGallery,
                     modifier = Modifier.weight(1f),
                 )
                 UploadChip(
                     icon = Icons.AutoMirrored.Filled.InsertDriveFile,
-                    label = "File",
+                    label = stringResource(R.string.attachment_source_file),
                     onClick = onFile,
                     modifier = Modifier.weight(1f),
                 )
@@ -104,7 +107,7 @@ internal fun AttachmentPickerSheet(
             Spacer(Modifier.height(16.dp))
             if (attachments.isEmpty()) {
                 Text(
-                    text = "No attachments yet. Capture or pick one above.",
+                    text = stringResource(R.string.attachment_picker_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
@@ -124,7 +127,7 @@ internal fun AttachmentPickerSheet(
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     }
@@ -188,17 +191,21 @@ private fun AttachmentRow(
         }
         Column(modifier = Modifier.padding(start = 12.dp)) {
             Text(text = attachment.fileName, style = MaterialTheme.typography.bodyMedium)
-            val statusLabel = when (attachment.status) {
-                Attachment.Status.REMOTE -> "Tap to insert"
-                Attachment.Status.PENDING -> "Waiting to upload"
-                Attachment.Status.UPLOADING -> "Uploading…"
-                Attachment.Status.FAILED -> "Upload failed"
-            }
             Text(
-                text = statusLabel,
+                text = stringResource(attachment.status.pickerLabel()),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
+
+/** What the picker says under an attachment in this state. */
+@StringRes
+internal fun Attachment.Status.pickerLabel(): Int =
+    when (this) {
+        Attachment.Status.REMOTE -> R.string.attachment_status_tap_to_insert
+        Attachment.Status.PENDING -> R.string.attachment_status_pending
+        Attachment.Status.UPLOADING -> R.string.attachment_status_uploading
+        Attachment.Status.FAILED -> R.string.attachment_status_failed
+    }

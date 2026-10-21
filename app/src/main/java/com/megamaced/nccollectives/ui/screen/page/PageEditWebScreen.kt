@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -131,6 +132,8 @@ internal fun PageEditWebScreen(
         if (ui is PageEditWebUiState.Closed) onClose()
     }
 
+    val resources by rememberUpdatedState(LocalResources.current)
+
     // Hard 10-second timeout matching the Notes-Android behaviour
     // (LOAD_TIMEOUT_SECONDS in `NoteDirectEditFragment.kt`).
     LaunchedEffect(ui) {
@@ -138,15 +141,14 @@ internal fun PageEditWebScreen(
             delay(EDITOR_TIMEOUT_MS)
             if (viewModel.uiState.value is PageEditWebUiState.Loaded) {
                 val result = snackbarHostState.showSnackbar(
-                    message = "Editor is taking a long time to load",
-                    actionLabel = "Cancel",
+                    message = resources.getString(R.string.web_editor_slow),
+                    actionLabel = resources.getString(R.string.action_cancel),
                 )
                 if (result == SnackbarResult.ActionPerformed) onClose()
             }
         }
     }
 
-    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(ui) {
         if (ui is PageEditWebUiState.Failed) {
             val msg = (ui as PageEditWebUiState.Failed).message
@@ -203,7 +205,7 @@ internal fun PageEditWebScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Edit (collaborative)", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.web_editor_title), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     // Disabled while closing (B-47) so the only affordance
                     // that can re-enter `onClose` is visibly inert while the
@@ -212,7 +214,7 @@ internal fun PageEditWebScreen(
                         onClick = { viewModel.onClose() },
                         enabled = ui !is PageEditWebUiState.Closing,
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_close))
                     }
                 },
                 // The Scaffold's `contentWindowInsets = 0` zeros the
@@ -289,7 +291,7 @@ internal fun PageEditWebScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             CircularProgressIndicator()
-                            Text("Saving and closing…", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.web_editor_closing), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

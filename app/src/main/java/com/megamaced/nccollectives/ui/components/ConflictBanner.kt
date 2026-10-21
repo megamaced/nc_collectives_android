@@ -18,8 +18,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.megamaced.nccollectives.R
 
 /**
  * B-78: "Discard" destroys `draftBodyMd` — the only copy of edits that lost
@@ -46,12 +48,12 @@ fun ConflictBanner(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Unsaved changes on this device",
+            text = stringResource(R.string.conflict_title),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
         Text(
-            text = "The server's version changed after you started editing. Your local edits are kept as a draft.",
+            text = stringResource(R.string.conflict_message),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
@@ -59,30 +61,27 @@ fun ConflictBanner(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
-            TextButton(onClick = { clipboard.setText(AnnotatedString(draft)) }) { Text("Copy") }
-            TextButton(onClick = { confirmDiscard = true }) { Text("Discard") }
-            TextButton(onClick = onReplace) { Text("Replace page") }
+            TextButton(onClick = { clipboard.setText(AnnotatedString(draft)) }) { Text(stringResource(R.string.action_copy)) }
+            TextButton(onClick = { confirmDiscard = true }) { Text(stringResource(R.string.action_discard)) }
+            TextButton(onClick = onReplace) { Text(stringResource(R.string.conflict_replace)) }
         }
     }
 
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("Discard your draft?") },
+            title = { Text(stringResource(R.string.conflict_discard_title)) },
             text = {
-                Text(
-                    "Your unsaved edits will be deleted and the server's version kept. " +
-                        "This can't be undone — use Copy first if you want to keep them.",
-                )
+                Text(stringResource(R.string.conflict_discard_message))
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
                     onDiscard()
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.action_discard)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDiscard = false }) { Text("Keep draft") }
+                TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.conflict_keep_draft)) }
             },
         )
     }

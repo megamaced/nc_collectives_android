@@ -62,6 +62,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
@@ -87,6 +88,7 @@ import com.megamaced.nccollectives.ui.components.SubpageChipRow
 import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.AttachmentRef
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.resolve
 import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.flow.first
@@ -237,7 +239,7 @@ internal fun PageViewScreen(
         // Indefinite: dismissed implicitly when the download finishes and
         // this effect is cancelled on the state change.
         snackbarHostState.showSnackbar(
-            message = "Downloading $name…",
+            message = resources.getString(R.string.attachment_downloading, name),
             duration = SnackbarDuration.Indefinite,
         )
     }
@@ -245,8 +247,8 @@ internal fun PageViewScreen(
     LaunchedEffect(ui.copiedPageId) {
         val target = ui.copiedPageId ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
-            message = "Page duplicated",
-            actionLabel = "Open",
+            message = resources.getString(R.string.page_duplicated),
+            actionLabel = resources.getString(R.string.action_open),
             duration = SnackbarDuration.Short,
         )
         viewModel.acknowledgeCopied()
@@ -264,8 +266,8 @@ internal fun PageViewScreen(
     LaunchedEffect(ui.trashedAwaitingUndo) {
         if (!ui.trashedAwaitingUndo) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
-            message = "Moved to trash",
-            actionLabel = "Undo",
+            message = resources.getString(R.string.page_moved_to_trash),
+            actionLabel = resources.getString(R.string.action_undo),
             duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) {
@@ -293,7 +295,7 @@ internal fun PageViewScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -301,7 +303,9 @@ internal fun PageViewScreen(
                         IconButton(onClick = viewModel::toggleFavorite) {
                             Icon(
                                 imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                                contentDescription = if (isFavorite) "Unfavorite" else "Favorite",
+                                contentDescription = stringResource(
+                                    if (isFavorite) R.string.action_unfavorite else R.string.action_favorite,
+                                ),
                             )
                         }
                         // Only worth a toolbar slot once there is somewhere
@@ -310,13 +314,13 @@ internal fun PageViewScreen(
                             IconButton(onClick = { showOutline = true }) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Toc,
-                                    contentDescription = "Page index",
+                                    contentDescription = stringResource(R.string.page_index),
                                 )
                             }
                         }
                         Box {
                             IconButton(onClick = { menuExpanded = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more_options))
                             }
                             DropdownMenu(
                                 expanded = menuExpanded,
@@ -327,28 +331,28 @@ internal fun PageViewScreen(
                                 // looking at it, and for an answer you can see
                                 // ("Page updated" / "Already up to date").
                                 DropdownMenuItem(
-                                    text = { Text("Refresh") },
+                                    text = { Text(stringResource(R.string.action_refresh)) },
                                     onClick = {
                                         menuExpanded = false
                                         viewModel.refreshBody()
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Attachments…") },
+                                    text = { Text(stringResource(R.string.page_attachments_menu)) },
                                     onClick = {
                                         menuExpanded = false
                                         onAttachments()
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Set emoji…") },
+                                    text = { Text(stringResource(R.string.collective_set_emoji)) },
                                     onClick = {
                                         menuExpanded = false
                                         showEmojiPicker = true
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Tags…") },
+                                    text = { Text(stringResource(R.string.page_tags_menu)) },
                                     onClick = {
                                         menuExpanded = false
                                         viewModel.loadAvailableTags()
@@ -356,14 +360,14 @@ internal fun PageViewScreen(
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Rename…") },
+                                    text = { Text(stringResource(R.string.page_rename_menu)) },
                                     onClick = {
                                         menuExpanded = false
                                         showRenameDialog = true
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Move…") },
+                                    text = { Text(stringResource(R.string.page_move_menu)) },
                                     onClick = {
                                         menuExpanded = false
                                         viewModel.loadMoveTargets()
@@ -371,14 +375,14 @@ internal fun PageViewScreen(
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Duplicate") },
+                                    text = { Text(stringResource(R.string.page_duplicate)) },
                                     onClick = {
                                         menuExpanded = false
                                         viewModel.duplicatePage()
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Move to trash") },
+                                    text = { Text(stringResource(R.string.action_move_to_trash)) },
                                     onClick = {
                                         menuExpanded = false
                                         showTrashConfirm = true
@@ -536,12 +540,9 @@ internal fun PageViewScreen(
         val target = visiblePage
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showTrashConfirm = false },
-            title = { Text("Move to trash?") },
+            title = { Text(stringResource(R.string.page_trash_confirm_title)) },
             text = {
-                Text(
-                    text = "\"${target?.title.orEmpty()}\" will be moved to the collective's trash. " +
-                        "You can restore it from Trash.",
-                )
+                Text(stringResource(R.string.page_trash_confirm_message, target?.title.orEmpty()))
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
@@ -549,10 +550,12 @@ internal fun PageViewScreen(
                     // Commits straight away; the "Moved to trash" snackbar
                     // that follows offers a restore (B-75).
                     viewModel.trashPage()
-                }) { Text("Move to trash") }
+                }) { Text(stringResource(R.string.action_move_to_trash)) }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showTrashConfirm = false }) { Text("Cancel") }
+                androidx.compose.material3.TextButton(
+                    onClick = { showTrashConfirm = false },
+                ) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -620,10 +623,7 @@ private fun PageViewContent(
         } else {
             null
         }
-        val subtitle = listOfNotNull(
-            page.lastUserDisplayName.takeIf { it.isNotEmpty() }?.let { "Last changed by $it" },
-            editedRelative?.let { "· $it" },
-        ).joinToString(" ")
+        val subtitle = lastChangedLine(page.lastUserDisplayName.takeIf { it.isNotEmpty() }, editedRelative)?.resolve().orEmpty()
         if (subtitle.isNotEmpty()) {
             Text(
                 text = subtitle,
@@ -687,8 +687,9 @@ private fun EditFab(
     busy: Boolean,
     onClick: () -> Unit,
 ) {
+    val editLabel = stringResource(R.string.action_edit)
     ExtendedFloatingActionButton(
-        text = { Text("Edit") },
+        text = { Text(editLabel) },
         icon = {
             if (busy) {
                 CircularProgressIndicator(
@@ -703,7 +704,7 @@ private fun EditFab(
         onClick = onClick,
         expanded = expanded,
         modifier = Modifier.semantics {
-            contentDescription = "Edit"
+            contentDescription = editLabel
             if (busy) disabled()
         },
     )
@@ -717,3 +718,15 @@ private val OUTLINE_SCROLL_HEADROOM = 12.dp
 
 /** Below this, the index would list fewer places than it costs a tap to open. */
 private const val MIN_HEADINGS_FOR_INDEX = 2
+
+/** Who last changed the page and when, as much as is known; null when neither is. */
+internal fun lastChangedLine(
+    editor: String?,
+    relativeTime: String?,
+): UiText? =
+    when {
+        editor != null && relativeTime != null -> uiText(R.string.page_last_changed_by_when, editor, relativeTime)
+        editor != null -> uiText(R.string.page_last_changed_by, editor)
+        relativeTime != null -> uiText(R.string.page_last_changed_when, relativeTime)
+        else -> null
+    }

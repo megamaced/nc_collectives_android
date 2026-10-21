@@ -52,12 +52,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -127,12 +130,13 @@ internal fun AttachmentsScreen(
         )
     }
 
+    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(ui.downloadingAttachment) {
         val name = ui.downloadingAttachment ?: return@LaunchedEffect
         // Indefinite: implicitly dismissed when the download finishes and
         // the state change cancels this effect.
         snackbarHostState.showSnackbar(
-            message = "Downloading $name…",
+            message = resources.getString(R.string.attachment_downloading, name),
             duration = SnackbarDuration.Indefinite,
         )
     }
@@ -142,10 +146,10 @@ internal fun AttachmentsScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Attachments", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.attachments_title), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -157,7 +161,7 @@ internal fun AttachmentsScreen(
             ExtendedFloatingActionButton(
                 onClick = { showUploadSheet = true },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Add") },
+                text = { Text(stringResource(R.string.action_add)) },
             )
         },
     ) { scaffoldPadding ->
@@ -179,8 +183,8 @@ internal fun AttachmentsScreen(
                     // `PullToRefreshBox`, so the pull works on the empty list
                     // too — which is the one you most want to retry.
                     EmptyState(
-                        title = "No attachments yet",
-                        message = "Tap Add to upload a photo or file.",
+                        title = stringResource(R.string.attachments_empty_title),
+                        message = stringResource(R.string.attachments_empty_message),
                     )
                 }
 
@@ -228,16 +232,16 @@ internal fun AttachmentsScreen(
     pendingDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete attachment?") },
-            text = { Text("\"$name\" will be removed from the page.") },
+            title = { Text(stringResource(R.string.attachment_delete_title)) },
+            text = { Text(stringResource(R.string.attachment_delete_message, name)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.delete(name)
                     pendingDelete = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -285,7 +289,7 @@ private fun AttachmentTile(
                 hasFailed -> {
                     Icon(
                         Icons.Filled.ErrorOutline,
-                        contentDescription = "Upload failed",
+                        contentDescription = stringResource(R.string.attachment_status_failed),
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(16.dp),
                     )
@@ -326,11 +330,11 @@ private fun AttachmentTile(
             )
             if (hasFailed) {
                 IconButton(onClick = onRetry) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Retry upload of ${attachment.fileName}")
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.attachment_retry_upload, attachment.fileName))
                 }
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
             }
         }
     }
@@ -352,23 +356,23 @@ private fun UploadSourceSheet(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         ) {
             Text(
-                text = "Add attachment",
+                text = stringResource(R.string.attachment_add_title),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
             SheetAction(
                 icon = androidx.compose.material.icons.Icons.Filled.PhotoCamera,
-                label = "Take photo",
+                label = stringResource(R.string.attachment_take_photo),
                 onClick = onCamera,
             )
             SheetAction(
                 icon = androidx.compose.material.icons.Icons.Filled.PhotoLibrary,
-                label = "Pick from gallery",
+                label = stringResource(R.string.attachment_pick_gallery),
                 onClick = onGallery,
             )
             SheetAction(
                 icon = Icons.AutoMirrored.Filled.InsertDriveFile,
-                label = "Pick a file",
+                label = stringResource(R.string.attachment_pick_file),
                 onClick = onFile,
             )
         }

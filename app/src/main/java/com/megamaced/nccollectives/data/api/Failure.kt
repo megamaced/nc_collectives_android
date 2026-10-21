@@ -136,6 +136,9 @@ enum class AppFailure(
     /** A page title of `.` or `..`, which can't name a file. */
     ReservedTitle(R.string.error_reserved_title),
     NoMembersList(R.string.error_no_members_list),
+
+    /** The collaborative editor's address isn't an https address on the user's server. */
+    EditorAddress(R.string.error_editor_address),
     EmptyResponse(R.string.error_empty_response),
     ;
 
