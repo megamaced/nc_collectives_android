@@ -1,0 +1,3 @@
+3.1.0: pages can open straight into the editor, as each collective is set on the web, or always in Read or Edit mode (Settings → Editor). ==Highlighted== text now shows highlighted. Home's headings are larger, and tab labels stay whole with a larger font.
+
+Coming from 2.x? 3.0 redesigned the app: five tabs (Home, Collectives, Search, Favorites and Alerts), cards on Home, in-app alerts, and Edit as a floating button. Every 2.x action is still there.
