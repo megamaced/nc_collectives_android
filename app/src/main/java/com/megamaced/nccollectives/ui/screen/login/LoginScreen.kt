@@ -30,11 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import timber.log.Timber
 
@@ -80,14 +82,14 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "NC Collectives",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Connect to your Nextcloud server",
+                text = stringResource(R.string.login_connect),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -97,8 +99,8 @@ fun LoginScreen(
             OutlinedTextField(
                 value = uiState.hostInput,
                 onValueChange = viewModel::onHostChanged,
-                label = { Text("Server URL") },
-                placeholder = { Text("cloud.example.com") },
+                label = { Text(stringResource(R.string.login_server_url)) },
+                placeholder = { Text("cloud.example.com") }, // i18n-ignore: an example address
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
@@ -123,7 +125,7 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("Log in")
+                    Text(stringResource(R.string.login_log_in))
                 }
             }
 
@@ -132,7 +134,7 @@ fun LoginScreen(
                 CircularProgressIndicator(modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Waiting for authorisation…",
+                    text = stringResource(R.string.login_waiting),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -149,7 +151,7 @@ fun LoginScreen(
                     enabled = !uiState.isLoading && !uiState.isPolling,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         }

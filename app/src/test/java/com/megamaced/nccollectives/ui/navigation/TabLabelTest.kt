@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.navigation
 
+import android.content.Context
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
@@ -7,12 +8,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.ui.theme.NcCollectivesTheme
 import org.junit.Assert.assertEquals
@@ -62,10 +65,13 @@ class TabLabelTest {
         rule.waitForIdle()
     }
 
+    private val TopLevelTab.text: String
+        get() = ApplicationProvider.getApplicationContext<Context>().getString(label)
+
     private fun label(tab: TopLevelTab): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
         rule
-            .onNodeWithText(tab.label, useUnmergedTree = true)
+            .onNodeWithText(tab.text, useUnmergedTree = true)
             .fetchSemanticsNode()
             .config
             .getOrNull(SemanticsActions.GetTextLayoutResult)
@@ -93,8 +99,8 @@ class TabLabelTest {
 
     private fun assertWholeOnOneLine(tab: TopLevelTab) {
         val layout = label(tab)
-        assertEquals("${tab.label}: lines", 1, layout.lineCount)
-        assertFalse("${tab.label}: cut short", layout.isLineEllipsized(0))
+        assertEquals("${tab.text}: lines", 1, layout.lineCount)
+        assertFalse("${tab.text}: cut short", layout.isLineEllipsized(0))
     }
 
     /** On a phone, every label fits at its default size or larger. */
@@ -102,8 +108,20 @@ class TabLabelTest {
         TopLevelTab.entries.forEach { tab ->
             assertWholeOnOneLine(tab)
             val share = shareOfDefaultSize(label(tab))
-            assertTrue("${tab.label} no smaller than at the default font size: $share", share >= 0.995f)
+            assertTrue("${tab.text} no smaller than at the default font size: $share", share >= 0.995f)
         }
+    }
+
+    @Test
+    fun eachTabIsNamedForItsScreen() {
+        assertEquals(listOf("Home", "Collectives", "Search", "Favorites", "Alerts"), TopLevelTab.entries.map { it.text })
+    }
+
+    @Test
+    fun theAlertsBadgeSaysHowManyAreNew() {
+        showBar()
+
+        rule.onNodeWithContentDescription("2 new").assertExists()
     }
 
     @Test

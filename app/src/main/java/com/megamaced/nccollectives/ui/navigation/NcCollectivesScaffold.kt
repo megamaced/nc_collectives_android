@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -46,6 +48,7 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.data.auth.AuthState
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.prefs.UserPreferences
@@ -133,7 +136,7 @@ internal fun NcCollectivesScaffold(viewModel: AuthGateViewModel = hiltViewModel(
             ) {
                 CircularProgressIndicator()
                 Text(
-                    text = "Switching account…",
+                    text = stringResource(R.string.switching_account),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 16.dp),
@@ -281,12 +284,13 @@ internal fun TopLevelTabItems(
                     contentDescription = null,
                 )
             },
-            label = { TabLabel(tab.label) },
+            label = { TabLabel(stringResource(tab.label)) },
             badge = if (tab == TopLevelTab.Alerts && unseenAlerts > 0) {
                 {
+                    val badgeDescription = pluralStringResource(R.plurals.alerts_badge, unseenAlerts, unseenAlerts)
                     Badge(
                         modifier = Modifier.semantics {
-                            contentDescription = "$unseenAlerts new"
+                            contentDescription = badgeDescription
                         },
                     ) { Text(badgeText(unseenAlerts)) }
                 }

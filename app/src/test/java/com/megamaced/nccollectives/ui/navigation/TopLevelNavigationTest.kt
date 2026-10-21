@@ -2,6 +2,7 @@ package com.megamaced.nccollectives.ui.navigation
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -54,7 +55,7 @@ class TopLevelNavigationTest {
                     navigation(route = tab.graphRoute, startDestination = tab.rootRoute) {
                         composable(tab.rootRoute) {
                             if (tab != TopLevelTab.Home) ReturnHomeOnBack(nav)
-                            Text(tab.label)
+                            Text(stringResource(tab.label))
                         }
                         composable(
                             route = Destination.PageTree.pattern(tab),

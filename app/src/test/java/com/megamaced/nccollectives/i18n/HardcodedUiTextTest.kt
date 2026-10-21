@@ -12,39 +12,20 @@ import java.io.File
  * description; a snackbar, a toast, an error, an icon button's name; a
  * `when` branch, `else`, `?:` fallback or `return` that yields words; a
  * sentence on a line of its own — and fails on any it finds that isn't
- * either:
- *
- * - in [BASELINE], the hardcoded text that predates the translation work,
- *   which may only shrink: an entry that no longer matches anything fails
- *   too, so moving a string into resources means deleting its entry; or
- * - marked on its line with `i18n-ignore` and why, for text that is not
- *   for translating (a product name, a separator, markdown syntax).
+ * marked on its line with `i18n-ignore` and why, for text that is not for
+ * translating (an HTTP header, an example address, a message never shown).
  *
  * It is a regression aid, not a proof: text assembled indirectly can pass
- * it, so review still looks for that. Set `I18N_UPDATE_BASELINE=1` to
- * rewrite [BASELINE] from the current sources.
+ * it, so review still looks for that.
  */
 class HardcodedUiTextTest {
     @Test
-    fun noNewHardcodedUiText() {
+    fun noHardcodedUiText() {
         val found = findings()
-        if (System.getenv("I18N_UPDATE_BASELINE") == "1") {
-            BASELINE.writeText(found.joinToString("") { "$it\n" })
-            return
-        }
-        val baseline = BASELINE.readLines().filter { it.isNotBlank() }
-
-        val unlisted = found.minusEach(baseline)
-        val stale = baseline.minusEach(found)
-
         assertTrue(
             "Hardcoded UI text, which belongs in strings.xml (or mark the line i18n-ignore with why):\n" +
-                unlisted.joinToString("\n"),
-            unlisted.isEmpty(),
-        )
-        assertTrue(
-            "Baseline entries that no longer match anything: delete them from $BASELINE:\n" + stale.joinToString("\n"),
-            stale.isEmpty(),
+                found.joinToString("\n"),
+            found.isEmpty(),
         )
     }
 
@@ -68,6 +49,8 @@ class HardcodedUiTextTest {
             """return if (kind == null) role else "${'$'}kind · ${'$'}role"""",
             """return ApiResult.Unexpected(IllegalStateException("Page ${'$'}pageId not cached"))""",
             """text = { Text("\"${'$'}name\" will be removed from the page.") },""",
+            """SectionHeader("Accounts")""",
+            """Home("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),""",
         ).forEach { line -> assertTrue("Missed: $line", line.isUiText()) }
     }
 
@@ -110,23 +93,8 @@ class HardcodedUiTextTest {
             !LOG_LEVEL.containsMatchIn(this) &&
             SKIP.none { it in this }
 
-    /** This list less [other], one occurrence at a time. */
-    private fun List<String>.minusEach(other: List<String>): List<String> {
-        val remaining = other.groupingBy { it }.eachCount().toMutableMap()
-        return filter { line ->
-            val left = remaining[line] ?: 0
-            if (left > 0) {
-                remaining[line] = left - 1
-                false
-            } else {
-                true
-            }
-        }
-    }
-
     private companion object {
         val SOURCES = File("src/main/java")
-        val BASELINE = File("src/test/resources/i18n/hardcoded-ui-text-baseline.txt")
 
         /** A string literal with at least one letter in it. */
         const val WORDS = "\"[^\"]*\\p{L}[^\"]*\""
@@ -160,6 +128,9 @@ class HardcodedUiTextTest {
                 Regex("""\{\s*"\p{Lu}\p{Ll}[^"]*"\s*\}"""),
                 // Two values joined by a separator, whose order a language may change.
                 Regex(""""\$\{?\w+(\.\w+)*\}? [·•—–-] \$"""),
+                // One capitalised word, handed to a component or as a later argument.
+                Regex("""\b\p{Lu}\w*\(\s*"\p{Lu}\p{Ll}+"\s*[,)]"""),
+                Regex(""",\s*"\p{Lu}\p{Ll}+"\s*[,)]"""),
                 // A sentence that opens with a quoted name.
                 Regex(""""\\"[^\\]*\\" \p{Ll}"""),
             )

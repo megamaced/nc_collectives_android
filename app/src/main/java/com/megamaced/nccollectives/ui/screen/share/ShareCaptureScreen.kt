@@ -49,10 +49,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.util.resolve
@@ -84,10 +86,10 @@ internal fun ShareCaptureScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Share to collective", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.share_title), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_cancel))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -106,7 +108,7 @@ internal fun ShareCaptureScreen(
             val payload = ui.payload
             if (payload == null) {
                 Text(
-                    text = "Nothing to share — return to the previous app and try again.",
+                    text = stringResource(R.string.share_nothing),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 return@Column
@@ -152,7 +154,7 @@ internal fun ShareCaptureScreen(
                 if (ui.isSaving) {
                     CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                 } else {
-                    Text(if (ui.mode == ShareMode.NEW_PAGE) "Create page" else "Append")
+                    Text(stringResource(if (ui.mode == ShareMode.NEW_PAGE) R.string.share_create_page else R.string.share_append))
                 }
             }
         }
@@ -171,7 +173,7 @@ private fun SharedContentPreview(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("From the share sheet", style = MaterialTheme.typography.labelMedium)
+        Text(stringResource(R.string.share_from_sheet), style = MaterialTheme.typography.labelMedium)
         payload.text?.takeIf { it.isNotBlank() }?.let {
             Text(it.take(500), style = MaterialTheme.typography.bodyMedium)
         }
@@ -211,7 +213,7 @@ private fun CollectivePicker(
             value = selected?.name.orEmpty(),
             onValueChange = {},
             readOnly = true,
-            label = { Text("Collective") },
+            label = { Text(stringResource(R.string.share_collective)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -240,12 +242,12 @@ private fun ModeToggle(
         FilterChip(
             selected = mode == ShareMode.NEW_PAGE,
             onClick = { onChange(ShareMode.NEW_PAGE) },
-            label = { Text("New page") },
+            label = { Text(stringResource(R.string.page_new)) },
         )
         FilterChip(
             selected = mode == ShareMode.APPEND,
             onClick = { onChange(ShareMode.APPEND) },
-            label = { Text("Append to existing") },
+            label = { Text(stringResource(R.string.share_mode_append)) },
         )
     }
 }
@@ -261,14 +263,14 @@ private fun NewPageSection(
     OutlinedTextField(
         value = title,
         onValueChange = onTitleChange,
-        label = { Text("Page title") },
+        label = { Text(stringResource(R.string.share_page_title)) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
-    Text("Parent page", style = MaterialTheme.typography.labelMedium)
+    Text(stringResource(R.string.share_parent_page), style = MaterialTheme.typography.labelMedium)
     if (pages.isEmpty()) {
         Text(
-            text = "No pages in this collective yet.",
+            text = stringResource(R.string.share_no_pages),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -291,7 +293,7 @@ private fun AppendSection(
     selectedPageId: Long?,
     onSelect: (Long) -> Unit,
 ) {
-    Text("Append to", style = MaterialTheme.typography.labelMedium)
+    Text(stringResource(R.string.share_append_to), style = MaterialTheme.typography.labelMedium)
     if (pages.isEmpty()) {
         Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()

@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.navigation
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.megamaced.nccollectives.R
 import com.megamaced.nccollectives.ui.screen.home.ALL_COLLECTIVES
 import com.megamaced.nccollectives.ui.screen.home.HomeSection
 
@@ -27,15 +29,15 @@ import com.megamaced.nccollectives.ui.screen.home.HomeSection
  */
 internal enum class TopLevelTab(
     val prefix: String,
-    val label: String,
+    @param:StringRes val label: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 ) {
-    Home("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    Collectives("collectives", "Collectives", Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook),
-    Search("search", "Search", Icons.Filled.Search, Icons.Outlined.Search),
-    Favorites("favorites", "Favorites", Icons.Filled.Star, Icons.Outlined.StarBorder),
-    Alerts("alerts", "Alerts", Icons.Filled.Notifications, Icons.Outlined.Notifications),
+    Home("home", R.string.home_title, Icons.Filled.Home, Icons.Outlined.Home),
+    Collectives("collectives", R.string.collectives_title, Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook),
+    Search("search", R.string.search_title, Icons.Filled.Search, Icons.Outlined.Search),
+    Favorites("favorites", R.string.favorites_title, Icons.Filled.Star, Icons.Outlined.StarBorder),
+    Alerts("alerts", R.string.alerts_title, Icons.Filled.Notifications, Icons.Outlined.Notifications),
     ;
 
     /** The nested graph holding this tab's back stack. */

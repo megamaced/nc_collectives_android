@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.screen.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -69,8 +71,10 @@ import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.attachment.openInBrowser
+import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.resolve
 import com.megamaced.nccollectives.util.syncStatusLines
+import com.megamaced.nccollectives.util.uiText
 import kotlinx.coroutines.launch
 
 private const val SOURCE_URL = "https://github.com/megamaced/nc_collectives_android"
@@ -99,9 +103,11 @@ internal fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val linkScope = rememberCoroutineScope()
 
+    val resources by rememberUpdatedState(LocalResources.current)
+
     fun openLink(url: String) {
         if (!openInBrowser(context, url.toUri())) {
-            linkScope.launch { snackbarHostState.showSnackbar("No browser app to open $url") }
+            linkScope.launch { snackbarHostState.showSnackbar(resources.getString(R.string.settings_no_browser, url)) }
         }
     }
 
@@ -109,13 +115,12 @@ internal fun SettingsScreen(
     // → open the release page in a Custom Tab and reset; UpToDate / Failed
     // → snackbar then reset. Drives off `updateCheck` itself so a fresh
     // tap re-triggers cleanly each time.
-    val resources by rememberUpdatedState(LocalResources.current)
     LaunchedEffect(updateCheck) {
         when (val state = updateCheck) {
             is UpdateCheckUiState.UpdateAvailable -> {
                 // Issue #62: no browser is an answer to show, not a crash.
                 if (!openInBrowser(context, state.htmlUrl.toUri())) {
-                    snackbarHostState.showSnackbar("A newer version is out, but there's no browser app to open ${state.htmlUrl}")
+                    snackbarHostState.showSnackbar(resources.getString(R.string.update_no_browser, state.htmlUrl))
                 }
                 viewModel.dismissUpdateCheck()
             }
@@ -164,10 +169,10 @@ internal fun SettingsScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Settings", style = MaterialTheme.typography.titleMedium) },
+                title = { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -184,10 +189,10 @@ internal fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SectionHeader("Accounts")
+            SectionHeader(stringResource(R.string.settings_accounts))
             if (ui.accounts.isEmpty()) {
                 Text(
-                    "Not signed in.",
+                    stringResource(R.string.settings_not_signed_in),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -210,8 +215,7 @@ internal fun SettingsScreen(
                 }
                 if (ui.accounts.size > 1) {
                     Text(
-                        text = "Only the account you're signed in to is stored on this device. " +
-                            "Switching downloads the other one's pages again.",
+                        text = stringResource(R.string.settings_accounts_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -219,22 +223,19 @@ internal fun SettingsScreen(
             }
             TextButton(onClick = onAddAccount, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Add, contentDescription = null)
-                Box(modifier = Modifier.padding(start = 8.dp)) { Text("Add account") }
+                Box(modifier = Modifier.padding(start = 8.dp)) { Text(stringResource(R.string.settings_add_account)) }
             }
 
             SectionBreak()
 
-            SectionHeader("Appearance")
+            SectionHeader(stringResource(R.string.settings_appearance))
             ThemeModeOptions(
                 selected = ui.themeMode,
                 onSelect = viewModel::setThemeMode,
             )
 
             Text(
-                "Text size applies to page content and both editors. It multiplies " +
-                    "your device's font size setting rather than replacing it, so " +
-                    "if pages are still too small, raise it under Android " +
-                    "Settings → Display → Display size and text.",
+                stringResource(R.string.settings_text_size_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -245,10 +246,9 @@ internal fun SettingsScreen(
 
             SectionBreak()
 
-            SectionHeader("Startup")
+            SectionHeader(stringResource(R.string.settings_startup))
             Text(
-                "Where the app opens. A collective opens in the Collectives tab, " +
-                    "so Back from it still reaches the collective list.",
+                stringResource(R.string.settings_startup_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -262,11 +262,9 @@ internal fun SettingsScreen(
 
             SectionBreak()
 
-            SectionHeader("Sync")
+            SectionHeader(stringResource(R.string.settings_sync))
             Text(
-                "How often the app refreshes pages and metadata in the background. " +
-                    "Page lists also refresh when you pull down on them, and a page " +
-                    "checks for changes each time you open it.",
+                stringResource(R.string.settings_sync_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -282,11 +280,9 @@ internal fun SettingsScreen(
 
             SectionBreak()
 
-            SectionHeader("Editor")
+            SectionHeader(stringResource(R.string.settings_editor))
             Text(
-                "Plain markdown works offline and is the reliable default. " +
-                    "The collaborative editor (Nextcloud Text) is in beta and " +
-                    "only available when online with a supported server.",
+                stringResource(R.string.settings_editor_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -295,13 +291,12 @@ internal fun SettingsScreen(
                 onSelect = viewModel::setEditorPreference,
             )
             Text(
-                "Open pages in",
+                stringResource(R.string.settings_open_pages_in),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
             Text(
-                "The default follows each collective's page mode on the web. " +
-                    "Choose Read mode or Edit mode to override it on this device.",
+                stringResource(R.string.settings_open_pages_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -312,17 +307,22 @@ internal fun SettingsScreen(
 
             SectionBreak()
 
-            SectionHeader("About")
+            SectionHeader(stringResource(R.string.settings_about))
             Text(
-                "NC Collectives ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                stringResource(
+                    R.string.settings_version,
+                    stringResource(R.string.app_name),
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
             )
             UpdateCheckRow(
                 state = updateCheck,
                 onCheck = viewModel::checkForUpdate,
             )
-            LinkRow(label = "Source code") { openLink(SOURCE_URL) }
-            LinkRow(label = "Licence (AGPL-3.0)") { openLink(LICENCE_URL) }
+            LinkRow(label = stringResource(R.string.settings_source_code)) { openLink(SOURCE_URL) }
+            LinkRow(label = stringResource(R.string.settings_licence)) { openLink(LICENCE_URL) }
 
             SectionBreak()
 
@@ -335,7 +335,7 @@ internal fun SettingsScreen(
                 ),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                Box(modifier = Modifier.padding(start = 8.dp)) { Text("Sign out") }
+                Box(modifier = Modifier.padding(start = 8.dp)) { Text(stringResource(R.string.settings_sign_out)) }
             }
         }
     }
@@ -343,16 +343,16 @@ internal fun SettingsScreen(
     pendingSwitch?.let { account ->
         AlertDialog(
             onDismissRequest = { pendingSwitch = null },
-            title = { Text("Switch to ${account.loginName}?") },
-            text = { Text(switchWarning(account, pendingEdits)) },
+            title = { Text(stringResource(R.string.settings_switch_title, account.loginName)) },
+            text = { Text(switchWarning(account, pendingEdits).resolve()) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingSwitch = null
                     viewModel.switchToAccount(account.id)
-                }) { Text("Switch") }
+                }) { Text(stringResource(R.string.settings_switch)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingSwitch = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingSwitch = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -361,16 +361,16 @@ internal fun SettingsScreen(
         val isActive = account.id == ui.activeAccountId
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
-            title = { Text("Remove ${account.loginName}?") },
-            text = { Text(removalWarning(account, isActive, pendingEdits, ui.accounts.size)) },
+            title = { Text(stringResource(R.string.settings_remove_title, account.loginName)) },
+            text = { Text(removalWarning(account, isActive, pendingEdits, ui.accounts.size).resolve()) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingRemoval = null
                     viewModel.removeAccount(account.id)
-                }) { Text("Remove") }
+                }) { Text(stringResource(R.string.action_remove)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingRemoval = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -378,21 +378,18 @@ internal fun SettingsScreen(
     if (showSignOutConfirm) {
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
-            title = { Text("Sign out?") },
+            title = { Text(stringResource(R.string.settings_sign_out_title)) },
             text = {
-                Text(
-                    "Cached pages, attachments, and queued edits will be removed from this device. " +
-                        "Anything not yet synced will be lost.",
-                )
+                Text(stringResource(R.string.settings_sign_out_message))
             },
             confirmButton = {
                 TextButton(onClick = {
                     showSignOutConfirm = false
                     viewModel.signOut()
-                }) { Text("Sign out") }
+                }) { Text(stringResource(R.string.settings_sign_out)) }
             },
             dismissButton = {
-                TextButton(onClick = { showSignOutConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showSignOutConfirm = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -423,7 +420,7 @@ private fun AccountRow(
             if (isActive) {
                 Icon(
                     Icons.Filled.Check,
-                    contentDescription = "Signed in",
+                    contentDescription = stringResource(R.string.settings_signed_in),
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -442,7 +439,7 @@ private fun AccountRow(
         IconButton(onClick = onRemove) {
             Icon(
                 Icons.Filled.RemoveCircleOutline,
-                contentDescription = "Remove ${account.loginName}",
+                contentDescription = stringResource(R.string.settings_remove_account, account.loginName),
             )
         }
     }
@@ -453,47 +450,36 @@ private fun AccountRow(
  * is still being read, in which case the sentence about unsynced work is
  * left out rather than guessed at.
  */
-private fun switchWarning(
+internal fun switchWarning(
     account: AccountSummary,
     pendingEdits: Int?,
-): String {
-    val base = "Pages cached on this device will be removed and ${account.loginName}'s " +
-        "downloaded instead. Your other account stays signed in."
-    return base + unsyncedSuffix(pendingEdits)
-}
+): UiText = withUnsynced(uiText(R.string.settings_switch_warning, account.loginName), pendingEdits)
 
-private fun removalWarning(
+internal fun removalWarning(
     account: AccountSummary,
     isActive: Boolean,
     pendingEdits: Int?,
     accountCount: Int,
-): String {
+): UiText {
     val base = when {
-        !isActive -> {
-            "${account.loginName} will be signed out on this device. " +
-                "Nothing you have cached is affected — this isn't the account you're using."
-        }
-
-        accountCount > 1 -> {
-            "${account.loginName} will be signed out and their cached pages removed. " +
-                "You'll be switched to your other account."
-        }
-
-        else -> {
-            "${account.loginName} will be signed out and their cached pages removed. " +
-                "This is your last account, so you'll be returned to the login screen."
-        }
+        !isActive -> uiText(R.string.settings_remove_other, account.loginName)
+        accountCount > 1 -> uiText(R.string.settings_remove_current, account.loginName)
+        else -> uiText(R.string.settings_remove_last, account.loginName)
     }
     // Only the active account has a queue: nothing else's data is on the
     // device to have queued writes against.
-    return if (isActive) base + unsyncedSuffix(pendingEdits) else base
+    return if (isActive) withUnsynced(base, pendingEdits) else base
 }
 
-private fun unsyncedSuffix(pendingEdits: Int?): String =
+/** [warning], then a sentence about edits that would be lost, when there are any. */
+private fun withUnsynced(
+    warning: UiText,
+    pendingEdits: Int?,
+): UiText =
     when {
-        pendingEdits == null || pendingEdits == 0 -> ""
-        pendingEdits == 1 -> " One edit hasn't reached the server yet and will be lost."
-        else -> " $pendingEdits edits haven't reached the server yet and will be lost."
+        pendingEdits == null || pendingEdits == 0 -> warning
+        pendingEdits == 1 -> uiText(R.string.settings_two_sentences, warning, uiText(R.string.settings_unsynced_one))
+        else -> uiText(R.string.settings_two_sentences, warning, UiText.Plural(R.plurals.settings_unsynced, pendingEdits))
     }
 
 @Composable
@@ -524,11 +510,7 @@ private fun ThemeModeOptions(
     Column {
         ThemeMode.entries.forEach { mode ->
             RadioRow(
-                label = when (mode) {
-                    ThemeMode.System -> "Follow system"
-                    ThemeMode.Light -> "Light"
-                    ThemeMode.Dark -> "Dark"
-                },
+                label = stringResource(themeModeLabel(mode)),
                 selected = selected == mode,
                 onClick = { onSelect(mode) },
             )
@@ -552,19 +534,14 @@ private fun TextScaleOptions(
     Column {
         TextScale.entries.forEach { scale ->
             RadioRow(
-                label = when (scale) {
-                    TextScale.Small -> "Small"
-                    TextScale.Default -> "Default"
-                    TextScale.Large -> "Large"
-                    TextScale.Larger -> "Larger"
-                },
+                label = stringResource(textScaleLabel(scale)),
                 selected = selected == scale,
                 onClick = { onSelect(scale) },
             )
         }
         val bodyLarge = MaterialTheme.typography.bodyLarge
         Text(
-            text = "Sample page text at this size.",
+            text = stringResource(R.string.text_size_sample),
             style = bodyLarge.copy(
                 fontSize = bodyLarge.fontSize * selected.multiplier,
                 lineHeight = bodyLarge.lineHeight * selected.multiplier,
@@ -583,13 +560,7 @@ private fun SyncCadenceOptions(
     Column {
         SyncCadence.entries.forEach { cadence ->
             RadioRow(
-                label = when (cadence) {
-                    SyncCadence.Off -> "Off — manual refresh only"
-                    SyncCadence.Hourly -> "Every hour"
-                    SyncCadence.SixHourly -> "Every 6 hours (default)"
-                    SyncCadence.TwiceDaily -> "Every 12 hours"
-                    SyncCadence.Daily -> "Once a day"
-                },
+                label = stringResource(syncCadenceLabel(cadence)),
                 selected = selected == cadence,
                 onClick = { onSelect(cadence) },
             )
@@ -605,10 +576,7 @@ private fun EditorPreferenceOptions(
     Column {
         EditorPreference.entries.forEach { preference ->
             RadioRow(
-                label = when (preference) {
-                    EditorPreference.PreferPlain -> "Prefer plain markdown (default)"
-                    EditorPreference.PreferCollaborative -> "Prefer collaborative (beta, when online)"
-                },
+                label = stringResource(editorPreferenceLabel(preference)),
                 selected = selected == preference,
                 onClick = { onSelect(preference) },
             )
@@ -630,11 +598,7 @@ internal fun PageOpenModeOptions(
     Column {
         PageOpenMode.entries.forEach { mode ->
             RadioRow(
-                label = when (mode) {
-                    PageOpenMode.AsCollective -> "As each collective is set (default)"
-                    PageOpenMode.Read -> "Read mode"
-                    PageOpenMode.Edit -> "Edit mode"
-                },
+                label = stringResource(pageOpenModeLabel(mode)),
                 selected = selected == mode,
                 onClick = { onSelect(mode) },
             )
@@ -657,12 +621,12 @@ private fun StartupOptions(
 ) {
     Column {
         RadioRow(
-            label = "Home (default)",
+            label = stringResource(R.string.startup_home),
             selected = selectedCollectiveId == null && startScreen == StartScreen.Home,
             onClick = { onSelectScreen(StartScreen.Home) },
         )
         RadioRow(
-            label = "Collective list",
+            label = stringResource(R.string.startup_collective_list),
             selected = selectedCollectiveId == null && startScreen == StartScreen.CollectiveList,
             onClick = { onSelectScreen(StartScreen.CollectiveList) },
         )
@@ -678,7 +642,7 @@ private fun StartupOptions(
         }
         if (collectives.isEmpty()) {
             Text(
-                "No collectives cached yet — open the collective list once and they'll appear here.",
+                stringResource(R.string.startup_no_collectives),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -766,7 +730,7 @@ private fun SyncStatusRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = if (syncing) "Syncing…" else "Sync now",
+                text = stringResource(if (syncing) R.string.sync_syncing else R.string.sync_now),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -805,7 +769,7 @@ private fun UpdateCheckRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = if (checking) "Checking for updates…" else "Check for updates",
+            text = stringResource(if (checking) R.string.update_checking else R.string.update_check),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -817,3 +781,45 @@ private fun UpdateCheckRow(
         }
     }
 }
+
+@StringRes
+internal fun themeModeLabel(mode: ThemeMode): Int =
+    when (mode) {
+        ThemeMode.System -> R.string.theme_system
+        ThemeMode.Light -> R.string.theme_light
+        ThemeMode.Dark -> R.string.theme_dark
+    }
+
+@StringRes
+internal fun textScaleLabel(scale: TextScale): Int =
+    when (scale) {
+        TextScale.Small -> R.string.text_size_small
+        TextScale.Default -> R.string.text_size_default
+        TextScale.Large -> R.string.text_size_large
+        TextScale.Larger -> R.string.text_size_larger
+    }
+
+@StringRes
+internal fun syncCadenceLabel(cadence: SyncCadence): Int =
+    when (cadence) {
+        SyncCadence.Off -> R.string.sync_cadence_off
+        SyncCadence.Hourly -> R.string.sync_cadence_hourly
+        SyncCadence.SixHourly -> R.string.sync_cadence_six_hourly
+        SyncCadence.TwiceDaily -> R.string.sync_cadence_twice_daily
+        SyncCadence.Daily -> R.string.sync_cadence_daily
+    }
+
+@StringRes
+internal fun editorPreferenceLabel(preference: EditorPreference): Int =
+    when (preference) {
+        EditorPreference.PreferPlain -> R.string.editor_prefer_plain
+        EditorPreference.PreferCollaborative -> R.string.editor_prefer_collaborative
+    }
+
+@StringRes
+internal fun pageOpenModeLabel(mode: PageOpenMode): Int =
+    when (mode) {
+        PageOpenMode.AsCollective -> R.string.open_mode_as_collective
+        PageOpenMode.Read -> R.string.open_mode_read
+        PageOpenMode.Edit -> R.string.open_mode_edit
+    }

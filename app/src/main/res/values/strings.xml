@@ -86,6 +86,7 @@
     <string name="action_add">Add</string>
     <string name="action_close">Close</string>
     <string name="action_refresh">Refresh</string>
+    <string name="action_remove">Remove</string>
     <string name="action_restore">Restore</string>
     <string name="action_move_to_trash">Move to trash</string>
     <string name="action_delete_forever">Delete forever</string>
@@ -554,4 +555,118 @@
     <string name="attachment_status_pending">Waiting to upload</string>
     <string name="attachment_status_uploading">Uploading…</string>
     <string name="attachment_status_failed">Upload failed</string>
+
+    <!-- Settings. -->
+    <string name="settings_accounts">Accounts</string>
+    <string name="settings_not_signed_in">Not signed in.</string>
+    <string name="settings_accounts_note">Only the account you\'re signed in to is stored on this device. Switching downloads the other one\'s pages again.</string>
+    <string name="settings_add_account">Add account</string>
+    <!-- For screen readers: the tick beside the account in use. -->
+    <string name="settings_signed_in">Signed in</string>
+    <!-- For screen readers. %1$s is an account's login name. -->
+    <string name="settings_remove_account">Remove %1$s</string>
+    <string name="settings_sign_out">Sign out</string>
+    <!-- %1$s is an account's login name. -->
+    <string name="settings_switch_title">Switch to %1$s?</string>
+    <string name="settings_switch">Switch</string>
+    <!-- %1$s is the account switched to. -->
+    <string name="settings_switch_warning">Pages cached on this device will be removed and %1$s\'s downloaded instead. Your other account stays signed in.</string>
+    <!-- %1$s is an account's login name. -->
+    <string name="settings_remove_title">Remove %1$s?</string>
+    <!-- Removing an account other than the one in use. %1$s is its login name. -->
+    <string name="settings_remove_other">%1$s will be signed out on this device. Nothing you have cached is affected — this isn\'t the account you\'re using.</string>
+    <!-- Removing the account in use, when there is another. %1$s is its login name. -->
+    <string name="settings_remove_current">%1$s will be signed out and their cached pages removed. You\'ll be switched to your other account.</string>
+    <!-- Removing the only account. %1$s is its login name. -->
+    <string name="settings_remove_last">%1$s will be signed out and their cached pages removed. This is your last account, so you\'ll be returned to the login screen.</string>
+    <!-- Added to a switch or removal warning when exactly one edit hasn't synced. -->
+    <string name="settings_unsynced_one">One edit hasn\'t reached the server yet and will be lost.</string>
+    <!-- Added to a switch or removal warning when more than one edit hasn't synced. -->
+    <plurals name="settings_unsynced">
+        <item quantity="one">%1$d edit hasn\'t reached the server yet and will be lost.</item>
+        <item quantity="other">%1$d edits haven\'t reached the server yet and will be lost.</item>
+    </plurals>
+    <!-- Two whole sentences, one after the other: a warning, then settings_unsynced_one or settings_unsynced. -->
+    <string name="settings_two_sentences">%1$s %2$s</string>
+    <string name="settings_sign_out_title">Sign out?</string>
+    <string name="settings_sign_out_message">Cached pages, attachments, and queued edits will be removed from this device. Anything not yet synced will be lost.</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="theme_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <!-- "Settings → Display → Display size and text" names screens in Android's own Settings app; use your language's names for them. -->
+    <string name="settings_text_size_note">Text size applies to page content and both editors. It multiplies your device\'s font size setting rather than replacing it, so if pages are still too small, raise it under Android Settings → Display → Display size and text.</string>
+    <string name="text_size_small">Small</string>
+    <string name="text_size_default">Default</string>
+    <string name="text_size_large">Large</string>
+    <string name="text_size_larger">Larger</string>
+    <!-- Shown at the chosen size, as a preview. -->
+    <string name="text_size_sample">Sample page text at this size.</string>
+    <string name="settings_startup">Startup</string>
+    <string name="settings_startup_note">Where the app opens. A collective opens in the Collectives tab, so Back from it still reaches the collective list.</string>
+    <string name="startup_home">Home (default)</string>
+    <string name="startup_collective_list">Collective list</string>
+    <string name="startup_no_collectives">No collectives cached yet — open the collective list once and they\'ll appear here.</string>
+    <string name="settings_sync">Sync</string>
+    <string name="settings_sync_note">How often the app refreshes pages and metadata in the background. Page lists also refresh when you pull down on them, and a page checks for changes each time you open it.</string>
+    <string name="sync_cadence_off">Off — manual refresh only</string>
+    <string name="sync_cadence_hourly">Every hour</string>
+    <string name="sync_cadence_six_hourly">Every 6 hours (default)</string>
+    <string name="sync_cadence_twice_daily">Every 12 hours</string>
+    <string name="sync_cadence_daily">Once a day</string>
+    <string name="sync_now">Sync now</string>
+    <string name="sync_syncing">Syncing…</string>
+    <string name="settings_editor">Editor</string>
+    <!-- "Nextcloud Text" is the name of Nextcloud's editor app. -->
+    <string name="settings_editor_note">Plain markdown works offline and is the reliable default. The collaborative editor (Nextcloud Text) is in beta and only available when online with a supported server.</string>
+    <string name="editor_prefer_plain">Prefer plain markdown (default)</string>
+    <string name="editor_prefer_collaborative">Prefer collaborative (beta, when online)</string>
+    <string name="settings_open_pages_in">Open pages in</string>
+    <!-- "Read mode" and "Edit mode" are open_mode_read and open_mode_edit. -->
+    <string name="settings_open_pages_note">The default follows each collective\'s page mode on the web. Choose Read mode or Edit mode to override it on this device.</string>
+    <string name="open_mode_as_collective">As each collective is set (default)</string>
+    <string name="open_mode_read">Read mode</string>
+    <string name="open_mode_edit">Edit mode</string>
+    <string name="settings_about">About</string>
+    <!-- %1$s is the app's name; %2$s its version, such as 3.1.0; %3$d its build number. -->
+    <string name="settings_version">%1$s %2$s (build %3$d)</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="settings_source_code">Source code</string>
+    <!-- AGPL-3.0 is the licence's name; keep it as it is. -->
+    <string name="settings_licence">Licence (AGPL-3.0)</string>
+    <!-- %1$s is a web address. -->
+    <string name="settings_no_browser">No browser app to open %1$s</string>
+    <!-- %1$s is the new release's web address. -->
+    <string name="update_no_browser">A newer version is out, but there\'s no browser app to open %1$s</string>
+
+    <!-- Signing in. -->
+    <string name="login_connect">Connect to your Nextcloud server</string>
+    <string name="login_server_url">Server URL</string>
+    <string name="login_log_in">Log in</string>
+    <!-- The user approves the sign-in in their browser, on the Nextcloud server. -->
+    <string name="login_waiting">Waiting for authorisation…</string>
+
+    <!-- Sharing into the app, continued. -->
+    <string name="share_title">Share to collective</string>
+    <string name="share_nothing">Nothing to share — return to the previous app and try again.</string>
+    <string name="share_create_page">Create page</string>
+    <!-- Adds the shared text to the end of an existing page. -->
+    <string name="share_append">Append</string>
+    <!-- A heading over what was shared, as the other app sent it. -->
+    <string name="share_from_sheet">From the share sheet</string>
+    <string name="share_collective">Collective</string>
+    <string name="share_mode_append">Append to existing</string>
+    <string name="share_page_title">Page title</string>
+    <string name="share_parent_page">Parent page</string>
+    <string name="share_no_pages">No pages in this collective yet.</string>
+    <string name="share_append_to">Append to</string>
+
+    <!-- Navigation. -->
+    <string name="switching_account">Switching account…</string>
+    <!-- For screen readers, on the Alerts tab's badge. -->
+    <plurals name="alerts_badge">
+        <item quantity="one">%1$d new</item>
+        <item quantity="other">%1$d new</item>
+    </plurals>
 </resources>
