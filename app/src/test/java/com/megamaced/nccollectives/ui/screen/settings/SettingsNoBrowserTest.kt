@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.StartScreen
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
@@ -46,6 +47,7 @@ class SettingsNoBrowserTest {
                         textScale = TextScale.Default,
                         syncCadence = SyncCadence.SixHourly,
                         editorPreference = EditorPreference.PreferPlain,
+                        pageOpenMode = PageOpenMode.Read,
                         collectives = emptyList(),
                         startScreen = StartScreen.Home,
                         defaultCollectiveId = null,

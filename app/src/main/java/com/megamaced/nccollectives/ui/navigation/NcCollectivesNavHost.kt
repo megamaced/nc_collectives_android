@@ -356,7 +356,7 @@ private fun NavGraphBuilder.detailDestinations(
  * and Edit opening another. Once `navigate` has run, the outgoing entry is
  * no longer `RESUMED`, so the second tap stops here.
  */
-private fun NavHostController.navigateFrom(
+internal fun NavHostController.navigateFrom(
     from: NavBackStackEntry,
     route: String,
     builder: NavOptionsBuilder.() -> Unit = {},
@@ -372,7 +372,7 @@ private fun NavHostController.navigateFrom(
  * Checked against the current entry rather than `RESUMED`, so a Back tap
  * while the screen is still animating in is not dropped.
  */
-private fun NavHostController.popBackStackFrom(from: NavBackStackEntry) {
+internal fun NavHostController.popBackStackFrom(from: NavBackStackEntry) {
     if (currentBackStackEntry?.id != from.id) return
     popBackStack()
 }

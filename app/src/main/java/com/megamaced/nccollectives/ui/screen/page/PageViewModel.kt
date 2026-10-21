@@ -7,8 +7,10 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.userMessage
 import com.megamaced.nccollectives.data.auth.AccountGeneration
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.domain.model.Attachment
+import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.domain.model.OpenableAttachment
 import com.megamaced.nccollectives.domain.model.Page
 import com.megamaced.nccollectives.domain.model.PageListItem
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -58,6 +61,21 @@ data class EditRouteDecision(
     val route: EditRoute,
     val fallbackMessage: String?,
 )
+
+/**
+ * How a visit to a page opened, decided once per visit by
+ * [PageViewModel.openState].
+ */
+enum class PageOpenState {
+    /** Showing the page for reading. */
+    Reading,
+
+    /** Edit mode, on a page that opens straight into the editor: the screen opens it once it is in front. */
+    EditPending,
+
+    /** The editor was opened for this visit. The next time the page is in front, it is there to be read. */
+    EditOpened,
+}
 
 data class PageViewUiState(
     val isLoadingBody: Boolean = false,
@@ -104,7 +122,7 @@ data class PageViewUiState(
 class PageViewModel
     @Inject
     constructor(
-        savedStateHandle: SavedStateHandle,
+        private val savedStateHandle: SavedStateHandle,
         private val pageRepository: PageRepository,
         private val collectiveRepository: CollectiveRepository,
         private val attachmentRepository: AttachmentRepository,
@@ -138,9 +156,103 @@ class PageViewModel
          * marking the server's text as read.
          */
         suspend fun recordViewsWhileShown() {
-            page.shownVersions().collect { shownVersion ->
-                pageRepository.recordView(pageId, shownVersion, generation)
+            openState
+                .filterNotNull()
+                .flatMapLatest { state ->
+                    // On its way into the editor the page is only passing
+                    // through, and reads no version: [claimPendingEdit]
+                    // records the visit. Reading resumes when the user comes
+                    // back to it.
+                    if (state == PageOpenState.Reading) page.shownVersions() else emptyFlow()
+                }.collect { shownVersion ->
+                    pageRepository.recordView(pageId, shownVersion, generation)
+                }
+        }
+
+        /**
+         * How this visit opened, or null until it is decided. Decided once,
+         * from [PageOpenMode] and the page as it first arrives, and kept in
+         * saved state: Back from the editor, a return through a saved tab
+         * stack and a restored process all see the same answer, and a
+         * setting changed later, or a conflict resolved later, leaves an
+         * open page as it is.
+         */
+        val openState: StateFlow<PageOpenState?> = savedStateHandle
+            .getStateFlow<String?>(KEY_OPEN_STATE, null)
+            .map { stored -> stored?.let { runCatching { PageOpenState.valueOf(it) }.getOrNull() } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+        private fun setOpenState(state: PageOpenState) {
+            savedStateHandle[KEY_OPEN_STATE] = state.name
+        }
+
+        private fun currentOpenState(): PageOpenState? =
+            savedStateHandle.get<String>(KEY_OPEN_STATE)?.let { runCatching { PageOpenState.valueOf(it) }.getOrNull() }
+
+        private suspend fun decideOpenState() {
+            if (currentOpenState() != null) return
+            val state = if (userPreferences.flow.first().pageOpenMode == PageOpenMode.Edit) {
+                val arrived = pageRepository.observePage(pageId).filterNotNull().first()
+                if (opensStraightIntoEditor(arrived, collectiveRepository.observeCollectives().first())) {
+                    PageOpenState.EditPending
+                } else {
+                    PageOpenState.Reading
+                }
+            } else {
+                PageOpenState.Reading
             }
+            if (currentOpenState() == null) setOpenState(state)
+        }
+
+        /**
+         * Claim the pending trip into the editor, once. False when there is
+         * none to claim: Read mode, already taken, or not yet decided.
+         *
+         * Records the visit for "Jump back in", with no version read. In the
+         * ViewModel's scope rather than the screen's: the screen stops being
+         * in front as the editor opens, which would cancel it there.
+         */
+        fun claimPendingEdit(): Boolean {
+            if (currentOpenState() != PageOpenState.EditPending) return false
+            setOpenState(PageOpenState.EditOpened)
+            viewModelScope.launch { pageRepository.recordView(pageId, null, generation) }
+            return true
+        }
+
+        /**
+         * The page is in front again. If that is after its trip into the
+         * editor, it is there to be read from now on. A trip still pending
+         * is left alone: being in front is what it waits for.
+         */
+        fun backInFront() {
+            if (currentOpenState() == PageOpenState.EditOpened) setOpenState(PageOpenState.Reading)
+        }
+
+        /**
+         * The user tapped Edit. Settles the visit as one for reading — even
+         * before [openState] is decided, which [decideOpenState] then leaves
+         * alone — so Edit mode's trip into the editor never follows theirs,
+         * such as on the way back from the editor they opened.
+         */
+        fun editTapped() {
+            val state = currentOpenState()
+            if (state == null || state == PageOpenState.EditPending) setOpenState(PageOpenState.Reading)
+        }
+
+        /** The trip into the editor isn't happening after all: the page is there to be read. */
+        fun dropPendingEdit() {
+            val state = currentOpenState()
+            if (state == PageOpenState.EditPending || state == PageOpenState.EditOpened) setOpenState(PageOpenState.Reading)
+        }
+
+        /**
+         * Whether the page can still go straight into the editor, checked
+         * again after the editor's route has been resolved: it may have been
+         * trashed, or turned up a conflict, while that was being worked out.
+         */
+        suspend fun stillOpensStraightIntoEditor(): Boolean {
+            val current = pageRepository.observePage(pageId).first() ?: return false
+            return opensStraightIntoEditor(current, collectiveRepository.observeCollectives().first())
         }
 
         private val _imageBaseUrl = MutableStateFlow<String?>(null)
@@ -217,6 +329,7 @@ class PageViewModel
             viewModelScope.launch {
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
             }
+            viewModelScope.launch { decideOpenState() }
             // B-58: revalidate on every open, not just when the body is
             // missing. The old `if (cached.bodyMd == null)` gate meant a body
             // was fetched exactly once and then never again — nothing else in
@@ -648,6 +761,8 @@ class PageViewModel
         private companion object {
             const val TAG = "PageViewModel"
 
+            const val KEY_OPEN_STATE = "pageView.openState"
+
             /**
              * Default colour for tags created in-app — 6-hex without `#`
              * per `ENDPOINTS.md` gotcha #2. Matches the M3 primary
@@ -664,6 +779,21 @@ private data class SubpageParent(
     val pageId: Long,
     val subpageOrder: List<Long>,
 )
+
+/**
+ * Whether Edit mode takes [page] straight into the editor. Not when the
+ * page is trashed, or its collective is gone or can't be edited, and not
+ * while it has an unresolved conflict: the conflict banner has to be seen,
+ * and the editor starts from the server's text rather than the user's
+ * draft, so opening it would show different text from what the user left.
+ */
+internal fun opensStraightIntoEditor(
+    page: Page,
+    collectives: List<Collective>,
+): Boolean =
+    !page.trashed &&
+        page.draftBodyMd == null &&
+        collectives.any { it.id == page.collectiveId && it.canEdit && !it.trashed }
 
 /**
  * For each body that reaches the screen, the server version it shows: the

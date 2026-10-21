@@ -7,6 +7,7 @@ import com.megamaced.nccollectives.data.auth.AccountSwitcher
 import com.megamaced.nccollectives.data.auth.LogoutHandler
 import com.megamaced.nccollectives.data.auth.SessionManager
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.StartScreen
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
@@ -43,6 +44,7 @@ data class SettingsUiState(
     val textScale: TextScale,
     val syncCadence: SyncCadence,
     val editorPreference: EditorPreference,
+    val pageOpenMode: PageOpenMode,
     /** Cached, non-trashed collectives offered as startup destinations. */
     val collectives: List<Collective>,
     /** Tab opened on launch when [defaultCollectiveId] is null. */
@@ -147,6 +149,7 @@ class SettingsViewModel
                     textScale = TextScale.Default,
                     syncCadence = SyncCadence.SixHourly,
                     editorPreference = EditorPreference.PreferPlain,
+                    pageOpenMode = PageOpenMode.Read,
                     collectives = emptyList(),
                     startScreen = StartScreen.Home,
                     defaultCollectiveId = null,
@@ -167,6 +170,10 @@ class SettingsViewModel
 
         fun setEditorPreference(preference: EditorPreference) {
             viewModelScope.launch { userPreferences.setEditorPreference(preference) }
+        }
+
+        fun setPageOpenMode(mode: PageOpenMode) {
+            viewModelScope.launch { userPreferences.setPageOpenMode(mode) }
         }
 
         /** Open on [screen] at launch, clearing any startup collective. */
@@ -289,6 +296,7 @@ class SettingsViewModel
                 textScale = prefs.textScale,
                 syncCadence = prefs.syncCadence,
                 editorPreference = prefs.editorPreference,
+                pageOpenMode = prefs.pageOpenMode,
                 collectives = collectives,
                 startScreen = prefs.startScreen,
                 // Don't surface a selection the list can't show — a default

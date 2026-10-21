@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.BuildConfig
 import com.megamaced.nccollectives.data.auth.AccountSummary
 import com.megamaced.nccollectives.data.prefs.EditorPreference
+import com.megamaced.nccollectives.data.prefs.PageOpenMode
 import com.megamaced.nccollectives.data.prefs.StartScreen
 import com.megamaced.nccollectives.data.prefs.SyncCadence
 import com.megamaced.nccollectives.data.prefs.SyncStatus
@@ -287,6 +288,15 @@ internal fun SettingsScreen(
             EditorPreferenceOptions(
                 selected = ui.editorPreference,
                 onSelect = viewModel::setEditorPreference,
+            )
+            Text(
+                "Open pages in",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            PageOpenModeOptions(
+                selected = ui.pageOpenMode,
+                onSelect = viewModel::setPageOpenMode,
             )
 
             SectionBreak()
@@ -590,6 +600,30 @@ private fun EditorPreferenceOptions(
                 },
                 selected = selected == preference,
                 onClick = { onSelect(preference) },
+            )
+        }
+    }
+}
+
+/**
+ * Whether a page opens for reading or straight into the editor. Edit mode
+ * still opens for reading when the page has an unresolved conflict, or its
+ * collective can't be edited.
+ */
+@Composable
+internal fun PageOpenModeOptions(
+    selected: PageOpenMode,
+    onSelect: (PageOpenMode) -> Unit,
+) {
+    Column {
+        PageOpenMode.entries.forEach { mode ->
+            RadioRow(
+                label = when (mode) {
+                    PageOpenMode.Read -> "Read mode (default)"
+                    PageOpenMode.Edit -> "Edit mode"
+                },
+                selected = selected == mode,
+                onClick = { onSelect(mode) },
             )
         }
     }

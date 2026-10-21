@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +85,7 @@ import com.megamaced.nccollectives.ui.components.SubpageChipRow
 import com.megamaced.nccollectives.ui.components.rememberMarkdownOutline
 import com.megamaced.nccollectives.ui.screen.FAB_CLEARANCE
 import com.megamaced.nccollectives.util.AttachmentRef
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -141,28 +143,41 @@ internal fun PageViewScreen(
     // `launchSingleTop` on both editor routes — otherwise a second editor
     // entry, which for the web editor means a second `directediting` session
     // on the same page.
-    val startEdit: () -> Unit = {
-        if (!resolvingEditRoute) {
-            resolvingEditRoute = true
-            editScope.launch {
-                try {
-                    // Resolve EditorPreference + server capability, then
-                    // route. Once memoised by DirectEditingRepository the
-                    // lookup is effectively instant.
-                    val decision = viewModel.resolveEditRoute()
-                    decision.fallbackMessage?.let { msg ->
-                        snackbarHostState.showSnackbar(msg)
-                    }
-                    when (decision.route) {
-                        EditRoute.Plain -> onEdit()
-                        EditRoute.Web -> onEditWeb()
-                    }
-                } finally {
-                    resolvingEditRoute = false
+    //
+    // [automatic] is Edit mode's own trip into the editor (see
+    // `PageViewModel.openState`), which checks the page again once the route
+    // is known: it may have been trashed, or turned up a conflict, meanwhile.
+    fun launchEdit(automatic: Boolean) {
+        resolvingEditRoute = true
+        editScope.launch {
+            try {
+                // Resolve EditorPreference + server capability, then
+                // route. Once memoised by DirectEditingRepository the
+                // lookup is effectively instant.
+                val decision = viewModel.resolveEditRoute()
+                decision.fallbackMessage?.let { msg ->
+                    snackbarHostState.showSnackbar(msg)
                 }
+                if (automatic && !viewModel.stillOpensStraightIntoEditor()) {
+                    viewModel.dropPendingEdit()
+                    return@launch
+                }
+                when (decision.route) {
+                    EditRoute.Plain -> onEdit()
+                    EditRoute.Web -> onEditWeb()
+                }
+            } finally {
+                resolvingEditRoute = false
             }
         }
     }
+    val startEdit: () -> Unit = {
+        if (!resolvingEditRoute) {
+            viewModel.editTapped()
+            launchEdit(automatic = false)
+        }
+    }
+    val launchEditLatest by rememberUpdatedState<(Boolean) -> Unit> { automatic -> launchEdit(automatic) }
 
     // Trashing drops the page's Room row, so `page` goes null while the undo
     // snackbar is still up (B-75). Keep rendering the last version we had —
@@ -174,11 +189,25 @@ internal fun PageViewScreen(
     }
     val visiblePage = page ?: lastLoadedPage
 
-    // Recorded while the screen is in front, including a return to it
-    // through a saved tab stack. See `PageViewModel.recordViewsWhileShown`.
+    // Views are recorded while the screen is in front, including a return to
+    // it through a saved tab stack. See `PageViewModel.recordViewsWhileShown`.
+    //
+    // Edit mode's trip into the editor also waits for the screen to be in
+    // front: the nav host drops a navigation from an entry that isn't
+    // resumed, as this one isn't while it animates in, and the trip is taken
+    // once per visit. A manual Edit already under way takes its place.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.recordViewsWhileShown() }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.backInFront()
+            launch { viewModel.recordViewsWhileShown() }
+            viewModel.openState.first { it == PageOpenState.EditPending }
+            if (!resolvingEditRoute && viewModel.claimPendingEdit()) {
+                launchEditLatest(true)
+            } else {
+                viewModel.dropPendingEdit()
+            }
+        }
     }
 
     // B-81: `statusMessage` only. An `errorMessage` is the full-screen error

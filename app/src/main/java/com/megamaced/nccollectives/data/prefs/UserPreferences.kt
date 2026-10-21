@@ -70,6 +70,14 @@ enum class TextScale(
 enum class EditorPreference { PreferPlain, PreferCollaborative }
 
 /**
+ * What opening a page shows first: the rendered page ([Read]), or the
+ * editor the Edit button would open ([Edit]). Edit applies only to pages
+ * that can go straight into the editor — see `opensStraightIntoEditor`, by
+ * `PageViewModel`, for the ones that still open for reading.
+ */
+enum class PageOpenMode { Read, Edit }
+
+/**
  * Tab the app opens on when no startup collective is set.
  *
  * A device setting rather than an account one, so it survives an account
@@ -146,6 +154,7 @@ data class UserPrefs(
     val syncCadence: SyncCadence = SyncCadence.SixHourly,
     val recentSearches: List<String> = emptyList(),
     val editorPreference: EditorPreference = EditorPreference.PreferPlain,
+    val pageOpenMode: PageOpenMode = PageOpenMode.Read,
     val collectiveSort: CollectiveSort = CollectiveSort.NameAscending,
     /** Tab to open on launch when [defaultCollectiveId] is null. */
     val startScreen: StartScreen = StartScreen.Home,
@@ -240,6 +249,10 @@ class UserPreferences
             context.dataStore.edit { it[KEY_EDITOR_PREFERENCE] = preference.name }
         }
 
+        suspend fun setPageOpenMode(mode: PageOpenMode) {
+            context.dataStore.edit { it[KEY_PAGE_OPEN_MODE] = mode.name }
+        }
+
         suspend fun setCollectiveSort(sort: CollectiveSort) {
             context.dataStore.edit { it[KEY_COLLECTIVE_SORT] = sort.name }
         }
@@ -325,8 +338,8 @@ class UserPreferences
          * Wipe everything that belongs to the signed-in account, for an
          * account switch (issue #14).
          *
-         * Kept: theme, text scale, sync cadence, editor preference,
-         * collective sort, and the update-check bookkeeping. Those describe how the user has set this
+         * Kept: theme, text scale, sync cadence, editor preference, page
+         * open mode, collective sort, and the update-check bookkeeping. Those describe how the user has set this
          * *device* up — resetting the theme because they looked at their
          * other server would be a bug — and the GitHub update check has
          * nothing to do with which Nextcloud is signed in.
@@ -348,6 +361,7 @@ class UserPreferences
                 val textScale = prefs[KEY_TEXT_SCALE]
                 val syncCadence = prefs[KEY_SYNC_CADENCE]
                 val editorPreference = prefs[KEY_EDITOR_PREFERENCE]
+                val pageOpenMode = prefs[KEY_PAGE_OPEN_MODE]
                 val collectiveSort = prefs[KEY_COLLECTIVE_SORT]
                 val startScreen = prefs[KEY_START_SCREEN]
 
@@ -357,6 +371,7 @@ class UserPreferences
                 textScale?.let { prefs[KEY_TEXT_SCALE] = it }
                 syncCadence?.let { prefs[KEY_SYNC_CADENCE] = it }
                 editorPreference?.let { prefs[KEY_EDITOR_PREFERENCE] = it }
+                pageOpenMode?.let { prefs[KEY_PAGE_OPEN_MODE] = it }
                 collectiveSort?.let { prefs[KEY_COLLECTIVE_SORT] = it }
                 startScreen?.let { prefs[KEY_START_SCREEN] = it }
             }
@@ -393,6 +408,8 @@ class UserPreferences
                         }
                 }
                 ?: EditorPreference.PreferPlain
+            val pageOpenMode = this[KEY_PAGE_OPEN_MODE]?.let { runCatching { PageOpenMode.valueOf(it) }.getOrNull() }
+                ?: PageOpenMode.Read
             val collectiveSort = CollectiveSort.fromStored(this[KEY_COLLECTIVE_SORT])
             val startScreen = this[KEY_START_SCREEN]?.let { runCatching { StartScreen.valueOf(it) }.getOrNull() }
                 ?: StartScreen.Home
@@ -402,6 +419,7 @@ class UserPreferences
                 syncCadence = cadence,
                 recentSearches = this[KEY_RECENT_SEARCHES].toList(),
                 editorPreference = editorPreference,
+                pageOpenMode = pageOpenMode,
                 collectiveSort = collectiveSort,
                 startScreen = startScreen,
                 defaultCollectiveId = this[KEY_DEFAULT_COLLECTIVE_ID],
@@ -423,6 +441,7 @@ class UserPreferences
             val KEY_SYNC_CADENCE = stringPreferencesKey("sync_cadence")
             val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
             val KEY_EDITOR_PREFERENCE = stringPreferencesKey("editor_preference")
+            val KEY_PAGE_OPEN_MODE = stringPreferencesKey("page_open_mode")
             val KEY_COLLECTIVE_SORT = stringPreferencesKey("collective_sort")
             val KEY_START_SCREEN = stringPreferencesKey("start_screen")
             val KEY_DEFAULT_COLLECTIVE_ID = longPreferencesKey("default_collective_id")
