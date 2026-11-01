@@ -64,6 +64,10 @@ Enter your server's address, such as `https://cloud.example.com`, and approve th
 - Your app password is stored encrypted. Signing out deletes it, along with every cached page and setting.
 - HTTPS only. A private or self-signed certificate works only if its authority is in Android's system store, not installed as a user certificate.
 
+## Translations
+
+The app's UI text is ready for translation through Android string resources. Hosted Weblate setup is pending project hosting approval; see the [translation setup guide](docs/TRANSLATIONS.md). Releases currently include English.
+
 ## For developers
 
 Built with Kotlin, Jetpack Compose (Material 3), Hilt, Retrofit and OkHttp, Room for the offline cache and edit queue, WorkManager for sync, Coil, and Markwon with Prism4j. The collaborative editor is Nextcloud Text's `directEditing` in a WebView, credentials are encrypted with Tink, and sign-in uses Nextcloud's [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html#login-flow-v2).
