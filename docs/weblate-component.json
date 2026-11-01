@@ -1,0 +1,17 @@
+{
+  "name": "Android app",
+  "slug": "android-app",
+  "vcs": "github-app",
+  "repo": "https://github.com/megamaced/nc_collectives_android.git",
+  "branch": "main",
+  "file_format": "aresource",
+  "filemask": "app/src/main/res/values-*/strings.xml",
+  "template": "app/src/main/res/values/strings.xml",
+  "new_base": "app/src/main/res/values/strings.xml",
+  "edit_template": false,
+  "new_lang": "add",
+  "language_code_style": "android",
+  "check_flags": "java-printf-format",
+  "repoweb": "https://github.com/megamaced/nc_collectives_android/blob/{{branch}}/{{filename}}#L{{line}}",
+  "license": "AGPL-3.0-or-later"
+}
