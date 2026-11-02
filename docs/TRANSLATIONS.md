@@ -2,11 +2,15 @@
 
 The Android translation groundwork is complete: production UI text is in `app/src/main/res/values/strings.xml`, counts use plural resources, and view models carry translatable UI messages. CI checks for hard-coded UI text, verifies the generated language lists for debug and release, and runs Android lint, unit tests and both builds. The default locale is `en-US`.
 
-As of 1 November 2026, a Hosted Weblate project has not been created. Creating `nc-collectives-android` in Crate's existing workspace with the account's API token returned HTTP 403: **No valid billing found or limit exceeded.** This response does not distinguish missing hosting, a capacity limit or an account configuration issue. No subscription or paid plan was started.
+Hosted Weblate's Libre hosting is approved per project. Its [Libre eligibility check](https://github.com/WeblateOrg/weblate/blob/main/weblate/billing/models.py#L1074-L1081) requires exactly one project per hosting plan, and each hosting plan belongs to one workspace. NC Collectives Android therefore needs its own Libre hosting and workspace under the same user account. Crate's existing Libre approval cannot be shared by putting this second project in its workspace.
+
+Trying to create `nc-collectives-android` in Crate's workspace returned HTTP 403: **No valid billing found or limit exceeded.** The one-project Libre requirement explains why a shared-workspace setup is unsuitable, although the API error alone does not expose the account's exact plan settings.
 
 ## Account setup
 
-Check the existing workspace's billing/hosting settings first. Weblate assigns billing plans to workspaces, and projects in the workspace share that plan; do not assume each project needs a separate application. Resolve the reported blocker, then create a project through [Hosted Weblate](https://hosted.weblate.org/hosting/) or retry project creation through the API:
+Create a project through [Hosted Weblate](https://hosted.weblate.org/hosting/) and request Libre hosting for NC Collectives Android. The separate workspace created by that process is expected. Both workspaces remain managed through the same `megamaced` account.
+
+For hosting plans that allow additional projects, the existing workspace's **Operations → Add new translation project** menu is the normal creation route. Weblate hides that action when its billing or project-capacity checks fail. This route does not bypass the Libre one-project requirement.
 
 | Field | Value |
 | --- | --- |
@@ -14,8 +18,8 @@ Check the existing workspace's billing/hosting settings first. Weblate assigns b
 | URL slug | `nc-collectives-android` |
 | Project website | `https://github.com/megamaced/nc_collectives_android` |
 | Translation licence | `AGPL-3.0-or-later` |
-| Hosting | The existing workspace's Libre hosting, if its approval and available capacity allow this project |
-| Workspace | The workspace connected to the `megamaced` GitHub account, also used by Crate |
+| Hosting | Libre, requested specifically for NC Collectives Android |
+| Workspace | A separate workspace for this project, owned by the same `megamaced` account |
 
 The Hosted Weblate GitHub app also needs access to `megamaced/nc_collectives_android`. Check it under GitHub **Settings → Applications → Installed GitHub Apps → Hosted Weblate → Configure**. This app is an unofficial client; keep that distinction from the upstream Nextcloud Collectives project in its public description.
 
