@@ -66,7 +66,11 @@ Enter your server's address, such as `https://cloud.example.com`, and approve th
 
 ## Translations
 
-The app's UI text is ready for translation through Android string resources. Hosted Weblate setup is pending project hosting approval; see the [translation setup guide](docs/TRANSLATIONS.md). Releases currently include English.
+NC Collectives uses [Weblate](https://weblate.org/) for community translations. Thank you to Weblate for hosting the project.
+
+[![Translation status on Weblate](https://hosted.weblate.org/widget/nc-collectives-android/android-app/svg-badge.svg)](https://hosted.weblate.org/projects/nc-collectives-android/android-app/)
+
+[Help translate the Android app](https://hosted.weblate.org/projects/nc-collectives-android/android-app/) in your browser. Releases currently include English; new languages are enabled after a readiness and fluent-speaker review. See the [translation setup and release guide](docs/TRANSLATIONS.md).
 
 ## For developers
 
