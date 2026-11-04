@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="error_other_collective">See leht asub muus vabaühenduses.</string>
+    <string name="error_no_account">Ükski kasutajakonto pole loginud sisse.</string>
+    <string name="error_cross_collective_move">Lehti ei saa teise vabaühendusse tõsta.</string>
+    <string name="error_blank_name">Sisesta nimi.</string>
+</resources>
