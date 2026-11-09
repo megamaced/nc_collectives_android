@@ -200,7 +200,7 @@ internal fun SearchScreen(
                             filteredResults,
                             key = ::searchHitKey,
                         ) { _, hit ->
-                            SearchHitRow(hit = hit, onClick = { hit.pageId?.let(onOpenPage) })
+                            SearchHitRow(hit = hit, onClick = { hit.pageId?.takeIf { hit.isOpenable }?.let(onOpenPage) })
                         }
                     }
                 }
@@ -320,14 +320,14 @@ private fun CollectiveFilterRow(
 }
 
 @Composable
-private fun SearchHitRow(
+internal fun SearchHitRow(
     hit: SearchHit,
     onClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = hit.pageId != null, onClick = onClick, role = Role.Button)
+            .clickable(enabled = hit.isOpenable, onClick = onClick, role = Role.Button)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -340,9 +340,18 @@ private fun SearchHitRow(
                 maxLines = 2,
             )
         }
-        if (hit.pageId == null) {
+        // Why an untappable result can't be opened, so it never reads as a
+        // dead tap. Issue #85: a result whose link the app couldn't read used
+        // to say "not in your local cache", which sent the user looking for a
+        // collective to open when the page was already on the device.
+        val reason = when {
+            hit.pageId == null -> R.string.search_not_openable
+            hit.collectiveId == null -> R.string.search_not_cached
+            else -> null
+        }
+        reason?.let {
             Text(
-                text = stringResource(R.string.search_not_cached),
+                text = stringResource(it),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

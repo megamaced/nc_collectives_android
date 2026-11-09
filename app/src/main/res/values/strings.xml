@@ -327,6 +327,8 @@
     <string name="search_tags">Tags</string>
     <!-- A server search found a page this device hasn't downloaded. -->
     <string name="search_not_cached">Not in your local cache — open the matching collective first.</string>
+    <!-- A server search result that doesn't say which page it is, so the app can't open it. -->
+    <string name="search_not_openable">Can\'t be opened from search — find it in its collective.</string>
 
     <!-- Alerts, continued: the Alerts tab. -->
     <string name="alerts_title">Alerts</string>

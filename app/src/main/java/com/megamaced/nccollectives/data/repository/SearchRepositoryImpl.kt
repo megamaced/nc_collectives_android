@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.data.repository
 
+import android.net.Uri
 import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.apiCall
@@ -74,15 +75,53 @@ class SearchRepositoryImpl
          */
         private fun SearchEntryDto.pageId(): Long? =
             attributes["fileId"]?.toLongOrNull()
-                ?: resourceUrl?.let { extractFileIdFromQuery(it) }
+                ?: resourceUrl?.let { pageIdFromResourceUrl(it) }
 
-        private fun extractFileIdFromQuery(url: String): Long? {
-            // B-47: route the parse through `Uri.parse` so query lookup
-            // handles fragments (`#anchor`) and percent-encoding correctly.
-            // The previous `substringAfter('?') + split('&')` produced
-            // `"42#anchor"` for `?fileId=42#anchor` and `toLongOrNull()`
-            // returned null — the search hit became untappable.
-            val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return null
-            return uri.getQueryParameter("fileId")?.toLongOrNull()
+        internal companion object {
+            /** A slugged page's link segment: `<slug>-<id>`. */
+            private val SLUGGED_PAGE_SEGMENT = Regex("""-(\d+)$""")
+
+            /**
+             * The page id a Collectives search result's link names, or null.
+             *
+             * Collectives builds the link with `PageService::getPageLink`,
+             * which has three shapes:
+             *
+             *  - a page without a slug:
+             *    `…/apps/collectives/<collective>/<path…>/<title>?fileId=<id>`;
+             *  - a page with one — every page created, renamed, moved or
+             *    copied since Collectives 3.0 — `…/apps/collectives/<collective>/<slug>-<id>`,
+             *    with no `fileId` and no folder path (issue #85: those
+             *    results were all untappable);
+             *  - an unslugged landing page: `…/apps/collectives/<collective>`,
+             *    which names no page id at all.
+             *
+             * The slug shape is only read when it is exactly one segment
+             * after the collective's, so a collective segment — which can
+             * itself be `<slug>-<id>` — is never mistaken for a page.
+             */
+            fun pageIdFromResourceUrl(url: String): Long? {
+                // B-47: route the parse through `Uri.parse` so query lookup
+                // handles fragments (`#anchor`) and percent-encoding correctly.
+                // The previous `substringAfter('?') + split('&')` produced
+                // `"42#anchor"` for `?fileId=42#anchor` and `toLongOrNull()`
+                // returned null — the search hit became untappable.
+                val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+                // `getQueryParameter` throws on an opaque URI (`mailto:…`).
+                if (!uri.isHierarchical) return null
+                uri.getQueryParameter("fileId")?.toLongOrNull()?.let { return it }
+
+                val segments = uri.pathSegments
+                val appRoot = segments.indices.firstOrNull { i ->
+                    segments[i] == "apps" && segments.getOrNull(i + 1) == "collectives"
+                } ?: return null
+                val route = segments.drop(appRoot + 2)
+                if (route.size != 2) return null
+                return SLUGGED_PAGE_SEGMENT
+                    .find(route[1])
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toLongOrNull()
+            }
         }
     }

@@ -11,6 +11,7 @@ import com.megamaced.nccollectives.data.api.CollectivesApiService
 import com.megamaced.nccollectives.data.api.HostInterceptor
 import com.megamaced.nccollectives.data.api.NotificationsApiService
 import com.megamaced.nccollectives.data.api.PageBodyService
+import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.auth.AccountBindingInterceptor
 import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.AccountGeneration
@@ -25,6 +26,7 @@ import com.megamaced.nccollectives.data.prefs.UserPreferences
 import com.megamaced.nccollectives.data.repository.AlertRepositoryImpl
 import com.megamaced.nccollectives.data.repository.AttachmentRepositoryImpl
 import com.megamaced.nccollectives.data.repository.PageRepositoryImpl
+import com.megamaced.nccollectives.data.repository.SearchRepositoryImpl
 import com.megamaced.nccollectives.di.NetworkModule
 import com.megamaced.nccollectives.domain.repository.AttachmentRepository
 import com.megamaced.nccollectives.sync.SyncScheduler
@@ -83,6 +85,7 @@ internal class IntegrationEnvironment private constructor(
     val accountGeneration: AccountGeneration,
     val syncScheduler: SyncScheduler,
     val notificationsApi: NotificationsApiService,
+    val searchApi: SearchApiService,
     val userPreferences: UserPreferences,
 ) : AutoCloseable {
     val attachmentRepository: AttachmentRepositoryImpl =
@@ -110,6 +113,8 @@ internal class IntegrationEnvironment private constructor(
             accountGeneration = accountGeneration,
             attachmentRepository = { attachmentRepository as AttachmentRepository },
         )
+
+    val searchRepository: SearchRepositoryImpl = SearchRepositoryImpl(api = searchApi, pageDao = db.pageDao())
 
     val alertRepository: AlertRepositoryImpl =
         AlertRepositoryImpl(
@@ -325,6 +330,7 @@ internal class IntegrationEnvironment private constructor(
                 accountGeneration = accountGeneration,
                 syncScheduler = SyncScheduler(context, userPreferences),
                 notificationsApi = NetworkModule.provideNotificationsApi(retrofit),
+                searchApi = NetworkModule.provideSearchApi(retrofit),
                 userPreferences = userPreferences,
             )
         }
