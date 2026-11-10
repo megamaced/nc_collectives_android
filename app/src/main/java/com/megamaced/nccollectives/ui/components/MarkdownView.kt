@@ -1,5 +1,6 @@
 package com.megamaced.nccollectives.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.text.method.LinkMovementMethod
 import android.text.util.Linkify
@@ -282,17 +283,7 @@ fun MarkdownView(
 
     AndroidView(
         modifier = modifier,
-        factory = { ctx ->
-            TextView(ctx).apply {
-                movementMethod = LinkMovementMethod.getInstance()
-                // Markwon leaves leading at the font's default, which
-                // reads as a dense wall of text on a phone (issue #6).
-                // Multiplier rather than `lineSpacingExtra` so the gap
-                // grows with the text size instead of shrinking away
-                // relative to it at the larger `TextScale` steps.
-                setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
-            }
-        },
+        factory = ::markdownTextView,
         update = { tv ->
             tv.setTextColor(bodyColor)
             // Set *before* `setMarkdown`: heading and code spans read the
@@ -314,6 +305,31 @@ fun MarkdownView(
         },
     )
 }
+
+/**
+ * The `TextView` a page body is rendered into: its text can be selected and
+ * copied, and its links still open on a tap.
+ *
+ * Selection is switched on *first*. `setTextIsSelectable(true)` installs
+ * `ArrowKeyMovementMethod` in place of whatever movement method was set, and
+ * `TextView`'s own fallback for links in selectable text only covers
+ * `autoLink`, not Markwon's spans — set the other way round, no link would
+ * open. `LinkMovementMethod` on a selectable view keeps both: it allows
+ * arbitrary selection, and the release that ends a long press is withheld
+ * from it (`Editor.mDiscardNextActionUp`), so lifting the finger doesn't clear
+ * the selection the long press made.
+ */
+internal fun markdownTextView(context: Context): TextView =
+    TextView(context).apply {
+        setTextIsSelectable(true)
+        movementMethod = LinkMovementMethod.getInstance()
+        // Markwon leaves leading at the font's default, which
+        // reads as a dense wall of text on a phone (issue #6).
+        // Multiplier rather than `lineSpacingExtra` so the gap
+        // grows with the text size instead of shrinking away
+        // relative to it at the larger `TextScale` steps.
+        setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
+    }
 
 /**
  * The directory every image the renderer is allowed to fetch must resolve
