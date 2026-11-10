@@ -24,7 +24,7 @@ private const val TEST_DB = "nc-collectives-migration-test.db"
  * generated code, so there is nothing to read it from at runtime — bump it
  * here in the same commit as the annotation.
  */
-private const val LATEST_VERSION = 14
+private const val LATEST_VERSION = 15
 
 /**
  * Coverage for the hand-written [ALL_MIGRATIONS] chain. `DatabaseModule`
@@ -461,6 +461,39 @@ class MigrationTest {
             assertEquals(2L, cursor.longAt("userPageOrder"))
             // View until the next collective refresh says otherwise.
             assertEquals(0L, cursor.longAt("pageMode"))
+        }
+        db.close()
+    }
+
+    @Test
+    fun migrate14To15_marksExistingAttachmentsAsInTheAttachmentsDirectory_keepsThem() {
+        helper.createDatabase(TEST_DB, 14).use { db ->
+            db.insert(
+                "attachments",
+                SQLiteDatabase.CONFLICT_ABORT,
+                ContentValues().apply {
+                    put("id", "4242/shot.png")
+                    put("pageId", 4242L)
+                    put("fileName", "shot.png")
+                    put("contentType", "image/png")
+                    put("size", 1024L)
+                    put("lastModifiedMs", 1_700_000_000_000L)
+                    put("status", "REMOTE")
+                    put("lastSyncedAt", 1_700_000_000_000L)
+                    put("serverAttachmentId", 77L)
+                    put("attempts", 0)
+                },
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 15, true, MIGRATION_14_15)
+
+        db.query("SELECT * FROM `attachments` WHERE `id` = '4242/shot.png'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("shot.png", cursor.stringAt("fileName"))
+            assertEquals(77L, cursor.longAt("serverAttachmentId"))
+            // An attachment until the next listing says it is a page-folder file.
+            assertEquals(0L, cursor.longAt("inPageFolder"))
         }
         db.close()
     }

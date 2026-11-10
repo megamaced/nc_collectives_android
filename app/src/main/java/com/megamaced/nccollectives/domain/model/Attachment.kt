@@ -11,6 +11,8 @@ data class Attachment(
     val status: Status,
     val remoteUrl: String?,
     val localUriString: String?,
+    /** Kept beside the page in its folder rather than in its attachments directory; can't be deleted from here. */
+    val inPageFolder: Boolean = false,
 ) {
     enum class Status { REMOTE, PENDING, UPLOADING, FAILED }
 

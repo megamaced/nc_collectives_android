@@ -103,12 +103,19 @@ class AttachmentsViewModel
          * Download [fileName] and hand it to another app. Works for images
          * too — opening a photo in a real gallery app gives the user pinch-
          * zoom and share, which a grid thumbnail can't.
+         *
+         * [inPageFolder]: the file is kept beside the page in its folder
+         * rather than in its attachments directory, so that is where it is
+         * fetched from.
          */
-        fun open(fileName: String) {
+        fun open(
+            fileName: String,
+            inPageFolder: Boolean = false,
+        ) {
             if (_uiState.value.downloadingAttachment != null) return
             _uiState.update { it.copy(downloadingAttachment = fileName) }
             viewModelScope.launch {
-                val relativePath = "${attachmentDirName(pageId)}/$fileName"
+                val relativePath = if (inPageFolder) fileName else "${attachmentDirName(pageId)}/$fileName"
                 val result = repository.downloadForViewing(pageId, relativePath)
                 _uiState.update { state ->
                     when (result) {

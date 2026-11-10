@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -94,7 +95,16 @@ class AttachmentRepositoryImpl
                             .listForPage(pageId)
                             .associateBy { it.id }
                         val remoteEntities = result.data.ocs.data.attachments.map { dto ->
-                            val key = AttachmentEntity.key(pageId, dto.name)
+                            // A file kept beside the page in its folder rather
+                            // than in `.attachments.<pageId>/` (Collectives 4.0+).
+                            // Its own key namespace: an attachment of the same
+                            // name would otherwise overwrite its row.
+                            val inPageFolder = dto.type == ATTACHMENT_TYPE_FOLDER
+                            val key = if (inPageFolder) {
+                                AttachmentEntity.folderFileKey(pageId, dto.name)
+                            } else {
+                                AttachmentEntity.key(pageId, dto.name)
+                            }
                             val current = existing[key]
                             if (current != null && current.status != AttachmentEntity.STATUS_REMOTE) {
                                 // B-36: preserve the local row, but catch up
@@ -137,6 +147,7 @@ class AttachmentRepositoryImpl
                                     localUriString = null,
                                     lastSyncedAt = now,
                                     serverAttachmentId = dto.id,
+                                    inPageFolder = inPageFolder,
                                 )
                             }
                         }
@@ -552,7 +563,9 @@ class AttachmentRepositoryImpl
         ) {
             if (oldPageId == newPageId) return
             for (row in attachmentDao.listForPage(oldPageId)) {
-                val newKey = AttachmentEntity.key(newPageId, row.fileName)
+                // In the row's own namespace: a page-folder file re-keyed with
+                // `key` would collide with an attachment of the same name.
+                val newKey = row.keyOn(newPageId)
                 attachmentDao.delete(row.id)
                 // A `REMOTE` row carries no local bytes and the next
                 // PROPFIND rebuilds it anyway, so there is nothing to move
@@ -619,7 +632,7 @@ class AttachmentRepositoryImpl
             val refDir = segments.dropLast(1).joinToString("/")
             val filePath = if (refDir.isEmpty()) page.filePath else combinePath(page.filePath, refDir)
 
-            val target = viewCacheFileFor(context, generation, pageId, fileName)
+            val target = viewCacheFileFor(context, generation, pageId, refDir, fileName)
             target.parentFile?.mkdirs()
             val result = bodyService.downloadTo(
                 collectivePath = page.collectivePath,
@@ -708,7 +721,7 @@ class AttachmentRepositoryImpl
             return try {
                 bodyService.resourceUrl(
                     collectivePath = page.collectivePath,
-                    filePath = combinePath(page.filePath, attachmentsDir),
+                    filePath = if (entity.inPageFolder) page.filePath else combinePath(page.filePath, attachmentsDir),
                     fileName = entity.fileName,
                 )
             } catch (_: Exception) {
@@ -774,17 +787,45 @@ class AttachmentRepositoryImpl
              * by account [generation] too, so a download that a switch
              * overtakes writes, and on failure deletes, only its own
              * account's file, never the next account's of the same name.
+             *
+             * Namespaced by [sourceDir] as well — the file's folder relative
+             * to the page's, `""` for a file kept in the page's own folder —
+             * so a page's attachment and a same-named file beside the page, or
+             * in a sibling's attachments directory, never share a file. A
+             * grant stays readable while the viewer is open, so a second
+             * download into the first one's file would serve the wrong bytes
+             * through it, and a failed one would delete it.
              */
             fun viewCacheFileFor(
                 context: Context,
                 generation: Long,
                 pageId: Long,
+                sourceDir: String,
                 fileName: String,
             ): File =
                 File(
-                    File(File(File(context.cacheDir, "attachments-view"), "g$generation"), pageId.toString()),
+                    File(
+                        File(File(File(context.cacheDir, "attachments-view"), "g$generation"), pageId.toString()),
+                        sourceDirKey(sourceDir),
+                    ),
                     fileName.replace('/', '_'),
                 )
+
+            /**
+             * A directory name standing for [sourceDir]. A digest rather than
+             * the path itself: the path is server-supplied, may be nested, and
+             * only its identity matters here.
+             */
+            private fun sourceDirKey(sourceDir: String): String =
+                "d" +
+                    MessageDigest
+                        .getInstance("SHA-256")
+                        .digest(sourceDir.toByteArray(Charsets.UTF_8))
+                        .take(SOURCE_DIR_KEY_BYTES)
+                        .joinToString("") { "%02x".format(it) }
+
+            /** 128 bits of the digest: ample to keep a page's few folders apart. */
+            private const val SOURCE_DIR_KEY_BYTES = 16
 
             /**
              * Delete every cached attachment byte-store: staged uploads and
@@ -865,7 +906,11 @@ private fun AttachmentEntity.toDomain(remoteUrl: String?): Attachment =
         },
         remoteUrl = remoteUrl,
         localUriString = localUriString,
+        inPageFolder = inPageFolder,
     )
+
+/** The attachments listing's `type` for a file kept in the page's own folder. */
+private const val ATTACHMENT_TYPE_FOLDER = "folder"
 
 /**
  * The [counter]th candidate name for [sanitised]: the name itself at 0, then

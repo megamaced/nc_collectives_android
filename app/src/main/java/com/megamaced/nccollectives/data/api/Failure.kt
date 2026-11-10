@@ -63,7 +63,14 @@ sealed interface Failure {
         when (this) {
             Network -> uiText(R.string.error_network)
 
-            is Http -> if (code == 403) uiText(R.string.error_access_refused) else uiText(R.string.error_http, code)
+            // Collectives answers 404 for a page that has gone or that the
+            // user can no longer reach (4.8 made the attachments listing do
+            // the same), so a bare "Server returned 404" undersold it.
+            is Http -> when (code) {
+                403 -> uiText(R.string.error_access_refused)
+                404 -> uiText(R.string.error_not_found)
+                else -> uiText(R.string.error_http, code)
+            }
 
             SessionExpired -> uiText(R.string.error_session_expired)
 

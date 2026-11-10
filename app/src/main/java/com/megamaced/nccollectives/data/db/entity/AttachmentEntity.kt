@@ -1,11 +1,13 @@
 package com.megamaced.nccollectives.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * One file inside a page's `.attachments.<pageId>` WebDAV directory.
+ * One file inside a page's `.attachments.<pageId>` WebDAV directory — or,
+ * when [inPageFolder] is set, a file kept beside the page in its own folder.
  *
  * Doubles as the upload queue: rows with `status = PENDING` or `UPLOADING`
  * carry a `localUriString` that `AttachmentUploadWorker` reads from. Once
@@ -13,7 +15,9 @@ import androidx.room.PrimaryKey
  * URI is cleared. `FAILED` rows are kept so the UI can surface a retry.
  *
  * `id` is `<pageId>/<fileName>` so the same filename collides across pages
- * — keeping the row stable across PROPFIND refreshes.
+ * — keeping the row stable across PROPFIND refreshes. A page-folder file is
+ * keyed by [folderFileKey] instead, so it never collides with an attachment
+ * of the same name.
  */
 @Entity(
     tableName = "attachments",
@@ -63,7 +67,22 @@ data class AttachmentEntity(
      * collision moves the upload to a new filename.
      */
     val attempts: Int = 0,
+    /**
+     * A file Collectives lists from the page's own folder (`type: folder`,
+     * Collectives 4.0+) rather than from `.attachments.<pageId>/`: any
+     * non-page file beside the `Readme.md` of a page with subpages, such as
+     * one dropped in through Files. It is opened from the page's folder,
+     * and the attachments API can't delete or rename it — the server only
+     * looks in `.attachments.<pageId>/` — so the app offers neither. Always
+     * `REMOTE`: this app only uploads into the attachments directory.
+     * `MIGRATION_14_15` back-fills false.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val inPageFolder: Boolean = false,
 ) {
+    /** This row's key were it on page [pageId], in whichever namespace it belongs to. */
+    fun keyOn(pageId: Long): String = if (inPageFolder) folderFileKey(pageId, fileName) else key(pageId, fileName)
+
     companion object {
         const val STATUS_REMOTE = "REMOTE"
         const val STATUS_PENDING = "PENDING"
@@ -93,5 +112,14 @@ data class AttachmentEntity(
             pageId: Long,
             fileName: String,
         ): String = "$pageId/$fileName"
+
+        /**
+         * The key of a page-folder file ([inPageFolder]). A file name holds
+         * no `/`, so a key with two can never equal one [key] produced.
+         */
+        fun folderFileKey(
+            pageId: Long,
+            fileName: String,
+        ): String = "$pageId/page-folder/$fileName"
     }
 }

@@ -1,6 +1,7 @@
 package com.megamaced.nccollectives.integration
 
 import android.content.Context
+import androidx.core.content.FileProvider
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
@@ -260,6 +261,7 @@ internal class IntegrationEnvironment private constructor(
 
         fun create(): IntegrationEnvironment {
             val context = ApplicationProvider.getApplicationContext<Context>()
+            forgetFileProviderRoots()
             // Synchronous executor so `SyncScheduler`'s enqueues settle
             // before the assertion that follows them, rather than on a
             // background thread the test cannot see.
@@ -333,6 +335,22 @@ internal class IntegrationEnvironment private constructor(
                 searchApi = NetworkModule.provideSearchApi(retrofit),
                 userPreferences = userPreferences,
             )
+        }
+
+        /**
+         * androidx `FileProvider` resolves each authority's roots once and
+         * keeps them in a static map, while Robolectric gives every test a
+         * fresh data directory inside a sandbox that outlives the test. Left
+         * alone, every test after the first in a JVM that hands a downloaded
+         * file out fails with "Failed to find configured root" — the roots
+         * are still the first test's directories.
+         */
+        private fun forgetFileProviderRoots() {
+            val roots = FileProvider::class.java
+                .getDeclaredField("sCache")
+                .apply { isAccessible = true }
+                .get(null) as MutableMap<*, *>
+            synchronized(roots) { roots.clear() }
         }
 
         const val LOGIN_NAME = "alice"

@@ -20,6 +20,13 @@ data class AttachmentDto(
     val path: String? = null,
     val internalPath: String? = null,
     val hasPreview: Boolean = false,
+    /**
+     * Where the file lives (Collectives 4.0+): `text` for one in the page's
+     * `.attachments.<pageId>/` directory, `folder` for any other non-page
+     * file in the folder of a page that has subpages. Absent on older
+     * servers, which only list `text` attachments.
+     */
+    val type: String? = null,
 )
 
 @Serializable

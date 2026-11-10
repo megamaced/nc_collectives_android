@@ -25,6 +25,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v11: `collectives.userPageOrder` and `pages (serverTimestamp)` index
  *  - v12: `pages.lastUserId` / `.bodyTimestamp`; `page_views` introduced
  *  - v13: `collectives.userNotify`; `alerts` introduced
+ *  - v14: `collectives.pageMode`
+ *  - v15: `attachments.inPageFolder`
  *
  * Each [Migration] is verified by `MigrationTest` in `androidTest`, which
  * evolves a fresh DB through the chain and asserts the final schema
@@ -283,6 +285,18 @@ internal val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+/**
+ * `attachments.inPageFolder`: a file Collectives lists from the page's own
+ * folder rather than its `.attachments.<pageId>/` directory. Pre-v15 rows
+ * take 0; the attachments screen refreshes on open and rewrites any
+ * page-folder file under its own key then.
+ */
+internal val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `attachments` ADD COLUMN `inPageFolder` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -297,4 +311,5 @@ internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_11_12,
     MIGRATION_12_13,
     MIGRATION_13_14,
+    MIGRATION_14_15,
 )

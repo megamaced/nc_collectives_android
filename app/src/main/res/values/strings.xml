@@ -6,6 +6,8 @@
     <string name="error_network">Couldn\'t reach the server. Check your connection.</string>
     <!-- 403 from the server. The app can't tell whether the user lacks permission or the thing is gone. -->
     <string name="error_access_refused">Access refused (403). You may not have permission, or it may no longer exist.</string>
+    <!-- 404 from the server: what was asked for has gone, or the user can no longer reach it. -->
+    <string name="error_not_found">Not found (404). It may have been deleted, or you may no longer have access.</string>
     <!-- %1$d is an HTTP status code, such as 500. -->
     <string name="error_http">Server returned %1$d</string>
     <string name="error_session_expired">Session expired. Please sign in again.</string>

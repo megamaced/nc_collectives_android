@@ -198,7 +198,7 @@ internal fun AttachmentsScreen(
                         items(attachments, key = { it.id }) { attachment ->
                             AttachmentTile(
                                 attachment = attachment,
-                                onOpen = { viewModel.open(attachment.fileName) },
+                                onOpen = { viewModel.open(attachment.fileName, attachment.inPageFolder) },
                                 onDelete = { pendingDelete = attachment.fileName },
                                 onRetry = { viewModel.retryUpload(attachment.fileName) },
                             )
@@ -248,7 +248,7 @@ internal fun AttachmentsScreen(
 }
 
 @Composable
-private fun AttachmentTile(
+internal fun AttachmentTile(
     attachment: Attachment,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
@@ -333,8 +333,13 @@ private fun AttachmentTile(
                     Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.attachment_retry_upload, attachment.fileName))
                 }
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
+            // The attachments API only deletes from the page's attachments
+            // directory, so a file kept in the page's folder has no Delete:
+            // the server would answer 404.
+            if (!attachment.inPageFolder) {
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.action_delete))
+                }
             }
         }
     }

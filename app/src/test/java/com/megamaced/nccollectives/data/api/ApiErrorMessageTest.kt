@@ -10,7 +10,8 @@ import org.junit.runner.RunWith
 
 /**
  * B-84: 403 is the common case for a members list, not an anomaly, and
- * "Server returned 403" told the user nothing. The wording must also stop
+ * "Server returned 403" told the user nothing. 404 likewise has its own
+ * wording. The wording must also stop
  * short of asserting non-membership — Circles answers 403 both for a team
  * the user isn't in and for a team that doesn't exist, and won't say which.
  */
@@ -29,9 +30,19 @@ class ApiErrorMessageTest {
     }
 
     @Test
+    fun `404 says the thing may be gone or out of reach`() {
+        // Collectives answers 404 for a page that has gone or that the user
+        // can no longer reach, and since 4.8 for its attachments listing too.
+        assertEquals(
+            "Not found (404). It may have been deleted, or you may no longer have access.",
+            ApiResult.HttpError(404, "Not Found").userMessage()?.english(),
+        )
+    }
+
+    @Test
     fun `other statuses keep the generic wording`() {
         assertEquals("Server returned 500", ApiResult.HttpError(500, "Server Error").userMessage()?.english())
-        assertEquals("Server returned 404", ApiResult.HttpError(404, "Not Found").userMessage()?.english())
+        assertEquals("Server returned 409", ApiResult.HttpError(409, "Conflict").userMessage()?.english())
     }
 
     @Test

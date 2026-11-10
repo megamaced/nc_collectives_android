@@ -487,7 +487,7 @@ class AccountScopedMutationsIntegrationTest {
                 .whileInFlight("a.png") {
                     switchAccount()
                     theirs = AttachmentRepositoryImpl
-                        .viewCacheFileFor(env.context, env.accountGeneration.current(), 1, "a.png")
+                        .viewCacheFileFor(env.context, env.accountGeneration.current(), 1, "", "a.png")
                         .apply {
                             parentFile?.mkdirs()
                             writeText("B's download")
