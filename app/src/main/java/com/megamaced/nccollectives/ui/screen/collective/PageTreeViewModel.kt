@@ -39,8 +39,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * A node in the rendered tree. [hasChildren] toggles the chevron; depth is
- * intentionally omitted — the tree is rendered flat (no indentation).
+ * A node in the rendered tree. [hasChildren] toggles the chevron; [depth] is
+ * how far below the tree's top level the page sits (0 for a child of the
+ * landing page), which the row indents by a little (issue #75).
  *
  * R-54: a [PageListItem], not a [Page]. A tree row draws an emoji, a title
  * and an editor name; carrying the detail model meant every row of every
@@ -50,6 +51,7 @@ data class PageNode(
     val page: PageListItem,
     val hasChildren: Boolean,
     val isFavorite: Boolean,
+    val depth: Int = 0,
 )
 
 /**
@@ -352,6 +354,11 @@ class PageTreeViewModel
             }
         }
 
+        /** Close every open folder, as the web page list's "Collapse all pages" does. */
+        fun collapseAll() {
+            _uiState.update { it.copy(expanded = emptySet()) }
+        }
+
         fun toggleExpanded(pageId: Long) {
             _uiState.update {
                 val next = it.expanded.toMutableSet()
@@ -523,7 +530,10 @@ internal fun buildVisibleNodes(
     val out = mutableListOf<PageNode>()
     val seen = HashSet<Long>()
 
-    fun walk(parent: Long) {
+    fun walk(
+        parent: Long,
+        depth: Int,
+    ) {
         for (child in siblingsOrdered(parent)) {
             // Skip an id we've already emitted — a duplicate/cyclic
             // server `subpageOrder` must never yield a duplicate
@@ -534,8 +544,9 @@ internal fun buildVisibleNodes(
                 page = child,
                 hasChildren = hasChildren,
                 isFavorite = child.id in favoriteIds,
+                depth = depth,
             )
-            if (hasChildren && child.id in expanded) walk(child.id)
+            if (hasChildren && child.id in expanded) walk(child.id, depth + 1)
         }
     }
 
@@ -543,6 +554,12 @@ internal fun buildVisibleNodes(
     // landing-card above the tree (Batch 21); skip it here and render its
     // children as the tree's top level.
     val landingPageId = byParent[0L]?.firstOrNull()?.id
-    if (landingPageId != null) walk(parent = landingPageId)
+    if (landingPageId != null) walk(parent = landingPageId, depth = 0)
     return out
 }
+
+/** Whether "Collapse all" has anything to close: an open folder among the rows on screen. */
+internal fun canCollapseAll(
+    nodes: List<PageNode>,
+    expanded: Set<Long>,
+): Boolean = nodes.any { it.hasChildren && it.page.id in expanded }

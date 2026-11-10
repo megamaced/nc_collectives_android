@@ -136,4 +136,21 @@ class PageTreeNodesTest {
 
         assertEquals(listOf(2L, 1L, 4L, 3L), ids(nodes))
     }
+
+    @Test
+    fun eachRowCarriesItsDepthBelowTheTopLevel() {
+        // Issue #75: the row indents by depth. The landing page's children
+        // are the top level, 0; an expanded folder's children are one deeper.
+        val pages = listOf(
+            page(id = 10, parentId = 0),
+            page(id = 1, parentId = 10),
+            page(id = 2, parentId = 1),
+            page(id = 3, parentId = 2),
+            page(id = 4, parentId = 10),
+        )
+
+        val nodes = buildVisibleNodes(pages, expanded = setOf(1, 2), favoriteIds = emptySet())
+
+        assertEquals(listOf(1L to 0, 2L to 1, 3L to 2, 4L to 0), nodes.map { it.page.id to it.depth })
+    }
 }

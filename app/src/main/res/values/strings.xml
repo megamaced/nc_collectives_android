@@ -401,6 +401,8 @@
     <string name="pages_empty_title">No pages</string>
     <string name="pages_empty_message">This collective doesn\'t have any pages yet.</string>
     <string name="page_new_subpage">New subpage</string>
+    <!-- Closes every open folder in a collective's page list. -->
+    <string name="pages_collapse_all">Collapse all</string>
     <!-- Making a page: where it goes, and its title. -->
     <string name="page_new_where">Where should this page go?</string>
     <string name="page_new_pick_parent_hint">Pick a parent…</string>

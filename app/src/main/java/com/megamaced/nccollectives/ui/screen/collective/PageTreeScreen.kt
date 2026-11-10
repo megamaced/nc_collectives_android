@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +61,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -134,6 +136,12 @@ internal fun PageTreeScreen(
                     }
                 },
                 actions = {
+                    // Only while there is an open folder to close.
+                    if (canCollapseAll(nodes, ui.expanded)) {
+                        IconButton(onClick = viewModel::collapseAll) {
+                            Icon(Icons.Filled.UnfoldLess, contentDescription = stringResource(R.string.pages_collapse_all))
+                        }
+                    }
                     IconButton(onClick = { onOpenTrash(viewModel.collectiveId) }) {
                         Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.trash_title))
                     }
@@ -352,8 +360,20 @@ private fun PageTreeList(
     }
 }
 
+/**
+ * How far a row at [depth] is indented: [SUBPAGE_INDENT] a level, for at most
+ * [MAX_INDENTED_LEVELS] levels. Issue #75 asked to see the hierarchy, but a
+ * phone has little width to give, so the step is a fraction of the 48dp
+ * chevron column and a deep page stops moving right after three levels — the
+ * chevrons still say which rows are folders.
+ */
+internal fun subpageIndent(depth: Int): Dp = SUBPAGE_INDENT * depth.coerceIn(0, MAX_INDENTED_LEVELS)
+
+private val SUBPAGE_INDENT = 8.dp
+private const val MAX_INDENTED_LEVELS = 3
+
 @Composable
-private fun PageTreeItem(
+internal fun PageTreeItem(
     node: PageNode,
     isExpanded: Boolean,
     nowMillis: Long,
@@ -363,8 +383,8 @@ private fun PageTreeItem(
     onAddSubpage: () -> Unit,
     dragHandleModifier: Modifier = Modifier,
 ) {
-    // No indentation regardless of depth — the tree relationship is shown by
-    // the chevron on folder rows, not by horizontal offset.
+    // Indented only slightly by depth (see [subpageIndent]): the chevron on
+    // folder rows still carries most of the tree relationship.
     //
     // Long-press anywhere on the row to drag-reorder (Batch 23 used a
     // dedicated DragHandle IconButton; dropped because it cost 48dp on every
@@ -377,7 +397,7 @@ private fun PageTreeItem(
             .fillMaxWidth()
             .then(dragHandleModifier)
             .clickable(onClick = onOpen)
-            .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 8.dp + subpageIndent(node.depth), end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (node.hasChildren) {
