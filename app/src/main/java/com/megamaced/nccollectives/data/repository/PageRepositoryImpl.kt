@@ -282,25 +282,6 @@ class PageRepositoryImpl
                     val pages = async { api.listPages(collectiveId) }
                     tags.await() to pages.await()
                 }
-                // R-27: bulk-load existing rows for the collective in one
-                // query, then look up locally in the map. The previous
-                // `pageDao.getById(dto.id)` per DTO was a Room round-trip
-                // per page — for a 200-page collective that's 200 queries
-                // on every refresh.
-                val existingById = pageDao.listForCollective(collectiveId).associateBy { it.id }
-                val entities = response.ocs.data.pages.map { dto ->
-                    val existing = existingById[dto.id]
-                    dto.toEntity(
-                        collectiveId = collectiveId,
-                        now = now,
-                        existingBody = existing?.bodyMd,
-                        existingEtag = existing?.bodyEtag,
-                        existingDraft = existing?.draftBodyMd,
-                        existingBodyTimestamp = existing?.bodyTimestamp,
-                        existingTagsCsv = existing?.tagsCsv,
-                        tagNamesById = tagNames,
-                    )
-                }
                 // B-43: upsert + reconcile in one transaction. A parallel
                 // refresh (e.g. SyncWorker overlapping the foreground caller)
                 // can otherwise observe the intermediate "upserted but not
@@ -312,6 +293,27 @@ class PageRepositoryImpl
                     if (!accountGeneration.isCurrent(generation)) {
                         Timber.i("Account changed mid-sync; abandoning the page refresh")
                         return@withTransaction
+                    }
+                    // Read the body and draft fields in the same transaction as the upsert.
+                    // A foreground GET or a save can update them while the metadata request runs.
+                    // R-27: bulk-load existing rows for the collective in one
+                    // query, then look up locally in the map. The previous
+                    // `pageDao.getById(dto.id)` per DTO was a Room round-trip
+                    // per page — for a 200-page collective that's 200 queries
+                    // on every refresh.
+                    val existingById = pageDao.listForCollective(collectiveId).associateBy { it.id }
+                    val entities = response.ocs.data.pages.map { dto ->
+                        val existing = existingById[dto.id]
+                        dto.toEntity(
+                            collectiveId = collectiveId,
+                            now = now,
+                            existingBody = existing?.bodyMd,
+                            existingEtag = existing?.bodyEtag,
+                            existingDraft = existing?.draftBodyMd,
+                            existingBodyTimestamp = existing?.bodyTimestamp,
+                            existingTagsCsv = existing?.tagsCsv,
+                            tagNamesById = tagNames,
+                        )
                     }
                     pageDao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
@@ -396,16 +398,17 @@ class PageRepositoryImpl
             if (moved.id == old.id) return true
             Timber.i("Page %d was reissued as %d; carrying local state across", old.id, moved.id)
             return writeUnder(generation) {
+                val current = pageDao.getById(old.id) ?: old
                 pageDao.upsertAll(
                     listOf(
                         moved.toEntity(
                             collectiveId = old.collectiveId,
                             now = System.currentTimeMillis(),
-                            existingBody = old.bodyMd,
-                            existingEtag = old.bodyEtag,
-                            existingDraft = old.draftBodyMd,
-                            existingBodyTimestamp = old.bodyTimestamp,
-                            existingTagsCsv = old.tagsCsv,
+                            existingBody = current.bodyMd,
+                            existingEtag = current.bodyEtag,
+                            existingDraft = current.draftBodyMd,
+                            existingBodyTimestamp = current.bodyTimestamp,
+                            existingTagsCsv = current.tagsCsv,
                             // B-69: null is "we didn't resolve the tag list",
                             // which is right — `existingTagsCsv` above is what
                             // this page's tags are until `refresh` says
@@ -465,46 +468,18 @@ class PageRepositoryImpl
         ): ApiResult<String> {
             val entity = pageDao.getById(pageId)
                 ?: return appFailure(AppFailure.NotOnDevice)
-            val result = bodyService.fetchBody(
+            return fetchPageBody(entity).mapSuccess { body ->
+                if (storeFetchedBody(entity, body, generation) !is ApiResult.Success) return accountChanged()
+                body.markdown
+            }
+        }
+
+        private suspend fun fetchPageBody(entity: PageEntity): ApiResult<PageBody> =
+            bodyService.fetchBody(
                 collectivePath = entity.collectivePath,
                 filePath = entity.filePath,
                 fileName = entity.fileName,
             )
-            return when (result) {
-                is ApiResult.Success -> {
-                    val recorded = writeUnder(generation) {
-                        pageDao.updateBody(
-                            pageId,
-                            result.data.markdown,
-                            result.data.etag,
-                            result.data.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
-                            System.currentTimeMillis(),
-                        )
-                    }
-                    if (recorded) ApiResult.Success(result.data.markdown) else accountChanged()
-                }
-
-                is ApiResult.NetworkError -> {
-                    result
-                }
-
-                is ApiResult.HttpError -> {
-                    result
-                }
-
-                ApiResult.Unauthorised -> {
-                    ApiResult.Unauthorised
-                }
-
-                ApiResult.Conflict -> {
-                    ApiResult.Conflict
-                }
-
-                is ApiResult.Unexpected -> {
-                    result
-                }
-            }
-        }
 
         override suspend fun refreshBodyIfChanged(pageId: Long): ApiResult<Boolean> =
             accountGeneration.bound { generation -> refreshBodyIfChangedBound(pageId, generation) }
@@ -515,66 +490,51 @@ class PageRepositoryImpl
         ): ApiResult<Boolean> {
             val entity = pageDao.getById(pageId)
                 ?: return appFailure(AppFailure.NotOnDevice)
-            val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag, entity.bodyTimestamp)
-            if (plan !is BodyFetchPlan.Revalidate) {
-                return fetchBodyBound(pageId, generation).mapSuccess { true }
+            val result = when (val plan = bodyFetchPlan(entity.bodyMd, entity.bodyEtag, entity.bodyTimestamp)) {
+                BodyFetchPlan.FetchWhole -> fetchPageBody(entity).mapSuccess { ConditionalBody.Modified(it) }
+
+                is BodyFetchPlan.Revalidate -> bodyService.fetchBodyIfChanged(
+                    collectivePath = entity.collectivePath,
+                    filePath = entity.filePath,
+                    fileName = entity.fileName,
+                    knownEtag = plan.etag,
+                )
             }
-            val result = bodyService.fetchBodyIfChanged(
-                collectivePath = entity.collectivePath,
-                filePath = entity.filePath,
-                fileName = entity.fileName,
-                knownEtag = plan.etag,
-            )
-            return when (result) {
-                is ApiResult.Success -> {
-                    when (val body = result.data) {
-                        ConditionalBody.NotModified -> {
-                            ApiResult.Success(false)
-                        }
-
-                        is ConditionalBody.Modified -> {
-                            // Deliberately unconditional on the edit queue: a
-                            // queued offline edit lives in `edit_queue`, not on
-                            // the page row, and `EditFlushWorker` compares the
-                            // server etag against the entry's own `baseEtag`.
-                            // Advancing the row here therefore can't lose a
-                            // pending edit — and it stops the user editing text
-                            // the server has already replaced, which is how a
-                            // stale row turned every first save into a 412.
-                            val recorded = writeUnder(generation) {
-                                pageDao.updateBody(
-                                    pageId,
-                                    body.body.markdown,
-                                    body.body.etag,
-                                    body.body.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
-                                    System.currentTimeMillis(),
-                                )
-                            }
-                            if (recorded) ApiResult.Success(true) else accountChanged()
-                        }
-                    }
-                }
-
-                is ApiResult.NetworkError -> {
-                    result
-                }
-
-                is ApiResult.HttpError -> {
-                    result
-                }
-
-                ApiResult.Unauthorised -> {
-                    ApiResult.Unauthorised
-                }
-
-                ApiResult.Conflict -> {
-                    ApiResult.Conflict
-                }
-
-                is ApiResult.Unexpected -> {
-                    result
+            return result.mapSuccess { response ->
+                when (response) {
+                    ConditionalBody.NotModified -> false
+                    is ConditionalBody.Modified -> return storeFetchedBody(entity, response.body, generation)
                 }
             }
+        }
+
+        /** Store the GET only if the cached body and WebDAV path still match its starting point. */
+        private suspend fun storeFetchedBody(
+            requested: PageEntity,
+            body: PageBody,
+            generation: Long,
+        ): ApiResult<Boolean> {
+            var updated = false
+            val recorded = writeUnder(generation) {
+                val current = pageDao.getById(requested.id) ?: return@writeUnder
+                if (current.bodyEtag != requested.bodyEtag || current.bodyTimestamp != requested.bodyTimestamp ||
+                    current.bodyMd != requested.bodyMd || current.fileName != requested.fileName ||
+                    current.filePath != requested.filePath || current.collectivePath != requested.collectivePath ||
+                    current.trashTimestamp != requested.trashTimestamp
+                ) {
+                    return@writeUnder
+                }
+                // The edit queue keeps its own text and base ETag, including edits queued during this GET.
+                pageDao.updateBody(
+                    requested.id,
+                    body.markdown,
+                    body.etag,
+                    body.lastModified ?: BODY_TIMESTAMP_UNAVAILABLE,
+                    System.currentTimeMillis(),
+                )
+                updated = true
+            }
+            return if (recorded) ApiResult.Success(updated) else accountChanged()
         }
 
         override suspend fun saveBody(

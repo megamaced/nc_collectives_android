@@ -89,21 +89,16 @@ class PageEditViewModel
                 // user typing in that brief gap would see their text vanish
                 // when the body arrived.
                 _uiState.update { it.copy(isLoadingBody = true) }
-                val page = repository.getPage(pageId)
+                val pageExists = repository.getPage(pageId) != null
                 // B-58: revalidate rather than fetching only when the body is
                 // missing. Editing a stale body is worse than viewing one —
                 // the save carries the stale etag, the server rejects it on
                 // `If-Match`, and the user's work lands in a conflict draft
                 // they then have to resolve by hand. Cheap: an unchanged page
                 // is a 304.
-                val refreshed = if (page == null) null else repository.refreshBodyIfChanged(pageId)
-                val current = if (refreshed is ApiResult.Success && refreshed.data) {
-                    // Body moved on — re-read the row rather than editing the
-                    // copy we loaded a moment ago.
-                    repository.getPage(pageId)
-                } else {
-                    page
-                }
+                val refreshed = if (pageExists) repository.refreshBodyIfChanged(pageId) else null
+                // A save or queued edit can change what is editable even if this GET didn't write the cache.
+                val current = if (pageExists) repository.getPage(pageId) else null
                 _imageBaseUrl.value = attachmentRepository.attachmentsBaseUrl(pageId)
                 seedDraft(current?.bodyMd, current?.takeUnless { it.bodyFromQueue }?.bodyEtag)
                 _uiState.update {

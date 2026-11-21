@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -50,6 +51,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -140,7 +142,7 @@ internal fun SearchScreen(
                     if (recents.isNotEmpty()) {
                         RecentsSection(
                             recents = recents,
-                            onRecentClick = viewModel::runRecent,
+                            onRecentClick = viewModel::onQueryChanged,
                             onClear = viewModel::clearRecents,
                         )
                     }
@@ -164,7 +166,7 @@ internal fun SearchScreen(
             }
 
             when {
-                ui.isSearching -> {
+                ui.isSearching && filteredResults.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -195,6 +197,9 @@ internal fun SearchScreen(
                 }
 
                 filteredResults.isNotEmpty() -> {
+                    if (ui.isSearching) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                     LazyColumn(state = resultsState, modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(
                             filteredResults,
@@ -331,13 +336,25 @@ internal fun SearchHitRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(text = hit.title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = hit.title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
         hit.snippet?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
+            )
+        }
+        hit.context?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         // Why an untappable result can't be opened, so it never reads as a

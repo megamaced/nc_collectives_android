@@ -32,6 +32,8 @@ import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.uiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,6 +50,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -325,6 +328,8 @@ class PageViewModel
         private val _uiState = MutableStateFlow(PageViewUiState())
         val uiState: StateFlow<PageViewUiState> = _uiState.asStateFlow()
 
+        private var bodyRefreshInFlight = false
+
         /**
          * Collective the page was trashed out of. Captured before the commit
          * because trashing drops the local row, and `restorePage` is keyed on
@@ -346,50 +351,61 @@ class PageViewModel
             refreshBody(userInitiated = false)
         }
 
-        /**
-         * Pull the current body from the server, updating the cache if it has
-         * changed.
-         *
-         * [userInitiated] separates "the user asked" from "we're checking
-         * because the page just opened". An automatic check that fails while
-         * a cached body is already on screen stays silent: offline is the
-         * normal state for this app, and a network snackbar on every page
-         * open would be noise, not information. A user-initiated refresh
-         * always reports — including "Already up to date", which is the
-         * answer they were actually asking for.
-         */
+        /** Refresh on open or by request. A manual request can share a check already in flight. */
         fun refreshBody(userInitiated: Boolean = true) {
-            if (_uiState.value.isLoadingBody) return
-            _uiState.update {
-                it.copy(
-                    isLoadingBody = true,
-                    isRefreshingBody = userInitiated,
-                    errorMessage = null,
-                )
-            }
             viewModelScope.launch {
-                val hadCachedBody = pageRepository.getPage(pageId)?.bodyMd != null
+                if (bodyRefreshInFlight) {
+                    if (userInitiated) _uiState.update { it.copy(isLoadingBody = true, isRefreshingBody = true) }
+                } else {
+                    refreshBodyNow(userInitiated = userInitiated)
+                }
+            }
+        }
+
+        /** The reader's RESUMED scope owns this loop and any request it starts. */
+        suspend fun refreshBodyWhileReading() {
+            while (currentCoroutineContext().isActive) {
+                // The open refresh already covers the first interval.
+                delay(READER_REFRESH_INTERVAL_MS)
+                if (currentOpenState() == PageOpenState.Reading && !bodyRefreshInFlight) {
+                    refreshBodyNow(periodic = true)
+                }
+            }
+        }
+
+        private suspend fun refreshBodyNow(
+            userInitiated: Boolean = false,
+            periodic: Boolean = false,
+        ) {
+            bodyRefreshInFlight = true
+            try {
+                if (!periodic) {
+                    _uiState.update { it.copy(isLoadingBody = true, isRefreshingBody = userInitiated, errorMessage = null) }
+                }
+                val cached = pageRepository.getPage(pageId)
+                if (periodic && !_uiState.value.isRefreshingBody &&
+                    (cached == null || cached.trashed || cached.bodyFromQueue || cached.draftBodyMd != null)
+                ) {
+                    return
+                }
                 val result = pageRepository.refreshBodyIfChanged(pageId)
                 val failure = result.userMessage()
+                val hadCachedBody = cached?.bodyMd != null
                 _uiState.update { state ->
                     state.copy(
-                        isLoadingBody = false,
-                        isRefreshingBody = false,
-                        // B-81: `errorMessage` drives the full-screen error
-                        // state, so it only carries a failure with nothing
-                        // behind it. Over a cached body that arm never
-                        // renders and the message used to reach the user
-                        // only because this screen alone also snackbarred
-                        // `errorMessage`; it goes via `statusMessage` now.
+                        // Cached pages stay readable and periodic failures stay quiet.
                         errorMessage = if (hadCachedBody) null else failure,
                         statusMessage = when {
-                            !userInitiated -> state.statusMessage
+                            !state.isRefreshingBody -> state.statusMessage
                             failure != null -> if (hadCachedBody) failure else state.statusMessage
                             result is ApiResult.Success && result.data -> uiText(R.string.page_updated)
                             else -> uiText(R.string.page_up_to_date)
                         },
                     )
                 }
+            } finally {
+                bodyRefreshInFlight = false
+                _uiState.update { it.copy(isLoadingBody = false, isRefreshingBody = false) }
             }
         }
 
@@ -768,6 +784,7 @@ class PageViewModel
             const val TAG = "PageViewModel"
 
             const val KEY_OPEN_STATE = "pageView.openState"
+            const val READER_REFRESH_INTERVAL_MS = 30_000L
 
             /**
              * Default colour for tags created in-app — 6-hex without `#`

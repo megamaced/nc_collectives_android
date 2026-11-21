@@ -7,6 +7,7 @@ data class SearchHit(
     val pageId: Long?,
     /** Resolved collective id (matched via local cache) when known; null otherwise. */
     val collectiveId: Long?,
+    val context: String? = null,
 ) {
     /**
      * Whether tapping the result can open it. The page screen reads the page

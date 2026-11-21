@@ -18,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import org.junit.After
@@ -115,25 +116,31 @@ class HomeFeedDataIntegrationTest {
             env.seedPage(id = 41, fileName = "p41.md", bodyMd = "# b", bodyEtag = "e1", bodyTimestamp = 1_700_000_000)
             dispatcher.on("p41.md", OcsResponses.webDav(304, etag = "\"e1\""), method = "GET")
 
-            repo.refreshBodyIfChanged(41)
+            val result = repo.refreshBodyIfChanged(41)
 
-            assertEquals(
-                1_700_000_000L,
-                env.db
-                    .pageDao()
-                    .getById(41)!!
-                    .bodyTimestamp,
-            )
+            assertEquals(ApiResult.Success(false), result)
+            assertEquals("\"e1\"", dispatcher.requestsTo("p41.md").single().getHeader("If-None-Match"))
+            val row = env.db.pageDao().getById(41)!!
+            assertEquals("# b", row.bodyMd)
+            assertEquals("e1", row.bodyEtag)
+            assertEquals(1_700_000_000L, row.bodyTimestamp)
         }
 
     @Test
     fun aNewBodyWithoutLastModifiedReplacesTheOldVersionWithUnavailable() =
         runTest {
             env.seedPage(id = 41, fileName = "p41.md", bodyMd = "# b", bodyEtag = "e1", bodyTimestamp = 1_700_000_000)
-            dispatcher.on("p41.md", webDavBody("# new", "e3", lastModifiedSeconds = null), method = "GET")
+            dispatcher.on(
+                "p41.md",
+                webDavBody("# new", "e3", lastModifiedSeconds = null),
+                OcsResponses.webDav(304),
+                method = "GET",
+            )
 
-            repo.refreshBodyIfChanged(41)
+            assertEquals(ApiResult.Success(true), repo.refreshBodyIfChanged(41))
+            assertEquals(ApiResult.Success(false), repo.refreshBodyIfChanged(41))
 
+            assertEquals(listOf("\"e1\"", "\"e3\""), dispatcher.requestsTo("p41.md").map { it.getHeader("If-None-Match") })
             val row = env.db.pageDao().getById(41)!!
             assertEquals("# new", row.bodyMd)
             assertEquals(BODY_TIMESTAMP_UNAVAILABLE, row.bodyTimestamp)
@@ -170,6 +177,44 @@ class HomeFeedDataIntegrationTest {
             val row = env.db.pageDao().getById(41)!!
             assertEquals("# mine", row.bodyMd)
             assertNull(row.bodyTimestamp)
+        }
+
+    @Test
+    fun aRevalidationKeepsAnEditQueuedWhileItsGetIsInFlight() =
+        runTest {
+            env.seedPage(id = 41, fileName = "p41.md", bodyMd = "Server A", bodyEtag = "e1", bodyTimestamp = 100)
+            val queued = EditQueueEntity(41, "e1", "Local edit", 1, "PENDING")
+            dispatcher
+                .on("p41.md", webDavBody("Server B", "e2", lastModifiedSeconds = 101), method = "GET")
+                .whileInFlight("p41.md") { runBlocking { env.db.editQueueDao().upsert(queued) } }
+
+            assertEquals(ApiResult.Success(true), repo.refreshBodyIfChanged(41))
+
+            val cached = env.db.pageDao().getById(41)
+            assertEquals("e2", cached?.bodyEtag)
+            assertEquals(queued, env.db.editQueueDao().forPage(41))
+            val shown = repo.observePage(41).first()
+            assertEquals("Local edit", shown?.bodyMd)
+            assertTrue(shown?.bodyFromQueue == true)
+        }
+
+    @Test
+    fun aLateRevalidationKeepsTheBodyOfASaveThatAlreadyLanded() =
+        runTest {
+            env.seedPage(id = 41, fileName = "p41.md", bodyMd = "Server A", bodyEtag = "e1", bodyTimestamp = 100)
+            dispatcher
+                .on("p41.md", webDavBody("Server A", "e1", lastModifiedSeconds = 100), method = "GET")
+                .on("p41.md", OcsResponses.webDav(204, etag = "\"e2\""), method = "PUT")
+                .whileInFlight("p41.md") { request ->
+                    if (request.method == "GET") runBlocking { repo.saveBody(41, "Local edit") }
+                }
+
+            assertEquals(ApiResult.Success(false), repo.refreshBodyIfChanged(41))
+
+            val row = env.db.pageDao().getById(41)
+            assertEquals("Local edit", row?.bodyMd)
+            assertEquals("e2", row?.bodyEtag)
+            assertNull(row?.bodyTimestamp)
         }
 
     // --- Recording views --------------------------------------------------
@@ -342,6 +387,23 @@ class HomeFeedDataIntegrationTest {
                     .get(99)!!
                     .seenTimestamp,
             )
+        }
+
+    @Test
+    fun aReissuedIdKeepsADraftWrittenWhileTheRenameIsInFlight() =
+        runTest {
+            env.seedPage(id = 41, title = "Old")
+            dispatcher
+                .on("/pages/41", OcsResponses.singlePage(id = 99, title = "New"), method = "PUT")
+                .whileInFlight("/pages/41") {
+                    runBlocking { env.db.pageDao().updateDraft(41, "Keep this draft") }
+                }
+            listing(OcsResponses.page(id = 99, title = "New"))
+
+            assertTrue(repo.renamePage(pageId = 41, newTitle = "New") is ApiResult.Success)
+
+            assertNull(env.db.pageDao().getById(41))
+            assertEquals("Keep this draft", repo.getPage(99)?.draftBodyMd)
         }
 
     // --- Identity ------------------------------------------------------------

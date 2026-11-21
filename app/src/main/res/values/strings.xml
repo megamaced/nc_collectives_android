@@ -650,6 +650,10 @@
     <string name="login_connect">Connect to your Nextcloud server</string>
     <string name="login_server_url">Server URL</string>
     <string name="login_log_in">Log in</string>
+    <string name="local_network_access_note">Allow access to reach Nextcloud servers on your local network.</string>
+    <string name="local_network_allow">Allow local network access</string>
+    <string name="local_network_settings_note">If Android no longer shows the prompt, open app settings and allow Nearby devices under Permissions.</string>
+    <string name="local_network_open_settings">Open app settings</string>
     <!-- The user approves the sign-in in their browser, on the Nextcloud server. -->
     <string name="login_waiting">Waiting for authorisation…</string>
 

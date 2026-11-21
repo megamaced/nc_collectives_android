@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.megamaced.nccollectives.R
+import com.megamaced.nccollectives.ui.components.LocalNetworkAccess
 import com.megamaced.nccollectives.ui.components.SnackbarStatusEffect
 import timber.log.Timber
 
@@ -77,6 +80,7 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(scaffoldPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -128,6 +132,8 @@ fun LoginScreen(
                     Text(stringResource(R.string.login_log_in))
                 }
             }
+
+            LocalNetworkAccess(enabled = !uiState.isLoading && !uiState.isPolling)
 
             if (uiState.isPolling) {
                 Spacer(modifier = Modifier.height(24.dp))

@@ -28,8 +28,9 @@ data class SearchEnvelopeData(
 
 @Serializable
 data class SearchEntryDto(
+    /** Page title for collectives-pages, match excerpt for collectives-page-content. */
     val title: String = "",
-    /** Highlight excerpt; varies by Nextcloud version. */
+    /** Collective description and optional parent path. */
     val subline: String? = null,
     /** Path to the page in the Collectives UI; typically contains `fileId=…`. */
     val resourceUrl: String? = null,
