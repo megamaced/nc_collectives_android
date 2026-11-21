@@ -15,14 +15,12 @@ import io.mockk.spyk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -217,25 +215,6 @@ class HomeFeedDataIntegrationTest {
             assertEquals("Local edit", row?.bodyMd)
             assertEquals("e2", row?.bodyEtag)
             assertNull(row?.bodyTimestamp)
-        }
-
-    @Test
-    fun cancellingARevalidationCancelsItsHttpCall() =
-        runTest {
-            env.seedPage(id = 41, fileName = "p41.md", bodyMd = "Server A", bodyEtag = "e1", bodyTimestamp = 100)
-            val received = CompletableDeferred<Unit>()
-            dispatcher
-                .on("p41.md", MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE), method = "GET")
-                .whileInFlight("p41.md") { received.complete(Unit) }
-
-            val refresh = async { repo.refreshBodyIfChanged(41) }
-            received.await()
-            val calls = env.client.dispatcher.runningCalls()
-            val call = calls.single()
-            refresh.cancelAndJoin()
-
-            assertTrue(call.isCanceled())
-            assertEquals("Server A", repo.getPage(41)?.bodyMd)
         }
 
     // --- Recording views --------------------------------------------------

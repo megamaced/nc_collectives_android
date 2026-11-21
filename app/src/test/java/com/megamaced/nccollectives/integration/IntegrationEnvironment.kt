@@ -259,7 +259,7 @@ internal class IntegrationEnvironment private constructor(
         const val COLLECTIVE_ID = 7L
         const val COLLECTIVE_PATH = ".Collectives/Wiki"
 
-        fun create(): IntegrationEnvironment {
+        fun create(configureClient: OkHttpClient.Builder.() -> Unit = {}): IntegrationEnvironment {
             val context = ApplicationProvider.getApplicationContext<Context>()
             forgetFileProviderRoots()
             // Synchronous executor so `SyncScheduler`'s enqueues settle
@@ -309,7 +309,8 @@ internal class IntegrationEnvironment private constructor(
                 .sslSocketFactory(
                     clientCertificates.sslSocketFactory(),
                     clientCertificates.trustManager,
-                ).build()
+                ).apply(configureClient)
+                .build()
 
             val json = NetworkModule.provideJson()
             val callFactory = AccountBoundCallFactory(client, accountGeneration)
