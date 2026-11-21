@@ -205,10 +205,11 @@ internal fun PageViewScreen(
     // resumed, as this one isn't while it animates in, and the trip is taken
     // once per visit. A manual Edit already under way takes its place.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) {
+    LaunchedEffect(lifecycle, viewModel) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.backInFront()
             launch { viewModel.recordViewsWhileShown() }
+            launch { viewModel.refreshBodyWhileReading() }
             viewModel.openState.first { it == PageOpenState.EditPending }
             if (!resolvingEditRoute && viewModel.claimPendingEdit()) {
                 launchEditLatest(true)

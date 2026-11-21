@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
@@ -104,6 +105,20 @@ class PageEditDraftBaseTest {
             advanceUntilIdle()
 
             coVerify { repository.saveBody(PAGE_ID, "Queued A, edited", DraftBase.of("Queued A", null)) }
+        }
+
+    @Test
+    fun anEditQueuedDuringRevalidationIsUsedToSeedTheEditor() =
+        runTest(dispatcher) {
+            cachedAs("A's text", "A")
+            coEvery { repository.refreshBodyIfChanged(PAGE_ID) } coAnswers {
+                coEvery { repository.getPage(PAGE_ID) } returns page("Queued A", "A", fromQueue = true)
+                ApiResult.Success(false)
+            }
+            val editor = PageEditViewModel(SavedStateHandle(mapOf(Destination.PageEdit.ARG_PAGE_ID to PAGE_ID)), repository, attachments)
+            advanceUntilIdle()
+
+            assertEquals("Queued A", editor.draftBody.value)
         }
 
     private fun page(

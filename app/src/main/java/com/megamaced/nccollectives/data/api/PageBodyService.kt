@@ -4,16 +4,23 @@ import com.megamaced.nccollectives.data.ServerStringValidation
 import com.megamaced.nccollectives.data.auth.AccountBoundCallFactory
 import com.megamaced.nccollectives.data.auth.AccountChangedException
 import com.megamaced.nccollectives.data.auth.TokenStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import timber.log.Timber
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resumeWithException
 
 /**
  * A page body along with the WebDAV ETag the server returned for it, and its
@@ -81,7 +88,7 @@ class PageBodyService
             // Set explicitly, so OkHttp doesn't ask for gzip on our behalf.
             if (uncompressed) builder.header("Accept-Encoding", "identity")
             val request = builder.build()
-            return webDavCall(request) { response ->
+            return webDavCall(request, cancellableRead = true) { response ->
                 PageBody(
                     markdown = response.body?.string().orEmpty(),
                     etag = normaliseEtag(response.header("ETag")),
@@ -114,7 +121,7 @@ class PageBodyService
                 .header("If-None-Match", "\"$knownEtag\"")
                 .get()
                 .build()
-            return webDavCall(request, extraSuccessCodes = setOf(304)) { response ->
+            return webDavCall(request, extraSuccessCodes = setOf(304), cancellableRead = true) { response ->
                 if (response.code == 304) {
                     ConditionalBody.NotModified
                 } else {
@@ -289,37 +296,57 @@ class PageBodyService
         private suspend fun <T> webDavCall(
             request: Request,
             extraSuccessCodes: Set<Int> = emptySet(),
-            onSuccess: (okhttp3.Response) -> T,
-        ): ApiResult<T> =
-            withContext(Dispatchers.IO) {
-                try {
-                    callFactory.newCall(request).execute().use { response ->
-                        when {
-                            response.code in 200..299 || response.code in extraSuccessCodes -> {
-                                ApiResult.Success(onSuccess(response))
-                            }
-
-                            response.code == 401 -> {
-                                ApiResult.Unauthorised
-                            }
-
-                            response.code == 412 -> {
-                                ApiResult.Conflict
-                            }
-
-                            else -> {
-                                ApiResult.HttpError(response.code, response.message)
-                            }
-                        }
+            cancellableRead: Boolean = false,
+            onSuccess: (Response) -> T,
+        ): ApiResult<T> {
+            val readResponse: (Response) -> ApiResult<T> = { response ->
+                response.use {
+                    when {
+                        response.code in 200..299 || response.code in extraSuccessCodes -> ApiResult.Success(onSuccess(response))
+                        response.code == 401 -> ApiResult.Unauthorised
+                        response.code == 412 -> ApiResult.Conflict
+                        else -> ApiResult.HttpError(response.code, response.message)
                     }
-                } catch (e: AccountChangedException) {
-                    // Abandoned, not offline, as in `apiCall`.
-                    ApiResult.Unexpected(e)
-                } catch (e: java.io.IOException) {
-                    ApiResult.NetworkError(e)
-                } catch (e: Exception) {
-                    ApiResult.Unexpected(e)
                 }
+            }
+            return try {
+                if (cancellableRead) {
+                    callFactory.newCall(request).awaitRead(readResponse)
+                } else {
+                    withContext(Dispatchers.IO) { readResponse(callFactory.newCall(request).execute()) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AccountChangedException) {
+                ApiResult.Unexpected(e)
+            } catch (e: IOException) {
+                ApiResult.NetworkError(e)
+            } catch (e: Exception) {
+                ApiResult.Unexpected(e)
+            }
+        }
+
+        /** Keep cancellation attached to the call until the response body has been read and closed. */
+        private suspend fun <T> Call.awaitRead(readResponse: (Response) -> T): T =
+            suspendCancellableCoroutine { continuation ->
+                continuation.invokeOnCancellation { cancel() }
+                enqueue(
+                    object : Callback {
+                        override fun onFailure(
+                            call: Call,
+                            e: IOException,
+                        ) {
+                            continuation.resumeWithException(e)
+                        }
+
+                        override fun onResponse(
+                            call: Call,
+                            response: Response,
+                        ) {
+                            continuation.resumeWith(runCatching { readResponse(response) })
+                        }
+                    },
+                )
             }
 
         /**
