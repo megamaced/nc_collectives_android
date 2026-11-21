@@ -282,25 +282,6 @@ class PageRepositoryImpl
                     val pages = async { api.listPages(collectiveId) }
                     tags.await() to pages.await()
                 }
-                // R-27: bulk-load existing rows for the collective in one
-                // query, then look up locally in the map. The previous
-                // `pageDao.getById(dto.id)` per DTO was a Room round-trip
-                // per page — for a 200-page collective that's 200 queries
-                // on every refresh.
-                val existingById = pageDao.listForCollective(collectiveId).associateBy { it.id }
-                val entities = response.ocs.data.pages.map { dto ->
-                    val existing = existingById[dto.id]
-                    dto.toEntity(
-                        collectiveId = collectiveId,
-                        now = now,
-                        existingBody = existing?.bodyMd,
-                        existingEtag = existing?.bodyEtag,
-                        existingDraft = existing?.draftBodyMd,
-                        existingBodyTimestamp = existing?.bodyTimestamp,
-                        existingTagsCsv = existing?.tagsCsv,
-                        tagNamesById = tagNames,
-                    )
-                }
                 // B-43: upsert + reconcile in one transaction. A parallel
                 // refresh (e.g. SyncWorker overlapping the foreground caller)
                 // can otherwise observe the intermediate "upserted but not
@@ -312,6 +293,27 @@ class PageRepositoryImpl
                     if (!accountGeneration.isCurrent(generation)) {
                         Timber.i("Account changed mid-sync; abandoning the page refresh")
                         return@withTransaction
+                    }
+                    // Read the body and draft fields in the same transaction as the upsert.
+                    // A foreground GET or a save can update them while the metadata request runs.
+                    // R-27: bulk-load existing rows for the collective in one
+                    // query, then look up locally in the map. The previous
+                    // `pageDao.getById(dto.id)` per DTO was a Room round-trip
+                    // per page — for a 200-page collective that's 200 queries
+                    // on every refresh.
+                    val existingById = pageDao.listForCollective(collectiveId).associateBy { it.id }
+                    val entities = response.ocs.data.pages.map { dto ->
+                        val existing = existingById[dto.id]
+                        dto.toEntity(
+                            collectiveId = collectiveId,
+                            now = now,
+                            existingBody = existing?.bodyMd,
+                            existingEtag = existing?.bodyEtag,
+                            existingDraft = existing?.draftBodyMd,
+                            existingBodyTimestamp = existing?.bodyTimestamp,
+                            existingTagsCsv = existing?.tagsCsv,
+                            tagNamesById = tagNames,
+                        )
                     }
                     pageDao.upsertAll(entities)
                     val keepIds = entities.map { it.id }
