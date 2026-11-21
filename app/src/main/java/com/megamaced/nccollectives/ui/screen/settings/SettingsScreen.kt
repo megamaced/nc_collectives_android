@@ -71,6 +71,7 @@ import com.megamaced.nccollectives.data.prefs.TextScale
 import com.megamaced.nccollectives.data.prefs.ThemeMode
 import com.megamaced.nccollectives.domain.model.Collective
 import com.megamaced.nccollectives.ui.attachment.openInBrowser
+import com.megamaced.nccollectives.ui.components.LocalNetworkAccess
 import com.megamaced.nccollectives.util.UiText
 import com.megamaced.nccollectives.util.resolve
 import com.megamaced.nccollectives.util.syncStatusLines
@@ -225,6 +226,7 @@ internal fun SettingsScreen(
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Box(modifier = Modifier.padding(start = 8.dp)) { Text(stringResource(R.string.settings_add_account)) }
             }
+            LocalNetworkAccess()
 
             SectionBreak()
 
