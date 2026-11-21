@@ -6,6 +6,7 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,6 +25,7 @@ class LocalNetworkAccessTest {
     val rule = createComposeRule()
 
     private var requestedPermission: String? = null
+    private var permissionRequestCode: Int? = null
     private val owner = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(
@@ -33,6 +35,7 @@ class LocalNetworkAccessTest {
                 options: ActivityOptionsCompat?,
             ) {
                 requestedPermission = input as String
+                permissionRequestCode = requestCode
             }
         }
     }
@@ -58,10 +61,33 @@ class LocalNetworkAccessTest {
         rule.runOnIdle { assertEquals(Manifest.permission.ACCESS_LOCAL_NETWORK, requestedPermission) }
     }
 
-    private fun showAccessAction() {
+    @Test
+    @Config(sdk = [37])
+    fun unsuccessfulPermissionRequestKeepsRetryAndOffersSettings() {
+        showAccessAction()
+
+        rule.onNodeWithText("Allow local network access").performClick()
+        rule.runOnIdle {
+            owner.activityResultRegistry.dispatchResult(requireNotNull(permissionRequestCode), false)
+        }
+
+        rule.onNodeWithText("Allow local network access").assertExists()
+        rule.onNodeWithText("Open app settings").assertExists()
+    }
+
+    @Test
+    @Config(sdk = [37])
+    fun accessActionIsDisabledDuringSignIn() {
+        showAccessAction(enabled = false)
+
+        rule.onNodeWithText("Allow local network access").assertIsNotEnabled()
+        assertNull(requestedPermission)
+    }
+
+    private fun showAccessAction(enabled: Boolean = true) {
         rule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                LocalNetworkAccess()
+                LocalNetworkAccess(enabled = enabled)
             }
         }
     }

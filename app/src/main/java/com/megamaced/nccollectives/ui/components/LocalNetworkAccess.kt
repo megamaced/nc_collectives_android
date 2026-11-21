@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -33,20 +32,21 @@ internal fun LocalNetworkAccess(enabled: Boolean = true) {
     if (Build.VERSION.SDK_INT < 37) return
 
     val context = LocalContext.current
-    val activity = LocalActivity.current
     val permission = Manifest.permission.ACCESS_LOCAL_NETWORK
 
     fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     var granted by remember { mutableStateOf(hasPermission()) }
-    var openSettings by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         granted = allowed
-        openSettings = !allowed && activity?.shouldShowRequestPermissionRationale(permission) == false
+        // The permission contract reports false for both a denial and a dismissal.
+        // Keep the retry available and offer Settings in case Android stops prompting.
+        showSettings = !allowed
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         granted = hasPermission()
-        if (granted) openSettings = false
+        if (granted) showSettings = false
     }
 
     if (granted) return
@@ -55,25 +55,33 @@ internal fun LocalNetworkAccess(enabled: Boolean = true) {
     // Let the user opt in independently of how the server address is written.
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = stringResource(
-                if (openSettings) R.string.local_network_settings_note else R.string.local_network_access_note,
-            ),
+            text = stringResource(R.string.local_network_access_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(
-            onClick = {
-                if (openSettings) {
-                    val uri = "package:${context.packageName}".toUri()
-                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri))
-                } else {
-                    launcher.launch(permission)
-                }
-            },
+            onClick = { launcher.launch(permission) },
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(stringResource(if (openSettings) R.string.local_network_open_settings else R.string.local_network_allow))
+            Text(stringResource(R.string.local_network_allow))
+        }
+        if (showSettings) {
+            Text(
+                text = stringResource(R.string.local_network_settings_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(
+                onClick = {
+                    val uri = "package:${context.packageName}".toUri()
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri))
+                },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.local_network_open_settings))
+            }
         }
     }
 }
