@@ -4,7 +4,7 @@
     <string name="error_no_account">Ükski kasutajakonto pole loginud sisse.</string>
     <string name="error_cross_collective_move">Lehti ei saa teise vabaühendusse tõsta.</string>
     <string name="error_blank_name">Sisesta nimi.</string>
-    <string name="login_error_timed_out">Väljalogimine aegus. Proovi uuesti.</string>
+    <string name="login_error_timed_out">Sisselogimine aegus. Proovi uuesti.</string>
     <string name="state_error_title">Midagi läks valesti</string>
     <string name="action_retry">Proovi uuesti</string>
     <string name="action_cancel">Katkesta</string>
