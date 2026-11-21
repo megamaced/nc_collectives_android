@@ -410,6 +410,23 @@ class HomeFeedDataIntegrationTest {
             )
         }
 
+    @Test
+    fun aReissuedIdKeepsADraftWrittenWhileTheRenameIsInFlight() =
+        runTest {
+            env.seedPage(id = 41, title = "Old")
+            dispatcher
+                .on("/pages/41", OcsResponses.singlePage(id = 99, title = "New"), method = "PUT")
+                .whileInFlight("/pages/41") {
+                    runBlocking { env.db.pageDao().updateDraft(41, "Keep this draft") }
+                }
+            listing(OcsResponses.page(id = 99, title = "New"))
+
+            assertTrue(repo.renamePage(pageId = 41, newTitle = "New") is ApiResult.Success)
+
+            assertNull(env.db.pageDao().getById(41))
+            assertEquals("Keep this draft", repo.getPage(99)?.draftBodyMd)
+        }
+
     // --- Identity ------------------------------------------------------------
 
     private fun currentUser(prefs: UserPreferences): CurrentUser {

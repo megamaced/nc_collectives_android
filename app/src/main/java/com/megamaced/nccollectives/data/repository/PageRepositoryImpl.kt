@@ -398,16 +398,17 @@ class PageRepositoryImpl
             if (moved.id == old.id) return true
             Timber.i("Page %d was reissued as %d; carrying local state across", old.id, moved.id)
             return writeUnder(generation) {
+                val current = pageDao.getById(old.id) ?: old
                 pageDao.upsertAll(
                     listOf(
                         moved.toEntity(
                             collectiveId = old.collectiveId,
                             now = System.currentTimeMillis(),
-                            existingBody = old.bodyMd,
-                            existingEtag = old.bodyEtag,
-                            existingDraft = old.draftBodyMd,
-                            existingBodyTimestamp = old.bodyTimestamp,
-                            existingTagsCsv = old.tagsCsv,
+                            existingBody = current.bodyMd,
+                            existingEtag = current.bodyEtag,
+                            existingDraft = current.draftBodyMd,
+                            existingBodyTimestamp = current.bodyTimestamp,
+                            existingTagsCsv = current.tagsCsv,
                             // B-69: null is "we didn't resolve the tag list",
                             // which is right — `existingTagsCsv` above is what
                             // this page's tags are until `refresh` says
