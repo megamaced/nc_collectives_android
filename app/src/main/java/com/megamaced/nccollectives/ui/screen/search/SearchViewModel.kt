@@ -14,17 +14,15 @@ import com.megamaced.nccollectives.domain.repository.SearchRepository
 import com.megamaced.nccollectives.ui.screen.STOP_TIMEOUT_MS
 import com.megamaced.nccollectives.util.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -39,7 +37,6 @@ data class SearchUiState(
     val selectedCollectiveIds: Set<Long> = emptySet(),
 )
 
-@OptIn(FlowPreview::class)
 @HiltViewModel
 class SearchViewModel
     @Inject
@@ -70,21 +67,20 @@ class SearchViewModel
 
         private var inFlight: Job? = null
 
-        init {
-            _uiState
-                .map { it.query }
-                .distinctUntilChanged()
-                .debounce(DEBOUNCE_MS)
-                .onEach(::runSearch)
-                .launchIn(viewModelScope)
-        }
-
         fun onQueryChanged(term: String) {
-            _uiState.update { it.copy(query = term, errorMessage = null) }
-        }
-
-        fun runRecent(term: String) {
-            _uiState.update { it.copy(query = term) }
+            if (term == _uiState.value.query) return
+            inFlight?.cancel()
+            val trimmed = term.trim()
+            val shouldSearch = trimmed.length >= MIN_QUERY_LENGTH
+            _uiState.update { it.copy(query = term, results = emptyList(), isSearching = shouldSearch, errorMessage = null) }
+            inFlight = if (shouldSearch) {
+                viewModelScope.launch {
+                    delay(DEBOUNCE_MS)
+                    runSearch(trimmed)
+                }
+            } else {
+                null
+            }
         }
 
         fun clearRecents() {
@@ -100,24 +96,16 @@ class SearchViewModel
         }
 
         private suspend fun runSearch(term: String) {
-            val trimmed = term.trim()
-            if (trimmed.length < MIN_QUERY_LENGTH) {
-                inFlight?.cancel()
-                _uiState.update { it.copy(results = emptyList(), isSearching = false) }
-                return
+            val context = currentCoroutineContext()
+            val result = repository.search(term) { titles ->
+                context.ensureActive()
+                _uiState.update { it.copy(results = titles) }
             }
-            inFlight?.cancel()
-            inFlight = viewModelScope.launch {
-                _uiState.update { it.copy(isSearching = true, errorMessage = null) }
-                val result = repository.search(trimmed)
-                // A failed search clears the hits and reports (R-59).
-                val hits = if (result is ApiResult.Success) result.data else emptyList()
-                _uiState.update {
-                    it.copy(isSearching = false, results = hits, errorMessage = result.userMessage())
-                }
-                if (result is ApiResult.Success && result.data.isNotEmpty()) {
-                    userPreferences.pushRecentSearch(trimmed)
-                }
+            context.ensureActive()
+            val hits = if (result is ApiResult.Success) result.data else emptyList()
+            _uiState.update { it.copy(isSearching = false, results = hits, errorMessage = result.userMessage()) }
+            if (hits.isNotEmpty()) {
+                userPreferences.pushRecentSearch(term)
             }
         }
 

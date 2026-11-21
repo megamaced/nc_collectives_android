@@ -115,7 +115,7 @@ internal class IntegrationEnvironment private constructor(
             attachmentRepository = { attachmentRepository as AttachmentRepository },
         )
 
-    val searchRepository: SearchRepositoryImpl = SearchRepositoryImpl(api = searchApi, pageDao = db.pageDao())
+    val searchRepository: SearchRepositoryImpl = SearchRepositoryImpl(searchApi, db.pageDao(), accountGeneration)
 
     val alertRepository: AlertRepositoryImpl =
         AlertRepositoryImpl(

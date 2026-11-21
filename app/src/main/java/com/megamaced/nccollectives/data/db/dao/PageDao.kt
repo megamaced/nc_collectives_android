@@ -1,19 +1,23 @@
 package com.megamaced.nccollectives.data.db.dao
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Query
 import androidx.room.Upsert
 import com.megamaced.nccollectives.data.db.entity.PageEntity
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Projection returned by [PageDao.collectiveIdsForPages] — the page-to-
- * collective mapping with none of the row's body columns. Not an entity:
- * a query projection carries no schema of its own.
- */
-data class PageCollectiveRef(
+/** Cached metadata needed to label and open a search hit. */
+data class SearchPageRef(
     val id: Long,
     val collectiveId: Long,
+    val title: String,
+    val emoji: String?,
+)
+
+data class SearchLandingPageRef(
+    @Embedded val page: SearchPageRef,
+    val collectiveRoute: String,
 )
 
 /**
@@ -123,18 +127,20 @@ interface PageDao {
     @Query("SELECT * FROM pages WHERE collectiveId = :collectiveId")
     suspend fun listForCollective(collectiveId: Long): List<PageEntity>
 
-    /**
-     * R-46: which collective each of [ids] belongs to, in one query.
-     * Search-hit mapping needs nothing but that one column, and [getById]
-     * is a `SELECT *` that drags the whole cached markdown body along —
-     * a 20-result search meant 20 body-sized reads to fetch 20 Longs.
-     *
-     * Callers must skip the call on an empty [ids]: Room expands the
-     * binding to `IN ()`, which is a SQLite syntax error (same trap as
-     * B-42 in `AttachmentRepositoryImpl`).
-     */
-    @Query("SELECT id, collectiveId FROM pages WHERE id IN (:ids)")
-    suspend fun collectiveIdsForPages(ids: List<Long>): List<PageCollectiveRef>
+    // R-46: project only the metadata, without reading cached markdown for each hit.
+    @Query("SELECT id, collectiveId, title, emoji FROM pages WHERE id IN (:ids)")
+    suspend fun searchPagesById(ids: List<Long>): List<SearchPageRef>
+
+    @Query(
+        """
+        SELECT p.id, p.collectiveId, p.title, p.emoji,
+            CASE WHEN c.slug IS NOT NULL AND c.slug != '' THEN c.slug || '-' || c.id ELSE c.name END AS collectiveRoute
+        FROM pages p JOIN collectives c ON c.id = p.collectiveId
+        WHERE p.parentId = 0 AND p.trashTimestamp IS NULL AND c.trashTimestamp IS NULL
+            AND collectiveRoute IN (:routes)
+        """,
+    )
+    suspend fun searchLandingPages(routes: List<String>): List<SearchLandingPageRef>
 
     @Query("SELECT * FROM pages WHERE id = :id")
     fun observeById(id: Long): Flow<PageEntity?>

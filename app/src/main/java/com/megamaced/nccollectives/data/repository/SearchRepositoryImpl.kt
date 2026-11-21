@@ -5,9 +5,13 @@ import com.megamaced.nccollectives.data.api.ApiResult
 import com.megamaced.nccollectives.data.api.SearchApiService
 import com.megamaced.nccollectives.data.api.apiCall
 import com.megamaced.nccollectives.data.api.dto.SearchEntryDto
+import com.megamaced.nccollectives.data.auth.AccountGeneration
+import com.megamaced.nccollectives.data.auth.bound
 import com.megamaced.nccollectives.data.db.dao.PageDao
 import com.megamaced.nccollectives.domain.model.SearchHit
 import com.megamaced.nccollectives.domain.repository.SearchRepository
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,67 +21,94 @@ class SearchRepositoryImpl
     constructor(
         private val api: SearchApiService,
         private val pageDao: PageDao,
+        private val accountGeneration: AccountGeneration,
     ) : SearchRepository {
-        @Suppress("UNCHECKED_CAST")
         override suspend fun search(
             term: String,
             limit: Int,
+            onTitleHits: (List<SearchHit>) -> Unit,
         ): ApiResult<List<SearchHit>> {
             val trimmed = term.trim()
             if (trimmed.isEmpty()) return ApiResult.Success(emptyList())
-            val raw = apiCall {
-                api
-                    .searchPages(trimmed, limit)
-                    .ocs.data.entries
-            }
-            // Collapse every non-Success arm with a single cast.
-            return if (raw is ApiResult.Success) {
-                ApiResult.Success(toHits(raw.data))
-            } else {
-                raw as ApiResult<List<SearchHit>>
+            return accountGeneration.bound { generation ->
+                val seen = mutableSetOf<String>()
+                val titles = apiCall {
+                    val response = api.searchPages(trimmed, limit).ocs
+                    toHits(response.data.entries, seen)
+                }.unlessAccountChanged(accountGeneration, generation)
+                if (titles !is ApiResult.Success) return@bound titles
+
+                currentCoroutineContext().ensureActive()
+                onTitleHits(titles.data)
+
+                // Older servers may not have the content provider. A failure here leaves the title hits usable.
+                val content = apiCall {
+                    val response = api.searchPageContent(trimmed, limit).body()?.ocs
+                    if (response?.meta?.status == "ok") {
+                        toHits(response.data.entries, seen, contentMatches = true)
+                    } else {
+                        emptyList()
+                    }
+                }
+                val combined = if (content is ApiResult.Success) ApiResult.Success(titles.data + content.data) else titles
+                combined.unlessAccountChanged(accountGeneration, generation)
             }
         }
 
-        /**
-         * R-46: resolve every hit's collective in ONE projection query.
-         * This used to be a `pageDao.getById(pageId)?.collectiveId` per
-         * entry — a `SELECT *` that read the full cached markdown body of
-         * every result just to pull one Long out of it.
-         */
-        private suspend fun toHits(entries: List<SearchEntryDto>): List<SearchHit> {
-            val pageIds = entries.map { it.pageId() }
-            val known = pageIds.filterNotNull().distinct()
-            // Room expands an empty list to `IN ()`, a SQLite syntax error.
-            val collectiveIds = if (known.isEmpty()) {
-                emptyMap()
-            } else {
-                pageDao
-                    .collectiveIdsForPages(known)
-                    .associate { it.id to it.collectiveId }
+        private suspend fun toHits(
+            entries: List<SearchEntryDto>,
+            seen: MutableSet<String>,
+            contentMatches: Boolean = false,
+        ): List<SearchHit> {
+            val links = entries.map { entry ->
+                val uri = entry.resourceUrl?.let(Uri::parse)?.takeIf { it.isHierarchical }
+                val pageId = entry.attributes["fileId"]?.toLongOrNull() ?: uri?.pageId()
+                // A landing link only names the collective. Match its exact cached route, never its title or id suffix.
+                val landingRoute = if (pageId == null) uri?.collectivesRoute()?.singleOrNull() else null
+                SearchLink(pageId, landingRoute)
             }
-            return entries.mapIndexed { index, entry ->
-                val pageId = pageIds[index]
+            val pages = links
+                .mapNotNull { it.pageId }
+                .distinct()
+                .chunked(LOOKUP_BATCH_SIZE)
+                .flatMap { pageDao.searchPagesById(it) }
+                .associateBy { it.id }
+            val landingPages = links
+                .mapNotNull { it.landingRoute }
+                .distinct()
+                .chunked(LOOKUP_BATCH_SIZE)
+                .flatMap { pageDao.searchLandingPages(it) }
+                .groupBy { it.collectiveRoute }
+
+            return entries.mapIndexedNotNull { index, entry ->
+                val link = links[index]
+                val page = link.pageId?.let { pages[it] } ?: link.landingRoute?.let { landingPages[it]?.singleOrNull()?.page }
+                val pageId = link.pageId ?: page?.id
+                val key = pageId?.let { "page:$it" } ?: link.landingRoute?.let { "landing:$it" }
+                if (key != null && !seen.add(key)) return@mapIndexedNotNull null
+
+                // The content provider sends the excerpt in title. Use the cached page title when we have it.
+                val pageTitle = page?.takeIf { contentMatches }?.let { listOfNotNull(it.emoji, it.title).joinToString(" ") }
+                val description = entry.subline?.takeIf { it.isNotBlank() }
                 SearchHit(
-                    title = entry.title,
-                    snippet = entry.subline?.takeIf { it.isNotBlank() },
+                    title = pageTitle ?: entry.title,
+                    snippet = if (pageTitle == null) description else entry.title.takeIf { it.isNotBlank() },
                     pageId = pageId,
-                    collectiveId = pageId?.let { collectiveIds[it] },
+                    collectiveId = page?.collectiveId,
+                    context = description.takeIf { pageTitle != null },
                 )
             }
         }
 
-        /**
-         * No cross-collective title fallback (B-17). Two collectives can
-         * hold same-titled pages, and a global `findIdByTitle` lookup
-         * would navigate to the wrong one. If the server didn't give us a
-         * file id we just leave [SearchHit.pageId] null — the result still
-         * shows title + snippet but isn't tappable.
-         */
-        private fun SearchEntryDto.pageId(): Long? =
-            attributes["fileId"]?.toLongOrNull()
-                ?: resourceUrl?.let { pageIdFromResourceUrl(it) }
+        private data class SearchLink(
+            val pageId: Long?,
+            val landingRoute: String?,
+        )
 
         internal companion object {
+            // A complete provider response can exceed the requested limit. Stay within SQLite's bind limit.
+            private const val LOOKUP_BATCH_SIZE = 999
+
             /** A slugged page's link segment: `<slug>-<id>`. */
             private val SLUGGED_PAGE_SEGMENT = Regex("""-(\d+)$""")
 
@@ -100,28 +131,30 @@ class SearchRepositoryImpl
              * after the collective's, so a collective segment — which can
              * itself be `<slug>-<id>` — is never mistaken for a page.
              */
-            fun pageIdFromResourceUrl(url: String): Long? {
+            fun pageIdFromResourceUrl(url: String): Long? = Uri.parse(url).takeIf { it.isHierarchical }?.pageId()
+
+            private fun Uri.pageId(): Long? {
                 // B-47: route the parse through `Uri.parse` so query lookup
                 // handles fragments (`#anchor`) and percent-encoding correctly.
                 // The previous `substringAfter('?') + split('&')` produced
                 // `"42#anchor"` for `?fileId=42#anchor` and `toLongOrNull()`
                 // returned null — the search hit became untappable.
-                val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
-                // `getQueryParameter` throws on an opaque URI (`mailto:…`).
-                if (!uri.isHierarchical) return null
-                uri.getQueryParameter("fileId")?.toLongOrNull()?.let { return it }
-
-                val segments = uri.pathSegments
-                val appRoot = segments.indices.firstOrNull { i ->
-                    segments[i] == "apps" && segments.getOrNull(i + 1) == "collectives"
-                } ?: return null
-                val route = segments.drop(appRoot + 2)
+                getQueryParameter("fileId")?.toLongOrNull()?.let { return it }
+                val route = collectivesRoute() ?: return null
                 if (route.size != 2) return null
                 return SLUGGED_PAGE_SEGMENT
                     .find(route[1])
                     ?.groupValues
                     ?.get(1)
                     ?.toLongOrNull()
+            }
+
+            private fun Uri.collectivesRoute(): List<String>? {
+                val segments = pathSegments
+                val appRoot = segments.indices.firstOrNull { i ->
+                    segments[i] == "apps" && segments.getOrNull(i + 1) == "collectives"
+                } ?: return null
+                return segments.drop(appRoot + 2)
             }
         }
     }
