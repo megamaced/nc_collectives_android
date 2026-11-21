@@ -1,0 +1,1 @@
+The native reader checks for server edits every 30 seconds while open. Search includes page text where the server offers the Collectives content provider, with title matches first. On Android 17, use Allow local network access on sign-in or in Settings to reach a Nextcloud server on your LAN.
